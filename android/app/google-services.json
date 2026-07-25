@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "623766229177",
+    "project_id": "healthsync-b8394",
+    "storage_bucket": "healthsync-b8394.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623766229177:android:0594aeb06981ce999f8b68",
+        "android_client_info": {
+          "package_name": "com.example.healthsync"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "623766229177-codud0d1u3nconnpb9vm7ssp6tdi5nvs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcNQueYFiRt0gWn0yFpNYVjVJFqNH7SO0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "623766229177-codud0d1u3nconnpb9vm7ssp6tdi5nvs.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "623766229177-9hd31aqtui0ot22u0l8ki1e8o6lgkou6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.healthsync"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

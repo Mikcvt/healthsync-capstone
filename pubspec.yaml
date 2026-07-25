@@ -34,6 +34,14 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  firebase_core: ^4.12.1
+  firebase_auth: ^6.5.6
+  cloud_firestore: ^6.7.1
+  firebase_messaging: ^16.4.3
+  flutter_local_notifications: ^22.2.0
+  google_fonts: ^8.2.0
+  provider: ^6.1.5+1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +64,20 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
 
   # To add assets to your application, add an assets section, like this:
   # assets:
