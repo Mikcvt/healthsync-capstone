@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppStyles {
@@ -9,7 +10,7 @@ class AppStyles {
     border: Border.all(color: AppColors.borderGray, width: 1),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF1B5FD4).withOpacity(0.06),
+        color: const Color(0xFF1B5FD4).withValues(alpha: 0.06),
         blurRadius: 12,
         offset: const Offset(0, 2),
       ),
@@ -22,7 +23,7 @@ class AppStyles {
     borderRadius: BorderRadius.circular(16),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF1B5FD4).withOpacity(0.28),
+        color: const Color(0xFF1B5FD4).withValues(alpha: 0.28),
         blurRadius: 20,
         offset: const Offset(0, 6),
       ),
@@ -67,37 +68,32 @@ class AppStyles {
   }
 
   // Text styles
-  static const TextStyle heading1 = TextStyle(
+  static TextStyle heading1 = GoogleFonts.plusJakartaSans(
     fontSize: 26,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
-    fontFamily: 'PlusJakartaSans',
   );
-  static const TextStyle heading2 = TextStyle(
+  static TextStyle heading2 = GoogleFonts.plusJakartaSans(
     fontSize: 20,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
-    fontFamily: 'PlusJakartaSans',
   );
-  static const TextStyle heading3 = TextStyle(
+  static TextStyle heading3 = GoogleFonts.plusJakartaSans(
     fontSize: 16,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
-    fontFamily: 'PlusJakartaSans',
   );
-  static const TextStyle bodyLarge = TextStyle(
+  static TextStyle bodyLarge = GoogleFonts.plusJakartaSans(
     fontSize: 14,
     fontWeight: FontWeight.w500,
     color: AppColors.textPrimary,
-    fontFamily: 'PlusJakartaSans',
   );
-  static const TextStyle bodySmall = TextStyle(
+  static TextStyle bodySmall = GoogleFonts.plusJakartaSans(
     fontSize: 12,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
-    fontFamily: 'PlusJakartaSans',
   );
-  static const TextStyle caption = TextStyle(
+  static TextStyle caption = GoogleFonts.plusJakartaSans(
     fontSize: 10,
     fontWeight: FontWeight.w600,
     color: AppColors.textMuted,

@@ -1,39 +1,56 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
-import 'link_success_screen.dart';
 
-class LinkPendingScreen extends StatelessWidget {
-  const LinkPendingScreen({super.key});
+class MissedAlertScreen extends StatelessWidget {
+  const MissedAlertScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textPrimary,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Missed Dose',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w900,
+            fontSize: 22,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             children: [
-              const SizedBox(height: 12),
               Container(
-                width: 84,
-                height: 84,
-                decoration: BoxDecoration(
-                  color: AppColors.ledDoneBg,
+                width: 96,
+                height: 96,
+                decoration: const BoxDecoration(
+                  color: AppColors.missedRedBg,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.access_time_rounded,
-                  color: AppColors.caregiverGreen,
-                  size: 40,
+                  Icons.close,
+                  color: AppColors.missedRed,
+                  size: 48,
                 ),
               ),
               const SizedBox(height: 24),
               const Text(
-                'Request Sent!',
+                'Christian Missed a Dose',
                 style: TextStyle(
-                  fontSize: 26,
+                  fontSize: 20,
                   fontWeight: FontWeight.w900,
                   color: AppColors.textPrimary,
                   fontFamily: 'PlusJakartaSans',
@@ -41,10 +58,10 @@ class LinkPendingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Your request has been sent to Christian San Luis. Waiting for them to approve in their HealthSync app.',
+                'Metformin 500mg was scheduled at 8:00 PM but was not confirmed after 30 minutes.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   color: AppColors.textSecondary,
                   height: 1.7,
                   fontFamily: 'PlusJakartaSans',
@@ -61,40 +78,44 @@ class LinkPendingScreen extends StatelessWidget {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Code used',
+                  children: [
+                    const Text(
+                      'DETAILS',
                       style: TextStyle(
                         fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         color: AppColors.textSecondary,
                         fontFamily: 'PlusJakartaSans',
                       ),
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      'JD-4829',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.caregiverGreen,
-                        fontFamily: 'PlusJakartaSans',
-                      ),
+                    const SizedBox(height: 14),
+                    _DetailRow(label: 'Patient', value: 'Christian San Luis'),
+                    const SizedBox(height: 10),
+                    _DetailRow(label: 'Medicine', value: 'Metformin 500mg'),
+                    const SizedBox(height: 10),
+                    _DetailRow(label: 'Scheduled', value: '8:00 PM'),
+                    const SizedBox(height: 10),
+                    _DetailRow(label: 'Box Column', value: 'Column 3'),
+                    const SizedBox(height: 10),
+                    _DetailRow(
+                      label: 'Status',
+                      value: 'Not taken',
+                      valueColor: AppColors.missedRed,
+                    ),
+                    const SizedBox(height: 10),
+                    _DetailRow(
+                      label: 'Last vitals',
+                      value: 'HR 82 bpm · SpO2 98%',
                     ),
                   ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LinkSuccessScreen(),
-                      ),
-                    );
-                  },
+                  onPressed: () {},
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
@@ -103,7 +124,7 @@ class LinkPendingScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'I got approved · Continue',
+                    'Send Reminder to Christian',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -122,7 +143,7 @@ class LinkPendingScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Use a different code',
+                    'Dismiss',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -131,6 +152,42 @@ class LinkPendingScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _DetailRow({required this.label, required this.value, this.valueColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              fontFamily: 'PlusJakartaSans',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            color: valueColor ?? AppColors.textPrimary,
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

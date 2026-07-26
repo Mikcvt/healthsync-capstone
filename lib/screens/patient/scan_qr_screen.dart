@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
-import 'link_pending_screen.dart';
 
-class LinkPatientScreen extends StatelessWidget {
-  const LinkPatientScreen({super.key});
+class ScanQrScreen extends StatelessWidget {
+  const ScanQrScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,64 +22,82 @@ class LinkPatientScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Link Patient',
+                'Scan QR Code',
                 style: TextStyle(
+                  color: AppColors.textPrimary,
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
                   fontFamily: 'PlusJakartaSans',
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Ask your patient to share their invite code from their HealthSync app under Profile Guardian Link. Enter it below.',
+                'Point your camera at the QR code on the lid of your HealthSync medicine box',
                 style: TextStyle(
-                  fontSize: 15,
                   color: AppColors.textSecondary,
-                  height: 1.7,
+                  fontSize: 15,
+                  height: 1.6,
                   fontFamily: 'PlusJakartaSans',
                 ),
               ),
-              const SizedBox(height: 24),
-              TextFormField(
-                decoration: AppStyles.inputDecoration(
-                  'Patient’s invite code',
-                  hint: 'JD-4829',
+              const SizedBox(height: 30),
+              Expanded(
+                child: Center(
+                  child: Container(
+                    width: 240,
+                    height: 240,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: AppColors.patientBlue,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 96,
+                        color: AppColors.patientBlue,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                decoration: AppStyles.inputDecoration(
-                  'Your relationship',
-                  hint: 'Parent',
+              const SizedBox(height: 18),
+              const Text(
+                'or enter device code manually',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  fontFamily: 'PlusJakartaSans',
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: 'HSD-00142',
+                decoration: AppStyles.inputDecoration('Device code'),
+              ),
+              const SizedBox(height: 22),
               SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LinkPendingScreen(),
-                      ),
-                    );
-                  },
+                  onPressed: () {},
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.caregiverGreen,
+                    backgroundColor: AppColors.patientBlue,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
                   child: const Text(
-                    'Send Link Request',
+                    'Connect Device',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
