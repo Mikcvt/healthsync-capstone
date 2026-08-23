@@ -70,7 +70,7 @@ class EmailVerificationScreen extends StatelessWidget {
                     } else {
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
-                          builder: (_) => const PatientDashboardScreen(),
+                          builder: (_) => const PatientMainScreen(),
                         ),
                         (route) => false,
                       );

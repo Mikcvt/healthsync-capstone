@@ -48,5 +48,6 @@ class AppColors {
   static const Color ledDone = Color(0xFF0D9B6B);
   static const Color ledDoneBg = Color(0xFFE4F7F0);
   static const Color ledPending = Color(0xFFE2E8F0);
+  static const Color ledPendingBg = Color(0xFFFAEEDA);
   static const Color ledEmpty = Color(0xFFF1F5F9);
 }
