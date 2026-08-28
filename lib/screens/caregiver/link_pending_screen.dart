@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
 import 'link_success_screen.dart';
 
 class LinkPendingScreen extends StatelessWidget {

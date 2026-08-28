@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import 'caregiver_dashboard_screen.dart';
 import 'my_patients_screen.dart';
-import 'reports_screen.dart';
-import 'caregiver_settings_screen.dart';
+import 'patient_analytics_screen.dart';
+import 'caregiver_alerts_screen.dart';
+import 'guardian_profile_screen.dart';
 
 class CaregiverMainScreen extends StatefulWidget {
   const CaregiverMainScreen({super.key});
@@ -18,8 +19,9 @@ class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
   static final List<Widget> _screens = [
     const CaregiverDashboardScreen(),
     const MyPatientsScreen(),
-    const ReportsScreen(),
-    const CaregiverSettingsScreen(),
+    const PatientAnalyticsScreen(showBackButton: false),
+    const CaregiverAlertsScreen(),
+    const GuardianProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -41,6 +43,8 @@ class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
         unselectedItemColor: AppColors.textSecondary,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
@@ -54,8 +58,13 @@ class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
+            activeIcon: Icon(Icons.bar_chart_rounded),
             label: 'Reports',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications_none_rounded),
+            activeIcon: Icon(Icons.notifications_rounded),
+            label: 'Alerts',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),

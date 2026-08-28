@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
+import 'patient_main_screen.dart';
 import 'scan_qr_screen.dart';
 
 class DevicePairingScreen extends StatelessWidget {
@@ -141,8 +141,11 @@ class DevicePairingScreen extends StatelessWidget {
                 height: 54,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ScanQrScreen()),
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const PatientMainScreen(),
+                      ),
+                      (route) => false,
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -163,7 +166,14 @@ class DevicePairingScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 54,
                 child: OutlinedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const PatientMainScreen(),
+                      ),
+                      (route) => false,
+                    );
+                  },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     side: const BorderSide(color: AppColors.borderGray),

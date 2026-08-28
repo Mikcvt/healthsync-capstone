@@ -3,7 +3,9 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 
 class GuardianReportsScreen extends StatelessWidget {
-  const GuardianReportsScreen({super.key});
+  final bool showBackButton;
+
+  const GuardianReportsScreen({super.key, this.showBackButton = true});
 
   @override
   Widget build(BuildContext context) {
@@ -12,13 +14,16 @@ class GuardianReportsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: AppColors.textPrimary,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: AppColors.textPrimary,
+                ),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         title: const Text(
           'Reports',
           style: TextStyle(

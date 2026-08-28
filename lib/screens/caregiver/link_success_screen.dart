@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
 import 'caregiver_main_screen.dart';
 
 class LinkSuccessScreen extends StatelessWidget {

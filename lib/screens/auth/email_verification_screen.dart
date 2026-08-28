@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../caregiver/caregiver_main_screen.dart';
-import '../patient/patient_dashboard_screen.dart';
+import '../patient/patient_main_screen.dart';
 
 class EmailVerificationScreen extends StatelessWidget {
   const EmailVerificationScreen({super.key});
