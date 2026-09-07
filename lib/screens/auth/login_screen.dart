@@ -1,16 +1,73 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/auth_provider.dart';
+import '../caregiver/caregiver_main_screen.dart';
+import '../patient/patient_main_screen.dart';
 import 'forgot_password_screen.dart';
-import 'register_screen.dart';
+import 'role_select_screen.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSignIn() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final authProvider = context.read<AuthProvider>();
+    final success = await authProvider.signIn(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      final user = authProvider.currentUserModel;
+      if (user != null && user.isCaregiver) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const CaregiverMainScreen()),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const PatientMainScreen()),
+          (route) => false,
+        );
+      }
+    } else {
+      final errorMsg = authProvider.errorMessage ?? 'Failed to sign in. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: AppColors.missedRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final emailController = TextEditingController();
-    final passwordController = TextEditingController();
+    final authProvider = context.watch<AuthProvider>();
+    final isLoading = authProvider.isLoading;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -28,102 +85,142 @@ class LoginScreen extends StatelessWidget {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
-              const Text(
-                'Welcome back',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                const Text(
+                  'Welcome back',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    fontFamily: 'PlusJakartaSans',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sign in to continue managing your medicines.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
-                  height: 1.5,
+                const SizedBox(height: 8),
+                const Text(
+                  'Sign in to continue managing your medicines.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'PlusJakartaSans',
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              TextFormField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: AppStyles.inputDecoration(
-                  'Email address',
-                  hint: 'you@example.com',
+                const SizedBox(height: 24),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: AppStyles.inputDecoration(
+                    'Email address',
+                    hint: 'you@example.com',
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please enter your email';
+                    }
+                    if (!val.contains('@') || !val.contains('.')) {
+                      return 'Please enter a valid email';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: AppStyles.inputDecoration(
-                  'Password',
-                  hint: '••••••••',
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ForgotPasswordScreen(),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: AppStyles.inputDecoration(
+                    'Password',
+                    hint: '••••••••',
+                  ).copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
                     ),
                   ),
-                  child: const Text(
-                    'Forgot password?',
-                    style: TextStyle(
-                      color: AppColors.patientBlue,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'PlusJakartaSans',
-                    ),
-                  ),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordScreen(),
+                      ),
                     ),
-                  ),
-                  child: const Text(
-                    'Sign in',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  ),
-                  child: const Text(
-                    'Create a new account',
-                    style: TextStyle(
-                      color: AppColors.caregiverGreen,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'PlusJakartaSans',
+                    child: const Text(
+                      'Forgot password?',
+                      style: TextStyle(
+                        color: AppColors.patientBlue,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'PlusJakartaSans',
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: isLoading ? null : _handleSignIn,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.patientBlue,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: AppColors.patientBlue.withValues(alpha: 0.6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text(
+                            'Sign in',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
+                    ),
+                    child: const Text(
+                      'Create a new account',
+                      style: TextStyle(
+                        color: AppColors.caregiverGreen,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'PlusJakartaSans',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

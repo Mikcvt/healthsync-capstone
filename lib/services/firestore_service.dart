@@ -1,0 +1,360 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/user_model.dart';
+import '../models/patient_profile_model.dart';
+import '../models/caregiver_profile_model.dart';
+import '../models/medication_model.dart';
+import '../models/patient_medication_model.dart';
+import '../models/schedule_model.dart';
+import '../models/dose_log_model.dart';
+import '../models/notification_model.dart';
+import '../models/caregiver_patient_link_model.dart';
+import '../models/device_model.dart';
+
+class FirestoreService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // ==========================================
+  // USERS
+  // ==========================================
+  Future<UserModel?> getUser(String uid) async {
+    final doc = await _db.collection('users').doc(uid).get();
+    if (doc.exists && doc.data() != null) {
+      return UserModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Stream<UserModel?> streamUser(String uid) {
+    return _db.collection('users').doc(uid).snapshots().map((doc) {
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromFirestore(doc);
+      }
+      return null;
+    });
+  }
+
+  // ==========================================
+  // PATIENT PROFILE
+  // ==========================================
+  Future<PatientProfileModel?> getPatientProfile(String uid) async {
+    final doc = await _db.collection('patient_profile').doc(uid).get();
+    if (doc.exists && doc.data() != null) {
+      return PatientProfileModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Stream<PatientProfileModel?> streamPatientProfile(String uid) {
+    return _db.collection('patient_profile').doc(uid).snapshots().map((doc) {
+      if (doc.exists && doc.data() != null) {
+        return PatientProfileModel.fromFirestore(doc);
+      }
+      return null;
+    });
+  }
+
+  Future<void> setPatientProfile(PatientProfileModel profile) async {
+    await _db
+        .collection('patient_profile')
+        .doc(profile.userRef)
+        .set(profile.toMap(), SetOptions(merge: true));
+  }
+
+  // ==========================================
+  // CAREGIVER PROFILE
+  // ==========================================
+  Future<CaregiverProfileModel?> getCaregiverProfile(String uid) async {
+    final doc = await _db.collection('caregiver_profile').doc(uid).get();
+    if (doc.exists && doc.data() != null) {
+      return CaregiverProfileModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Stream<CaregiverProfileModel?> streamCaregiverProfile(String uid) {
+    return _db.collection('caregiver_profile').doc(uid).snapshots().map((doc) {
+      if (doc.exists && doc.data() != null) {
+        return CaregiverProfileModel.fromFirestore(doc);
+      }
+      return null;
+    });
+  }
+
+  Future<void> setCaregiverProfile(CaregiverProfileModel profile) async {
+    await _db
+        .collection('caregiver_profile')
+        .doc(profile.userRef)
+        .set(profile.toMap(), SetOptions(merge: true));
+  }
+
+  // ==========================================
+  // MEDICATIONS & PATIENT MEDICATIONS
+  // ==========================================
+  Future<List<MedicationModel>> searchMedications(String query) async {
+    final snapshot = await _db
+        .collection('medications')
+        .where('is_active', isEqualTo: true)
+        .get();
+    return snapshot.docs
+        .map((doc) => MedicationModel.fromFirestore(doc))
+        .where((m) =>
+            m.medicationName.toLowerCase().contains(query.toLowerCase()) ||
+            m.genericName.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  Stream<List<PatientMedicationModel>> streamPatientMedications(String patientUid) {
+    return _db
+        .collection('patient_medications')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => PatientMedicationModel.fromFirestore(doc)).toList());
+  }
+
+  Future<PatientMedicationModel?> getPatientMedication(String patMedId) async {
+    final doc = await _db.collection('patient_medications').doc(patMedId).get();
+    if (doc.exists && doc.data() != null) {
+      return PatientMedicationModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Future<String> addPatientMedication(PatientMedicationModel model) async {
+    final docRef = _db.collection('patient_medications').doc();
+    final newModel = model.copyWith(patMedId: docRef.id);
+    await docRef.set(newModel.toMap());
+    return docRef.id;
+  }
+
+  Future<void> updatePatientMedication(PatientMedicationModel model) async {
+    await _db
+        .collection('patient_medications')
+        .doc(model.patMedId)
+        .update(model.toMap());
+  }
+
+  Future<void> deletePatientMedication(String patMedId) async {
+    await _db
+        .collection('patient_medications')
+        .doc(patMedId)
+        .update({'is_active': false});
+  }
+
+  // ==========================================
+  // SCHEDULES
+  // ==========================================
+  Stream<List<ScheduleModel>> streamPatientSchedules(String patientUid) {
+    return _db
+        .collection('schedules')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => ScheduleModel.fromFirestore(doc)).toList());
+  }
+
+  Future<String> addSchedule(ScheduleModel schedule) async {
+    final docRef = _db.collection('schedules').doc();
+    final newSchedule = schedule.copyWith(scheduleId: docRef.id);
+    await docRef.set(newSchedule.toMap());
+    return docRef.id;
+  }
+
+  Future<void> updateSchedule(ScheduleModel schedule) async {
+    await _db.collection('schedules').doc(schedule.scheduleId).update(schedule.toMap());
+  }
+
+  Future<void> updateScheduleLed(String scheduleId, bool ledActive) async {
+    await _db.collection('schedules').doc(scheduleId).update({'led_active': ledActive});
+  }
+
+  Future<void> decrementPillsRemaining(String scheduleId, int amount) async {
+    await _db.collection('schedules').doc(scheduleId).update({
+      'pills_remaining': FieldValue.increment(-amount),
+    });
+  }
+
+  // ==========================================
+  // DOSE LOGS
+  // ==========================================
+  Stream<List<DoseLogModel>> streamPatientDoseLogs(String patientUid, {String? dateStr}) {
+    Query query = _db
+        .collection('dose_logs')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true);
+
+    if (dateStr != null) {
+      query = query.where('scheduled_date', isEqualTo: dateStr);
+    }
+
+    return query.snapshots().map((snapshot) =>
+        snapshot.docs.map((doc) => DoseLogModel.fromFirestore(doc)).toList());
+  }
+
+  Future<String> recordDoseLog(DoseLogModel log) async {
+    final docRef = _db.collection('dose_logs').doc();
+    final newLog = log.copyWith(doseLogId: docRef.id);
+    await docRef.set(newLog.toMap());
+    return docRef.id;
+  }
+
+  Future<void> updateDoseLogStatus({
+    required String doseLogId,
+    required String status,
+    DateTime? takenAt,
+    int? snoozeCount,
+    String? skippedReason,
+    bool? caregiverNotified,
+  }) async {
+    final Map<String, dynamic> updates = {'status': status};
+    if (takenAt != null) updates['taken_at'] = Timestamp.fromDate(takenAt);
+    if (snoozeCount != null) updates['snooze_count'] = snoozeCount;
+    if (skippedReason != null) updates['skipped_reason'] = skippedReason;
+    if (caregiverNotified != null) updates['caregiver_notified'] = caregiverNotified;
+
+    await _db.collection('dose_logs').doc(doseLogId).update(updates);
+  }
+
+  // ==========================================
+  // NOTIFICATIONS
+  // ==========================================
+  Stream<List<NotificationModel>> streamUserNotifications(String userUid) {
+    return _db
+        .collection('notifications')
+        .where('user_ref', isEqualTo: userUid)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => NotificationModel.fromFirestore(doc)).toList());
+  }
+
+  Future<void> createNotification(NotificationModel notif) async {
+    final docRef = _db.collection('notifications').doc();
+    final newNotif = notif.copyWith(notifId: docRef.id);
+    await docRef.set(newNotif.toMap());
+  }
+
+  Future<void> markNotificationAsRead(String notifId) async {
+    await _db.collection('notifications').doc(notifId).update({
+      'read_at': Timestamp.now(),
+    });
+  }
+
+  // ==========================================
+  // CAREGIVER - PATIENT LINKS
+  // ==========================================
+  Stream<List<CaregiverPatientLinkModel>> streamCaregiverLinks(String caregiverUid) {
+    return _db
+        .collection('caregiver_patient_links')
+        .where('caregiver_ref', isEqualTo: caregiverUid)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
+            .toList());
+  }
+
+  Stream<List<CaregiverPatientLinkModel>> streamPatientLinks(String patientUid) {
+    return _db
+        .collection('caregiver_patient_links')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
+            .toList());
+  }
+
+  Future<CaregiverPatientLinkModel?> linkByInviteCode({
+    required String caregiverUid,
+    required String inviteCode,
+  }) async {
+    final query = await _db
+        .collection('caregiver_patient_links')
+        .where('invite_code', isEqualTo: inviteCode.trim().toUpperCase())
+        .where('status', isEqualTo: 'pending')
+        .limit(1)
+        .get();
+
+    if (query.docs.isEmpty) return null;
+
+    final doc = query.docs.first;
+    final link = CaregiverPatientLinkModel.fromFirestore(doc);
+    final updatedLink = link.copyWith(
+      caregiverRef: caregiverUid,
+      status: 'active',
+      linkedSince: DateTime.now(),
+    );
+
+    await _db
+        .collection('caregiver_patient_links')
+        .doc(doc.id)
+        .update(updatedLink.toMap());
+
+    // Update patient profile caregiver_ref
+    await _db.collection('patient_profile').doc(link.patientRef).update({
+      'caregiver_ref': caregiverUid,
+    });
+
+    return updatedLink;
+  }
+
+  Future<String> generatePatientInviteCode(String patientUid) async {
+    // Generate a 6-digit alphanumeric code
+    final code = 'HS-${patientUid.substring(0, 4).toUpperCase()}';
+    final docRef = _db.collection('caregiver_patient_links').doc();
+    final link = CaregiverPatientLinkModel(
+      linkId: docRef.id,
+      caregiverRef: '',
+      patientRef: patientUid,
+      inviteCode: code,
+      linkedSince: DateTime.now(),
+      status: 'pending',
+      createdAt: DateTime.now(),
+      isActive: true,
+    );
+    await docRef.set(link.toMap());
+    return code;
+  }
+
+  // ==========================================
+  // DEVICES (ESP32 Smart Medicine Box)
+  // ==========================================
+  Stream<DeviceModel?> streamPatientDevice(String patientUid) {
+    return _db
+        .collection('devices')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        return DeviceModel.fromFirestore(snapshot.docs.first);
+      }
+      return null;
+    });
+  }
+
+  Future<void> pairDevice({
+    required String patientUid,
+    required String serialNumber,
+    String deviceName = 'HealthSync Smart Box',
+  }) async {
+    final docRef = _db.collection('devices').doc();
+    final device = DeviceModel(
+      deviceId: docRef.id,
+      deviceName: deviceName,
+      serialNumber: serialNumber.trim(),
+      patientRef: patientUid,
+      status: 'online',
+      lastSync: DateTime.now(),
+      columnsActive: 0,
+      batteryLevel: 100,
+      createdAt: DateTime.now(),
+      isActive: true,
+    );
+    await docRef.set(device.toMap());
+  }
+}
