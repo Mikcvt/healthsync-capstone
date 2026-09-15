@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update, delete: if isOwner(userId);
+    }
+
+    // Patient profile
+    match /patient_profile/{patientId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Caregiver profile
+    match /caregiver_profile/{caregiverId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Medications reference collection
+    match /medications/{medicationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Patient Medications
+    match /patient_medications/{patMedId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Schedules
+    match /schedules/{scheduleId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Dose Logs
+    match /dose_logs/{doseLogId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Caregiver-Patient Links
+    match /caregiver_patient_links/{linkId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Devices (ESP32 Smart Box)
+    match /devices/{deviceId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

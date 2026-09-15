@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -39,6 +40,7 @@ class AuthProvider extends ChangeNotifier {
 
   void _listenToUserProfile(String uid) {
     _userProfileSubscription?.cancel();
+    NotificationService().saveTokenToUser(uid);
     _userProfileSubscription = _authService.streamUserProfile(uid).listen((profile) {
       _currentUserModel = profile;
       notifyListeners();

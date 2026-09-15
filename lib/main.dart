@@ -11,6 +11,7 @@ import 'providers/schedule_provider.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    await NotificationService().initialize();
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
   }
