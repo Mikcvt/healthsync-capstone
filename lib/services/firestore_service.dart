@@ -302,8 +302,10 @@ class FirestoreService {
   }
 
   Future<String> generatePatientInviteCode(String patientUid) async {
-    // Generate a 6-digit alphanumeric code
-    final code = 'HS-${patientUid.substring(0, 4).toUpperCase()}';
+    final prefix = patientUid.length >= 4
+        ? patientUid.substring(0, 4).toUpperCase()
+        : patientUid.toUpperCase().padRight(4, 'X');
+    final code = 'HS-$prefix';
     final docRef = _db.collection('caregiver_patient_links').doc();
     final link = CaregiverPatientLinkModel(
       linkId: docRef.id,
@@ -317,6 +319,34 @@ class FirestoreService {
     );
     await docRef.set(link.toMap());
     return code;
+  }
+
+  Future<String> getOrCreatePatientInviteCode(String patientUid) async {
+    final existing = await _db
+        .collection('caregiver_patient_links')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .get();
+
+    for (final doc in existing.docs) {
+      final data = doc.data();
+      final code = data['invite_code'] as String?;
+      if (code != null && code.isNotEmpty) {
+        return code;
+      }
+    }
+
+    return generatePatientInviteCode(patientUid);
+  }
+
+  Future<void> unlinkCaregiverPatient(String linkId, String patientUid) async {
+    await _db.collection('caregiver_patient_links').doc(linkId).update({
+      'status': 'inactive',
+      'is_active': false,
+    });
+    await _db.collection('patient_profile').doc(patientUid).update({
+      'caregiver_ref': null,
+    });
   }
 
   // ==========================================

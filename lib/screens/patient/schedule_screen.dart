@@ -1,132 +1,187 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/patient_provider.dart';
+import 'add_medicine_step1_screen.dart';
+import 'medicine_detail_screen.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final patientProvider = context.watch<PatientProvider>();
+    final schedules = patientProvider.schedules;
+    final medications = patientProvider.medications;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text(
-          'Schedule',
+          'Medication Schedule',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
+            fontSize: 22,
           ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Upcoming doses',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ScheduleCard(
-                medicine: 'Metformin',
-                time: '08:00 AM',
-                status: 'Taken',
-                color: AppColors.ledDoneBg,
-              ),
-              const SizedBox(height: 12),
-              _ScheduleCard(
-                medicine: 'Vitamin D',
-                time: '01:30 PM',
-                status: 'Pending',
-                color: AppColors.ledActiveBg,
-              ),
-              const SizedBox(height: 12),
-              _ScheduleCard(
-                medicine: 'Aspirin',
-                time: '08:00 PM',
-                status: 'Upcoming',
-                color: AppColors.ledPendingBg,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ScheduleCard extends StatelessWidget {
-  final String medicine;
-  final String time;
-  final String status;
-  final Color color;
-
-  const _ScheduleCard({
-    required this.medicine,
-    required this.time,
-    required this.status,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: AppStyles.cardDecoration,
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medicine,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'PlusJakartaSans',
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  time,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'PlusJakartaSans',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              status,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-                fontFamily: 'PlusJakartaSans',
-              ),
-            ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+              );
+            },
           ),
         ],
+      ),
+      body: SafeArea(
+        child: schedules.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppColors.patientBlue.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.calendar_month_outlined, size: 40, color: AppColors.patientBlue),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'No Schedules Yet',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                          fontFamily: 'PlusJakartaSans',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Set up your medication reminders and assign them to your smart box compartments.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                          );
+                        },
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text('Add Medication'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.patientBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                itemCount: schedules.length,
+                itemBuilder: (ctx, index) {
+                  final sch = schedules[index];
+                  final matchingMed = medications.where((m) => m.patMedId == sch.patMedRef).firstOrNull;
+                  final medName = matchingMed?.medicationName.isNotEmpty == true
+                      ? matchingMed!.medicationName
+                      : (sch.caregiverDoctor.isNotEmpty ? 'Medication (Col ${sch.matBoxColumn})' : 'Prescription ${index + 1}');
+
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => MedicineDetailScreen(
+                            schedule: sch,
+                            fallbackName: medName,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(16),
+                      decoration: AppStyles.cardDecoration,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: AppColors.patientBlue.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.access_time_rounded, size: 18, color: AppColors.patientBlue),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Col ${sch.matBoxColumn}',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.patientBlue,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  medName,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                    fontFamily: 'PlusJakartaSans',
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${sch.scheduledTime} · ${sch.pillsRemaining} pills remaining',
+                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+          );
+        },
+        backgroundColor: AppColors.patientBlue,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Medicine', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
   }

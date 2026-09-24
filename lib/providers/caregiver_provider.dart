@@ -34,6 +34,7 @@ class CaregiverProvider extends ChangeNotifier {
   PatientProfileModel? get selectedPatientProfile => _selectedPatientProfile;
   List<ScheduleModel> get selectedPatientSchedules => _selectedPatientSchedules;
   List<DoseLogModel> get selectedPatientLogs => _selectedPatientLogs;
+  bool get hasLinkedPatients => _patientLinks.isNotEmpty;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -136,6 +137,21 @@ class CaregiverProvider extends ChangeNotifier {
     );
     await _firestoreService.setCaregiverProfile(updated);
     _profile = updated;
+    notifyListeners();
+  }
+
+  // Unlink a patient
+  Future<void> unlinkPatient(String linkId, String patientUid) async {
+    await _firestoreService.unlinkCaregiverPatient(linkId, patientUid);
+    if (_selectedPatientUid == patientUid) {
+      _selectedPatientUid = null;
+      _selectedPatientUser = null;
+      _selectedPatientProfile = null;
+      _selectedPatientSchedules = [];
+      _selectedPatientLogs = [];
+      _patientSchedulesSub?.cancel();
+      _patientLogsSub?.cancel();
+    }
     notifyListeners();
   }
 

@@ -5,6 +5,8 @@ import '../models/patient_medication_model.dart';
 import '../models/schedule_model.dart';
 import '../models/dose_log_model.dart';
 import '../models/device_model.dart';
+import '../models/caregiver_patient_link_model.dart';
+import '../models/user_model.dart';
 import '../services/firestore_service.dart';
 
 class PatientProvider extends ChangeNotifier {
@@ -17,6 +19,8 @@ class PatientProvider extends ChangeNotifier {
   List<DoseLogModel> _todayLogs = [];
   List<DoseLogModel> _allLogs = [];
   DeviceModel? _device;
+  CaregiverPatientLinkModel? _link;
+  UserModel? _caregiverUser;
   bool _isLoading = false;
 
   // Stream Subscriptions
@@ -26,6 +30,7 @@ class PatientProvider extends ChangeNotifier {
   StreamSubscription? _todayLogsSub;
   StreamSubscription? _allLogsSub;
   StreamSubscription? _deviceSub;
+  StreamSubscription? _linksSub;
 
   // Getters
   PatientProfileModel? get profile => _profile;
@@ -34,6 +39,11 @@ class PatientProvider extends ChangeNotifier {
   List<DoseLogModel> get todayLogs => _todayLogs;
   List<DoseLogModel> get allLogs => _allLogs;
   DeviceModel? get device => _device;
+  CaregiverPatientLinkModel? get link => _link;
+  UserModel? get caregiverUser => _caregiverUser;
+  bool get isLinkedToCaregiver => _link != null && _link!.status == 'active';
+  bool get isLinkPending => _link != null && _link!.status == 'pending';
+  String? get inviteCode => _link?.inviteCode;
   bool get isLoading => _isLoading;
 
   // Calculate adherence percentage for today
@@ -103,6 +113,23 @@ class PatientProvider extends ChangeNotifier {
     // Listen to device
     _deviceSub = _firestoreService.streamPatientDevice(uid).listen((dev) {
       _device = dev;
+      notifyListeners();
+    });
+
+    // Listen to caregiver links
+    _linksSub = _firestoreService.streamPatientLinks(uid).listen((links) async {
+      if (links.isNotEmpty) {
+        final active = links.where((l) => l.status == 'active').firstOrNull;
+        _link = active ?? links.first;
+        if (_link != null && _link!.caregiverRef.isNotEmpty) {
+          _caregiverUser = await _firestoreService.getUser(_link!.caregiverRef);
+        } else {
+          _caregiverUser = null;
+        }
+      } else {
+        _link = null;
+        _caregiverUser = null;
+      }
       notifyListeners();
     });
 
@@ -211,6 +238,25 @@ class PatientProvider extends ChangeNotifier {
     return '$hour:$minute $period';
   }
 
+  // Fetch or generate invite code for caregiver
+  Future<String> fetchOrCreateInviteCode() async {
+    if (_patientUid == null) return '';
+    if (_link != null && _link!.inviteCode.isNotEmpty) {
+      return _link!.inviteCode;
+    }
+    final code = await _firestoreService.getOrCreatePatientInviteCode(_patientUid!);
+    return code;
+  }
+
+  // Unlink caregiver
+  Future<void> unlinkCaregiver() async {
+    if (_link == null || _patientUid == null) return;
+    await _firestoreService.unlinkCaregiverPatient(_link!.linkId, _patientUid!);
+    _link = null;
+    _caregiverUser = null;
+    notifyListeners();
+  }
+
   void _cancelSubscriptions() {
     _profileSub?.cancel();
     _medicationsSub?.cancel();
@@ -218,6 +264,7 @@ class PatientProvider extends ChangeNotifier {
     _todayLogsSub?.cancel();
     _allLogsSub?.cancel();
     _deviceSub?.cancel();
+    _linksSub?.cancel();
   }
 
   @override
