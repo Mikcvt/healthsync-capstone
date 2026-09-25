@@ -172,6 +172,7 @@ class ScheduleScreen extends StatelessWidget {
                   );
                 },
               ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.of(context).push(

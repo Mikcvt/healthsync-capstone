@@ -11,21 +11,39 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isCaregiverOf(patientId) {
+      return isAuthenticated()
+        && get(/databases/$(database)/documents/patient_profile/$(patientId)).data.caregiver_ref == request.auth.uid;
+    }
+
+    function isLinkedToCaregiver(caregiverId) {
+      return isAuthenticated()
+        && get(/databases/$(database)/documents/patient_profile/$(request.auth.uid)).data.caregiver_ref == caregiverId;
+    }
+
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isOwner(userId)
+        || (resource.data.role == 'patient' && isCaregiverOf(userId))
+        || (resource.data.role == 'caregiver' && isLinkedToCaregiver(userId));
       allow create: if isAuthenticated() && request.auth.uid == userId;
       allow update, delete: if isOwner(userId);
     }
 
     // Patient profile
     match /patient_profile/{patientId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isOwner(patientId) || isCaregiverOf(patientId);
+      allow create: if isOwner(patientId);
+      allow update: if isOwner(patientId)
+        || (request.resource.data.caregiver_ref == request.auth.uid
+          && (!('caregiver_ref' in resource.data)
+            || resource.data.caregiver_ref == null
+            || resource.data.caregiver_ref == request.auth.uid));
     }
 
     // Caregiver profile
     match /caregiver_profile/{caregiverId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(caregiverId);
     }
 
     // Medications reference collection
@@ -36,32 +54,38 @@ service cloud.firestore {
 
     // Patient Medications
     match /patient_medications/{patMedId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
     }
 
     // Schedules
     match /schedules/{scheduleId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
     }
 
     // Dose Logs
     match /dose_logs/{doseLogId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
     }
 
     // Notifications
     match /notifications/{notifId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(resource.data.user_ref) || request.resource.data.user_ref == request.auth.uid;
     }
 
     // Caregiver-Patient Links
     match /caregiver_patient_links/{linkId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isOwner(request.resource.data.patient_ref);
+      allow update: if isOwner(resource.data.patient_ref)
+        || (isOwner(request.resource.data.caregiver_ref)
+          && (!('caregiver_ref' in resource.data)
+            || resource.data.caregiver_ref == ''
+            || resource.data.caregiver_ref == request.auth.uid));
     }
 
     // Devices (ESP32 Smart Box)
     match /devices/{deviceId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
     }
   }
 }

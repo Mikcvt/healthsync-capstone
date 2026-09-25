@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 
 class GuardianLinkScreen extends StatefulWidget {
@@ -15,25 +16,70 @@ class GuardianLinkScreen extends StatefulWidget {
 class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
   String? _generatedCode;
   bool _isLoadingCode = true;
+  bool _loadStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _loadCode();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadStarted) return;
+    _loadStarted = true;
+
+    final uid = context.read<AuthProvider>().currentUid;
+    if (uid == null) {
+      setState(() => _isLoadingCode = false);
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<PatientProvider>().initForPatient(uid);
+      _loadCode();
+    });
   }
 
   Future<void> _loadCode() async {
     final patientProvider = context.read<PatientProvider>();
-    final code = await patientProvider.fetchOrCreateInviteCode();
-    if (mounted) {
-      setState(() {
-        _generatedCode = code;
-        _isLoadingCode = false;
-      });
+    try {
+      final code = await patientProvider.fetchOrCreateInviteCode();
+      if (mounted) {
+        setState(() {
+          _generatedCode = code.trim().isEmpty
+              ? null
+              : code.trim().toUpperCase();
+          _isLoadingCode = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _generatedCode = null;
+          _isLoadingCode = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not generate an invite code. Please try again.',
+            ),
+          ),
+        );
+      }
     }
   }
 
   void _copyToClipboard(String code) {
+    if (code.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invite code is not ready yet. Please try again.'),
+        ),
+      );
+      return;
+    }
     Clipboard.setData(ClipboardData(text: code));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -96,7 +142,10 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -138,7 +187,11 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.shield_outlined, color: Colors.white, size: 24),
+                child: const Icon(
+                  Icons.shield_outlined,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -184,7 +237,10 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.patientBlue.withOpacity(0.3), width: 1.5),
+            border: Border.all(
+              color: AppColors.patientBlue.withOpacity(0.3),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: AppColors.patientBlue.withOpacity(0.08),
@@ -198,11 +254,13 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
               if (_isLoadingCode)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
-                  child: CircularProgressIndicator(color: AppColors.patientBlue),
+                  child: CircularProgressIndicator(
+                    color: AppColors.patientBlue,
+                  ),
                 )
               else ...[
                 Text(
-                  _generatedCode ?? 'HS-LINK',
+                  _generatedCode ?? 'Unavailable',
                   style: const TextStyle(
                     fontSize: 34,
                     fontWeight: FontWeight.w900,
@@ -212,9 +270,11 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Valid and ready to connect',
-                  style: TextStyle(
+                Text(
+                  _generatedCode == null
+                      ? 'Tap retry to generate a new invite code'
+                      : 'Valid and ready to connect',
+                  style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                     fontFamily: 'PlusJakartaSans',
@@ -225,13 +285,16 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          if (_generatedCode != null) {
-                            _copyToClipboard(_generatedCode!);
-                          }
-                        },
+                        onPressed: _generatedCode == null
+                            ? () {
+                                setState(() => _isLoadingCode = true);
+                                _loadCode();
+                              }
+                            : () => _copyToClipboard(_generatedCode!),
                         icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('Copy Code'),
+                        label: Text(
+                          _generatedCode == null ? 'Retry' : 'Copy Code',
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.patientBlue,
                           foregroundColor: Colors.white,
@@ -265,17 +328,20 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
         _StepTile(
           step: '1',
           title: 'Give this code to your caregiver',
-          subtitle: 'Send the 6-character code via text message or tell them in person.',
+          subtitle:
+              'Send the 6-character code via text message or tell them in person.',
         ),
         _StepTile(
           step: '2',
           title: 'Caregiver opens HealthSync app',
-          subtitle: 'They sign into their Caregiver account and tap "Link Patient".',
+          subtitle:
+              'They sign into their Caregiver account and tap "Link Patient".',
         ),
         _StepTile(
           step: '3',
           title: 'Enter code & connect',
-          subtitle: 'As soon as they submit the code, both accounts link instantly.',
+          subtitle:
+              'As soon as they submit the code, both accounts link instantly.',
         ),
 
         const SizedBox(height: 20),
@@ -311,7 +377,9 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
   // LINKED VIEW (SHOW CAREGIVER DETAILS & UNLINK)
   // ==========================================
   Widget _buildLinkedView(caregiver) {
-    final name = caregiver != null ? '${caregiver.firstName} ${caregiver.lastName}'.trim() : 'Active Caregiver';
+    final name = caregiver != null
+        ? '${caregiver.firstName} ${caregiver.lastName}'.trim()
+        : 'Active Caregiver';
     final email = caregiver?.email ?? 'Connected';
     final phone = caregiver?.phone ?? '';
 
@@ -337,11 +405,18 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.check_circle_outline, color: Colors.white, size: 24),
+                    child: const Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(20),
@@ -406,7 +481,11 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
                   CircleAvatar(
                     radius: 26,
                     backgroundColor: AppColors.caregiverGreen.withOpacity(0.15),
-                    child: const Icon(Icons.person, color: AppColors.caregiverGreen, size: 28),
+                    child: const Icon(
+                      Icons.person,
+                      color: AppColors.caregiverGreen,
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -467,12 +546,14 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
         _PermissionItem(
           icon: Icons.calendar_today_outlined,
           title: 'Medication Schedules',
-          description: 'Can view dose times, pills remaining, and prescribed instructions',
+          description:
+              'Can view dose times, pills remaining, and prescribed instructions',
         ),
         _PermissionItem(
           icon: Icons.notifications_active_outlined,
           title: 'Missed Dose Alerts',
-          description: 'Receives instant notification when a dose is missed or skipped',
+          description:
+              'Receives instant notification when a dose is missed or skipped',
         ),
         _PermissionItem(
           icon: Icons.wifi_tethering,
@@ -497,7 +578,9 @@ class _GuardianLinkScreenState extends State<GuardianLinkScreen> {
             ),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Colors.redAccent, width: 1.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),
@@ -630,7 +713,11 @@ class _PermissionItem extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.check_rounded, color: AppColors.caregiverGreen, size: 20),
+          const Icon(
+            Icons.check_rounded,
+            color: AppColors.caregiverGreen,
+            size: 20,
+          ),
         ],
       ),
     );

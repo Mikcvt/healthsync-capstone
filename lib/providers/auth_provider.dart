@@ -25,6 +25,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get currentUid => _authService.currentUser?.uid;
+  bool get isEmailVerified => _authService.isEmailVerified;
 
   void _initAuthListener() {
     _authSubscription = _authService.authStateChanges.listen((user) async {
@@ -69,6 +70,9 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
       );
+      if (user == null) {
+        throw Exception('Your account profile could not be loaded. Please contact support.');
+      }
       _currentUserModel = user;
       _setLoading(false);
       return true;
@@ -142,6 +146,69 @@ class AuthProvider extends ChangeNotifier {
     if (uid != null) {
       _currentUserModel = await _authService.getUserProfile(uid);
       notifyListeners();
+    }
+  }
+
+  Future<bool> reloadAndCheckEmailVerification() async {
+    final verified = await _authService.reloadAndCheckEmailVerification();
+    notifyListeners();
+    return verified;
+  }
+
+  Future<bool> updateProfile({
+    required String firstName,
+    required String lastName,
+    required String phone,
+  }) async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      _currentUserModel = await _authService.updateCurrentUserProfile(
+        firstName: firstName,
+        lastName: lastName,
+        phone: phone,
+      );
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      await _authService.deleteCurrentUser();
+      _currentUserModel = null;
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _setLoading(false);
+      return false;
     }
   }
 

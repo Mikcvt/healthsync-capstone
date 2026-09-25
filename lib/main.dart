@@ -9,6 +9,7 @@ import 'providers/patient_provider.dart';
 import 'providers/caregiver_provider.dart';
 import 'providers/schedule_provider.dart';
 import 'screens/auth/welcome_screen.dart';
+import 'screens/auth/email_verification_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
 import 'services/notification_service.dart';
@@ -66,6 +67,9 @@ class AuthGate extends StatelessWidget {
 
     // If user is authenticated with a profile loaded
     if (authProvider.isAuthenticated) {
+      if (!authProvider.isEmailVerified) {
+        return const EmailVerificationScreen();
+      }
       final user = authProvider.currentUserModel;
       if (user != null) {
         if (user.isCaregiver) {

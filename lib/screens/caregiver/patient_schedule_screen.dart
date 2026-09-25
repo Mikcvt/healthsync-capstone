@@ -3,7 +3,9 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 
 class PatientScheduleScreen extends StatelessWidget {
-  const PatientScheduleScreen({super.key});
+  final String patientName;
+
+  const PatientScheduleScreen({super.key, this.patientName = 'Patient'});
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +21,8 @@ class PatientScheduleScreen extends StatelessWidget {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Christian’s Schedule',
+        title: Text(
+          '$patientName’s Schedule',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import 'device_pairing_screen.dart';
+import 'patient_main_screen.dart';
 
 class PatientProfileSetupScreen extends StatelessWidget {
   const PatientProfileSetupScreen({super.key});
@@ -25,7 +26,10 @@ class PatientProfileSetupScreen extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () {},
+            onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const PatientMainScreen()),
+              (route) => false,
+            ),
             child: const Text(
               'Skip',
               style: TextStyle(
@@ -240,10 +244,7 @@ class _ToggleGroup extends StatefulWidget {
   final String label;
   final List<String> options;
 
-  const _ToggleGroup({
-    required this.label,
-    required this.options,
-  });
+  const _ToggleGroup({required this.label, required this.options});
 
   @override
   State<_ToggleGroup> createState() => _ToggleGroupState();
@@ -298,9 +299,7 @@ class _ToggleGroupState extends State<_ToggleGroup> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'PlusJakartaSans',
-                      color: isSelected
-                          ? Colors.white
-                          : AppColors.textPrimary,
+                      color: isSelected ? Colors.white : AppColors.textPrimary,
                     ),
                   ),
                 ),

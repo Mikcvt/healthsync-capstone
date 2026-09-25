@@ -3,9 +3,10 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
+import 'forgot_password_screen.dart';
+import 'email_verification_screen.dart';
 import '../caregiver/caregiver_main_screen.dart';
 import '../patient/patient_main_screen.dart';
-import 'forgot_password_screen.dart';
 import 'role_select_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,7 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       final user = authProvider.currentUserModel;
-      if (user != null && user.isCaregiver) {
+      if (!authProvider.isEmailVerified) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const EmailVerificationScreen(),
+            settings: RouteSettings(arguments: user?.role ?? 'patient'),
+          ),
+          (route) => false,
+        );
+      } else if (user != null && user.isCaregiver) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const CaregiverMainScreen()),
           (route) => false,

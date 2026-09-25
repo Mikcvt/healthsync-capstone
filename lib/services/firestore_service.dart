@@ -97,20 +97,27 @@ class FirestoreService {
         .get();
     return snapshot.docs
         .map((doc) => MedicationModel.fromFirestore(doc))
-        .where((m) =>
-            m.medicationName.toLowerCase().contains(query.toLowerCase()) ||
-            m.genericName.toLowerCase().contains(query.toLowerCase()))
+        .where(
+          (m) =>
+              m.medicationName.toLowerCase().contains(query.toLowerCase()) ||
+              m.genericName.toLowerCase().contains(query.toLowerCase()),
+        )
         .toList();
   }
 
-  Stream<List<PatientMedicationModel>> streamPatientMedications(String patientUid) {
+  Stream<List<PatientMedicationModel>> streamPatientMedications(
+    String patientUid,
+  ) {
     return _db
         .collection('patient_medications')
         .where('patient_ref', isEqualTo: patientUid)
         .where('is_active', isEqualTo: true)
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => PatientMedicationModel.fromFirestore(doc)).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => PatientMedicationModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
   Future<PatientMedicationModel?> getPatientMedication(String patMedId) async {
@@ -136,10 +143,9 @@ class FirestoreService {
   }
 
   Future<void> deletePatientMedication(String patMedId) async {
-    await _db
-        .collection('patient_medications')
-        .doc(patMedId)
-        .update({'is_active': false});
+    await _db.collection('patient_medications').doc(patMedId).update({
+      'is_active': false,
+    });
   }
 
   // ==========================================
@@ -151,8 +157,11 @@ class FirestoreService {
         .where('patient_ref', isEqualTo: patientUid)
         .where('is_active', isEqualTo: true)
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => ScheduleModel.fromFirestore(doc)).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => ScheduleModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
   Future<String> addSchedule(ScheduleModel schedule) async {
@@ -163,11 +172,16 @@ class FirestoreService {
   }
 
   Future<void> updateSchedule(ScheduleModel schedule) async {
-    await _db.collection('schedules').doc(schedule.scheduleId).update(schedule.toMap());
+    await _db
+        .collection('schedules')
+        .doc(schedule.scheduleId)
+        .update(schedule.toMap());
   }
 
   Future<void> updateScheduleLed(String scheduleId, bool ledActive) async {
-    await _db.collection('schedules').doc(scheduleId).update({'led_active': ledActive});
+    await _db.collection('schedules').doc(scheduleId).update({
+      'led_active': ledActive,
+    });
   }
 
   Future<void> decrementPillsRemaining(String scheduleId, int amount) async {
@@ -179,7 +193,10 @@ class FirestoreService {
   // ==========================================
   // DOSE LOGS
   // ==========================================
-  Stream<List<DoseLogModel>> streamPatientDoseLogs(String patientUid, {String? dateStr}) {
+  Stream<List<DoseLogModel>> streamPatientDoseLogs(
+    String patientUid, {
+    String? dateStr,
+  }) {
     Query query = _db
         .collection('dose_logs')
         .where('patient_ref', isEqualTo: patientUid)
@@ -189,8 +206,10 @@ class FirestoreService {
       query = query.where('scheduled_date', isEqualTo: dateStr);
     }
 
-    return query.snapshots().map((snapshot) =>
-        snapshot.docs.map((doc) => DoseLogModel.fromFirestore(doc)).toList());
+    return query.snapshots().map(
+      (snapshot) =>
+          snapshot.docs.map((doc) => DoseLogModel.fromFirestore(doc)).toList(),
+    );
   }
 
   Future<String> recordDoseLog(DoseLogModel log) async {
@@ -212,7 +231,9 @@ class FirestoreService {
     if (takenAt != null) updates['taken_at'] = Timestamp.fromDate(takenAt);
     if (snoozeCount != null) updates['snooze_count'] = snoozeCount;
     if (skippedReason != null) updates['skipped_reason'] = skippedReason;
-    if (caregiverNotified != null) updates['caregiver_notified'] = caregiverNotified;
+    if (caregiverNotified != null) {
+      updates['caregiver_notified'] = caregiverNotified;
+    }
 
     await _db.collection('dose_logs').doc(doseLogId).update(updates);
   }
@@ -226,8 +247,11 @@ class FirestoreService {
         .where('user_ref', isEqualTo: userUid)
         .where('is_active', isEqualTo: true)
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => NotificationModel.fromFirestore(doc)).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => NotificationModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
   Future<void> createNotification(NotificationModel notif) async {
@@ -245,57 +269,98 @@ class FirestoreService {
   // ==========================================
   // CAREGIVER - PATIENT LINKS
   // ==========================================
-  Stream<List<CaregiverPatientLinkModel>> streamCaregiverLinks(String caregiverUid) {
+  Stream<List<CaregiverPatientLinkModel>> streamCaregiverLinks(
+    String caregiverUid,
+  ) {
     return _db
         .collection('caregiver_patient_links')
         .where('caregiver_ref', isEqualTo: caregiverUid)
         .where('is_active', isEqualTo: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
-  Stream<List<CaregiverPatientLinkModel>> streamPatientLinks(String patientUid) {
+  Stream<List<CaregiverPatientLinkModel>> streamPatientLinks(
+    String patientUid,
+  ) {
     return _db
         .collection('caregiver_patient_links')
         .where('patient_ref', isEqualTo: patientUid)
         .where('is_active', isEqualTo: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => CaregiverPatientLinkModel.fromFirestore(doc))
+              .toList(),
+        );
   }
 
   Future<CaregiverPatientLinkModel?> linkByInviteCode({
     required String caregiverUid,
     required String inviteCode,
   }) async {
+    final normalizedCode = inviteCode.trim().toUpperCase();
     final query = await _db
         .collection('caregiver_patient_links')
-        .where('invite_code', isEqualTo: inviteCode.trim().toUpperCase())
-        .where('status', isEqualTo: 'pending')
-        .limit(1)
+        .where('invite_code', isEqualTo: normalizedCode)
         .get();
 
     if (query.docs.isEmpty) return null;
 
-    final doc = query.docs.first;
+    QueryDocumentSnapshot<Map<String, dynamic>>? matchingDoc;
+    for (final candidate in query.docs) {
+      final data = candidate.data();
+      final status = data['status'] as String?;
+      final caregiverRef = data['caregiver_ref'] as String? ?? '';
+      final isActive = data['is_active'] as bool? ?? true;
+      if (isActive &&
+          (status == 'pending' ||
+              caregiverRef.isEmpty ||
+              caregiverRef == caregiverUid)) {
+        matchingDoc = candidate;
+        break;
+      }
+    }
+
+    final doc = matchingDoc;
+    if (doc == null) return null;
     final link = CaregiverPatientLinkModel.fromFirestore(doc);
+    if (!link.isActive ||
+        (!link.isPending &&
+            link.caregiverRef.isNotEmpty &&
+            link.caregiverRef != caregiverUid)) {
+      return null;
+    }
+
     final updatedLink = link.copyWith(
       caregiverRef: caregiverUid,
       status: 'active',
       linkedSince: DateTime.now(),
     );
 
-    await _db
-        .collection('caregiver_patient_links')
-        .doc(doc.id)
-        .update(updatedLink.toMap());
+    final linkRef = _db.collection('caregiver_patient_links').doc(doc.id);
+    final patientProfileRef = _db
+        .collection('patient_profile')
+        .doc(link.patientRef);
+    await _db.runTransaction((transaction) async {
+      final currentLinkSnapshot = await transaction.get(linkRef);
+      final currentLink = CaregiverPatientLinkModel.fromFirestore(
+        currentLinkSnapshot,
+      );
 
-    // Update patient profile caregiver_ref
-    await _db.collection('patient_profile').doc(link.patientRef).update({
-      'caregiver_ref': caregiverUid,
+      if (!currentLink.isActive ||
+          (!currentLink.isPending &&
+              currentLink.caregiverRef.isNotEmpty &&
+              currentLink.caregiverRef != caregiverUid)) {
+        throw Exception('This invite code is no longer available.');
+      }
+
+      transaction.update(linkRef, updatedLink.toMap());
+      transaction.update(patientProfileRef, {'caregiver_ref': caregiverUid});
     });
 
     return updatedLink;
@@ -322,6 +387,21 @@ class FirestoreService {
   }
 
   Future<String> getOrCreatePatientInviteCode(String patientUid) async {
+    final patientProfileRef = _db.collection('patient_profile').doc(patientUid);
+    final patientProfile = await patientProfileRef.get();
+    if (!patientProfile.exists) {
+      await patientProfileRef.set({
+        'profile_id': patientUid,
+        'user_ref': patientUid,
+        'medical_conditions': <String>[],
+        'allergies': <String>[],
+        'emergency_contact': '',
+        'emergency_phone': '',
+        'created_at': Timestamp.now(),
+        'is_active': true,
+      });
+    }
+
     final existing = await _db
         .collection('caregiver_patient_links')
         .where('patient_ref', isEqualTo: patientUid)
@@ -330,9 +410,10 @@ class FirestoreService {
 
     for (final doc in existing.docs) {
       final data = doc.data();
+      if (data['status'] != 'pending') continue;
       final code = data['invite_code'] as String?;
-      if (code != null && code.isNotEmpty) {
-        return code;
+      if (code != null && code.trim().isNotEmpty) {
+        return code.trim().toUpperCase();
       }
     }
 
@@ -360,11 +441,11 @@ class FirestoreService {
         .limit(1)
         .snapshots()
         .map((snapshot) {
-      if (snapshot.docs.isNotEmpty) {
-        return DeviceModel.fromFirestore(snapshot.docs.first);
-      }
-      return null;
-    });
+          if (snapshot.docs.isNotEmpty) {
+            return DeviceModel.fromFirestore(snapshot.docs.first);
+          }
+          return null;
+        });
   }
 
   Future<void> pairDevice({

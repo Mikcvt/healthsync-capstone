@@ -48,7 +48,7 @@ class MissedAlertScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               const Text(
-                'Christian Missed a Dose',
+                'Patient Missed a Dose',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
@@ -89,7 +89,7 @@ class MissedAlertScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 14),
-                    _DetailRow(label: 'Patient', value: 'Christian San Luis'),
+                    _DetailRow(label: 'Patient', value: 'Linked patient'),
                     const SizedBox(height: 10),
                     _DetailRow(label: 'Medicine', value: 'Metformin 500mg'),
                     const SizedBox(height: 10),
@@ -124,7 +124,7 @@ class MissedAlertScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Send Reminder to Christian',
+                    'Send Reminder to Patient',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),

@@ -48,7 +48,7 @@ class CaregiverAlertsScreen extends StatelessWidget {
               _AlertCard(
                 color: AppColors.missedRedBg,
                 icon: Icons.close,
-                title: 'Christian missed metformin',
+                title: 'Patient missed a dose',
                 subtitle: '8:00 PM dose was not confirmed after 30 minutes.',
                 status: '8:30 PM',
                 dotColor: AppColors.missedRed,
@@ -64,7 +64,7 @@ class CaregiverAlertsScreen extends StatelessWidget {
               _AlertCard(
                 color: AppColors.takenGreenBg,
                 icon: Icons.check,
-                title: 'Christian took Losartan 50mg',
+                title: 'Patient took Losartan 50mg',
                 subtitle: 'Taken on time. HR at intake: 80 bpm (normal)',
                 status: '12:03 PM',
                 dotColor: AppColors.caregiverGreen,
@@ -82,7 +82,7 @@ class CaregiverAlertsScreen extends StatelessWidget {
               _AlertCard(
                 color: AppColors.patientBlue.withOpacity(0.15),
                 icon: Icons.info_outline,
-                title: 'Low stock on Christian’s Amlodipine',
+                title: 'Low stock on patient medication',
                 subtitle: 'Column 1 has only 4 tablets remaining.',
                 status: '6:00 AM',
                 dotColor: AppColors.patientBlue,
@@ -93,7 +93,7 @@ class CaregiverAlertsScreen extends StatelessWidget {
               _AlertCard(
                 color: AppColors.takenGreenBg,
                 icon: Icons.check,
-                title: 'Christian completed all doses',
+                title: 'Patient completed all doses',
                 subtitle: 'All 3 medications taken on time',
                 status: 'Yesterday',
                 dotColor: AppColors.caregiverGreen,

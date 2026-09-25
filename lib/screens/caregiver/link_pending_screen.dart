@@ -41,7 +41,7 @@ class LinkPendingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Your request has been sent to Christian San Luis. Waiting for them to approve in their HealthSync app.',
+                'Your request has been sent. Waiting for the patient to approve in their HealthSync app.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,

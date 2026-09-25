@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/auth_provider.dart';
+import '../auth/welcome_screen.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
+import 'guardian_link_screen.dart';
 import 'settings_screen.dart';
 
 class PatientProfileScreen extends StatefulWidget {
@@ -106,7 +110,11 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       label: 'Guardian link',
                       subtitle: 'Manage caregiver access',
                       icon: Icons.link_outlined,
-                      onTap: () {},
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const GuardianLinkScreen(),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     _ProfileOption(
@@ -132,7 +140,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       subtitle: '',
                       icon: Icons.logout,
                       dangerous: true,
-                      onTap: () {},
+                      onTap: _handleSignOut,
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -142,6 +150,38 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _handleSignOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('Are you sure you want to sign out of HealthSync?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.missedRed,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await context.read<AuthProvider>().signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (route) => false,
     );
   }
 }

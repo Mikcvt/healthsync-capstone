@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
-import '../patient/patient_profile_setup_screen.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
 
@@ -54,20 +53,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
 
     if (success) {
-      if (widget.role == 'patient') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => const PatientProfileSetupScreen(),
-          ),
-        );
-      } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => const EmailVerificationScreen(),
-            settings: RouteSettings(arguments: widget.role),
-          ),
-        );
-      }
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const EmailVerificationScreen(),
+          settings: RouteSettings(arguments: widget.role),
+        ),
+      );
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Registration failed. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(

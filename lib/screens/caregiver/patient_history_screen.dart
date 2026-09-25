@@ -3,7 +3,9 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 
 class PatientHistoryScreen extends StatelessWidget {
-  const PatientHistoryScreen({super.key});
+  final String patientName;
+
+  const PatientHistoryScreen({super.key, this.patientName = 'Patient'});
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +21,8 @@ class PatientHistoryScreen extends StatelessWidget {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Christian’s History',
+        title: Text(
+          '$patientName’s History',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',

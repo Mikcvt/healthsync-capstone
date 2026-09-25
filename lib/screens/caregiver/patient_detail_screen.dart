@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/caregiver_provider.dart';
 import 'patient_analytics_screen.dart';
 import 'patient_history_screen.dart';
 import 'patient_schedule_screen.dart';
@@ -10,6 +12,9 @@ class PatientDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final patientName =
+        context.watch<CaregiverProvider>().selectedPatientUser?.fullName ??
+        'Patient';
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -22,8 +27,8 @@ class PatientDetailScreen extends StatelessWidget {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Christian San Luis',
+        title: Text(
+          patientName,
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',
@@ -47,58 +52,68 @@ class PatientDetailScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 22),
-              Row(
-                children: [
-                  _StatPill(label: '87%', value: 'This week'),
-                  const SizedBox(width: 12),
-                  _StatPill(label: '2/3', value: 'Today done'),
-                  const SizedBox(width: 12),
-                  _StatPill(label: '1', value: 'Pending'),
-                  const SizedBox(width: 12),
-                  _StatPill(label: '0', value: 'Missed'),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _StatPill(label: '87%', value: 'This week'),
+                    const SizedBox(width: 12),
+                    _StatPill(label: '2/3', value: 'Today done'),
+                    const SizedBox(width: 12),
+                    _StatPill(label: '1', value: 'Pending'),
+                    const SizedBox(width: 12),
+                    _StatPill(label: '0', value: 'Missed'),
+                  ],
+                ),
               ),
               const SizedBox(height: 22),
-              Row(
-                children: [
-                  _TabButton(
-                    label: 'Schedule',
-                    selected: true,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const PatientScheduleScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _TabButton(
-                    label: 'History',
-                    selected: false,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const PatientHistoryScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _TabButton(label: 'Vitals', selected: false),
-                  const SizedBox(width: 10),
-                  _TabButton(
-                    label: 'Analytics',
-                    selected: false,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const PatientAnalyticsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _TabButton(
+                      label: 'Schedule',
+                      selected: true,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                PatientScheduleScreen(patientName: patientName),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    _TabButton(
+                      label: 'History',
+                      selected: false,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                PatientHistoryScreen(patientName: patientName),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    _TabButton(label: 'Vitals', selected: false),
+                    const SizedBox(width: 10),
+                    _TabButton(
+                      label: 'Analytics',
+                      selected: false,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PatientAnalyticsScreen(
+                              patientName: patientName,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -139,10 +154,10 @@ class PatientDetailScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(18),
                 decoration: AppStyles.cardDecoration,
                 child: Row(
-                  children: const [
+                  children: [
                     Expanded(
                       child: Text(
-                        'Christian’s weekly adherence',
+                        '$patientName’s weekly adherence',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
@@ -237,8 +252,8 @@ class PatientDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'Send message to Christian',
+                  child: Text(
+                    'Send message to $patientName',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),

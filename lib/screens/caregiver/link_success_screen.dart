@@ -42,7 +42,7 @@ class LinkSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                'You are now monitoring Christian San Luis. You’ll receive real-time alerts on their medication activity.',
+                'You are now monitoring this patient. You’ll receive real-time alerts on their medication activity.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -85,7 +85,7 @@ class LinkSuccessScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
                           Text(
-                            'Christian San Luis',
+                            'Linked patient',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,

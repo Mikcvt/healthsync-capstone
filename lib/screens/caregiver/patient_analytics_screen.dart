@@ -3,7 +3,9 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 
 class PatientAnalyticsScreen extends StatelessWidget {
-  const PatientAnalyticsScreen({super.key});
+  final String patientName;
+
+  const PatientAnalyticsScreen({super.key, this.patientName = 'Patient'});
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +21,8 @@ class PatientAnalyticsScreen extends StatelessWidget {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Christian’s Analytics',
+        title: Text(
+          '$patientName’s Analytics',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',
@@ -138,7 +140,7 @@ class PatientAnalyticsScreen extends StatelessWidget {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Insight',
                       style: TextStyle(
@@ -150,7 +152,7 @@ class PatientAnalyticsScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Attention needed\nChristian missed Metformin twice this week. Consider sending a reminder message.',
+                      'Attention needed\n$patientName missed a dose twice this week. Consider sending a reminder message.',
                       style: TextStyle(
                         fontSize: 14,
                         color: AppColors.textPrimary,
@@ -174,8 +176,8 @@ class PatientAnalyticsScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: const Text(
-                    'Send message to Christian',
+                  child: Text(
+                    'Send message to $patientName',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),

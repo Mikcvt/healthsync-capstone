@@ -11,6 +11,8 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
   // Fetch UserModel from Firestore for given UID
   Future<UserModel?> getUserProfile(String uid) async {
     try {
@@ -56,6 +58,7 @@ class AuthService {
 
       // Update Firebase Auth display name
       await user.updateDisplayName('$firstName $lastName'.trim());
+      await user.sendEmailVerification();
 
       final userModel = UserModel(
         uid: user.uid,
@@ -140,12 +143,60 @@ class AuthService {
   // Send email verification
   Future<void> sendEmailVerification() async {
     try {
-      await _auth.currentUser?.sendEmailVerification();
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('You must be signed in to verify your email.');
+      await user.sendEmailVerification();
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
     } catch (e) {
       rethrow;
     }
+  }
+
+  Future<UserModel> updateCurrentUserProfile({
+    required String firstName,
+    required String lastName,
+    required String phone,
+  }) async {
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) throw Exception('You must be signed in to edit your profile.');
+    final updatedName = '$firstName $lastName'.trim();
+    await firebaseUser.updateDisplayName(updatedName);
+    final current = await getUserProfile(firebaseUser.uid);
+    if (current == null) throw Exception('Your profile could not be loaded.');
+    final updated = current.copyWith(
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+    );
+    await _firestore.collection('users').doc(firebaseUser.uid).set(updated.toMap(), SetOptions(merge: true));
+    return updated;
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final firebaseUser = _auth.currentUser;
+    final email = firebaseUser?.email;
+    if (firebaseUser == null || email == null) throw Exception('You must be signed in to change your password.');
+    final credential = EmailAuthProvider.credential(email: email, password: currentPassword);
+    await firebaseUser.reauthenticateWithCredential(credential);
+    await firebaseUser.updatePassword(newPassword);
+  }
+
+  Future<void> deleteCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    await _firestore.collection('users').doc(user.uid).update({'is_active': false});
+    await user.delete();
+  }
+
+  Future<bool> reloadAndCheckEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    return _auth.currentUser?.emailVerified ?? false;
   }
 
   // Sign out
