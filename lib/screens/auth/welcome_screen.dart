@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
-import '../../constants/app_colors.dart';
 import 'login_screen.dart';
+import 'otp_entry_screen.dart';
 import 'role_select_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -38,7 +38,7 @@ class WelcomeScreen extends StatelessWidget {
                     height: 160,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.10),
+                      color: Colors.white.withValues(alpha: 0.10),
                     ),
                   ),
                 ),
@@ -50,7 +50,7 @@ class WelcomeScreen extends StatelessWidget {
                     height: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.08),
+                      color: Colors.white.withValues(alpha: 0.08),
                     ),
                   ),
                 ),
@@ -62,7 +62,7 @@ class WelcomeScreen extends StatelessWidget {
                     height: 130,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.07),
+                      color: Colors.white.withValues(alpha: 0.07),
                     ),
                   ),
                 ),
@@ -77,10 +77,10 @@ class WelcomeScreen extends StatelessWidget {
                         width: 90,
                         height: 90,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.18),
+                          color: Colors.white.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(22),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.35),
+                            color: Colors.white.withValues(alpha: 0.35),
                             width: 1.5,
                           ),
                         ),
@@ -109,7 +109,7 @@ class WelcomeScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w400,
-                          color: Colors.white.withOpacity(0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           fontFamily: 'PlusJakartaSans',
                           letterSpacing: 0.3,
                         ),
@@ -222,6 +222,47 @@ class WelcomeScreen extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           fontFamily: 'PlusJakartaSans',
                           letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Managed patients never sign up — they arrive with a code
+                  // from their caregiver, so this is their whole entry point.
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const OtpEntryScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.key_rounded,
+                        size: 20,
+                        color: Color(0xFF1B5FD4),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1B5FD4),
+                        side: const BorderSide(
+                          color: Color(0xFF1B5FD4),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      label: const Text(
+                        'I have a code',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'PlusJakartaSans',
+                          color: Color(0xFF1B5FD4),
                         ),
                       ),
                     ),

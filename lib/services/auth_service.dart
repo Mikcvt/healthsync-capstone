@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
 class AuthService {
@@ -56,46 +57,107 @@ class AuthService {
         throw Exception('User creation failed: No user returned');
       }
 
-      // Update Firebase Auth display name
-      await user.updateDisplayName('$firstName $lastName'.trim());
-      await user.sendEmailVerification();
+      // Self-registration only ever produces a caregiver or a solo user.
+      // Managed patients never reach this method — their account is created by
+      // the Worker on the caregiver's behalf, and they sign in with a custom
+      // token minted from an OTP. Both roles here own their own data, so both
+      // get can_edit_medications.
+      final normalizedRole = role.toLowerCase().trim();
+      final accountType = normalizedRole == 'caregiver'
+          ? AccountType.caregiver
+          : AccountType.solo;
 
       final userModel = UserModel(
         uid: user.uid,
-        role: role.toLowerCase().trim(),
+        role: normalizedRole,
+        accountType: accountType,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
         phone: phone.trim(),
+        canEditMedications: true,
         createdAt: DateTime.now(),
         isActive: true,
       );
 
-      // Save to Firestore `users` collection
-      await _firestore.collection('users').doc(user.uid).set(userModel.toMap());
+      // The profile is written FIRST, before anything that can fail.
+      //
+      // An Auth account with no users/{uid} document is unrecoverable from the
+      // app: registering again gives "email already in use" and signing in
+      // gives "profile could not be loaded", so the person is locked out of
+      // that address permanently. Anything non-essential — display name, the
+      // verification email — happens after, and cannot abort registration.
+      try {
+        // merge: true because NotificationService may already have written an
+        // fcm_token to this document from the auth-state listener. A plain set
+        // would silently wipe it.
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .set(userModel.toMap(), SetOptions(merge: true));
 
-      // If patient, initialize empty patient_profile
-      if (userModel.isPatient) {
-        await _firestore.collection('patient_profile').doc(user.uid).set({
-          'profile_id': user.uid,
-          'user_ref': user.uid,
-          'medical_conditions': <String>[],
-          'allergies': <String>[],
-          'emergency_contact': '',
-          'emergency_phone': '',
-          'caregiver_ref': null,
-          'created_at': Timestamp.now(),
-        }, SetOptions(merge: true));
-      } else if (userModel.isCaregiver) {
-        // If caregiver, initialize caregiver_profile
-        await _firestore.collection('caregiver_profile').doc(user.uid).set({
-          'profile_id': user.uid,
-          'user_ref': user.uid,
-          'alert_pref_missed': true,
-          'alert_pref_vitals': true,
-          'alert_pref_daily': true,
-          'created_at': Timestamp.now(),
-        }, SetOptions(merge: true));
+        if (userModel.isCaregiver) {
+          await _firestore.collection('caregiver_profile').doc(user.uid).set({
+            'profile_id': user.uid,
+            'user_ref': user.uid,
+            'alert_pref_missed': true,
+            'alert_pref_low_stock': true,
+            'alert_pref_daily': true,
+            'created_at': Timestamp.now(),
+          }, SetOptions(merge: true));
+        } else {
+          // Solo users keep a patient_profile too — they have medications,
+          // schedules and dose logs exactly like a managed patient does.
+          await _firestore.collection('patient_profile').doc(user.uid).set({
+            'profile_id': user.uid,
+            'user_ref': user.uid,
+            'medical_conditions': '',
+            'allergies': '',
+            'emergency_contact': '',
+            'emergency_phone': '',
+            'caregiver_ref': null,
+            'created_at': Timestamp.now(),
+          }, SetOptions(merge: true));
+        }
+      } catch (e) {
+        // Roll back everything this registration touched so the email stays
+        // usable. Without this, a dropped connection at exactly this point
+        // costs the person their email address forever.
+        //
+        // The Firestore documents must go too: NotificationService writes an
+        // fcm_token to users/{uid} as soon as the auth state changes, which
+        // happens before this point. Deleting only the Auth account would
+        // leave that document behind as an orphan with no owner.
+        for (final ref in [
+          _firestore.collection('users').doc(user.uid),
+          _firestore.collection('patient_profile').doc(user.uid),
+          _firestore.collection('caregiver_profile').doc(user.uid),
+        ]) {
+          try {
+            await ref.delete();
+          } catch (_) {
+            // Best effort — the thrown error below is the useful signal.
+          }
+        }
+        try {
+          await user.delete();
+        } catch (_) {
+          // Deletion can itself fail offline; the thrown error below is still
+          // the more useful signal.
+        }
+        throw Exception(
+          'Could not finish creating your account. Please check your '
+          'connection and try again.',
+        );
+      }
+
+      // Best-effort extras. A failure here leaves a usable account, so it must
+      // not propagate — the user can resend verification from the next screen.
+      try {
+        await user.updateDisplayName('$firstName $lastName'.trim());
+        await user.sendEmailVerification();
+      } catch (e) {
+        debugPrint('Post-registration step failed (non-fatal): $e');
       }
 
       return userModel;
@@ -130,6 +192,18 @@ class AuthService {
   }
 
   // Send password reset email
+  /// Signs in with a custom token minted by the Worker after a valid OTP.
+  ///
+  /// This is how managed patients authenticate: no email, no password, no
+  /// sign-up. Firebase treats the resulting session like any other.
+  Future<UserCredential> signInWithCustomToken(String token) async {
+    try {
+      return await _auth.signInWithCustomToken(token);
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthException(e);
+    }
+  }
+
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());

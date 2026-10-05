@@ -5,6 +5,19 @@ class AppColors {
   static const Color patientBlue = Color(0xFF1B5FD4);
   static const Color caregiverGreen = Color(0xFF0D9B6B);
 
+  // Patient / solo tints
+  static const Color blueLight = Color(0xFFEBF1FF);
+  static const Color blueDark = Color(0xFF0F3E9E);
+
+  // Caregiver tints
+  static const Color greenLight = Color(0xFFE4F7F0);
+  static const Color greenDark = Color(0xFF066845);
+
+  // Solo user accent
+  static const Color soloPurple = Color(0xFF7C3AED);
+  static const Color soloPurpleLight = Color(0xFFF1EBFE);
+  static const Color soloPurpleDark = Color(0xFF5B21B6);
+
   // Gradient
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,

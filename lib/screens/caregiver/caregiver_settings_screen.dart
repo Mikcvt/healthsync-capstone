@@ -4,7 +4,6 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
-import '../auth/welcome_screen.dart';
 import '../patient/change_password_screen.dart';
 
 class CaregiverSettingsScreen extends StatefulWidget {
@@ -78,8 +77,9 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
     first.dispose();
     last.dispose();
     phone.dispose();
-    if (saved == false && mounted)
+    if (saved == false && mounted) {
       _showMessage(auth.errorMessage ?? 'Profile update failed.');
+    }
   }
 
   Future<void> _deleteAccount() async {
@@ -108,10 +108,9 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
     final success = await auth.deleteAccount();
     if (!mounted) return;
     if (success) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-        (route) => false,
-      );
+      // AuthGate renders WelcomeScreen once the account is gone; replacing the
+      // root here would leave later sign-ins with nothing to route them.
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       _showMessage(
         auth.errorMessage ??
@@ -266,14 +265,15 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
                   label: 'Sign out',
                   subtitle: 'Sign out of this device',
                   onTap: () async {
+                    // Capture the navigator before awaiting: `context` must
+                    // not be read after the gap, and signOut tears down the
+                    // widget tree this row lives in.
+                    final navigator = Navigator.of(context);
                     await auth.signOut();
-                    if (mounted)
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const WelcomeScreen(),
-                        ),
-                        (route) => false,
-                      );
+                    if (!context.mounted) return;
+                    // Back to AuthGate, which shows WelcomeScreen when signed
+                    // out. Removing it would break the next sign-in.
+                    navigator.popUntil((route) => route.isFirst);
                   },
                 ),
                 const Divider(height: 1, color: AppColors.borderGray),
@@ -364,7 +364,7 @@ class _ToggleRow extends StatelessWidget {
         ),
         Switch(
           value: value,
-          activeColor: AppColors.caregiverGreen,
+          activeThumbColor: AppColors.caregiverGreen,
           onChanged: onChanged,
         ),
       ],

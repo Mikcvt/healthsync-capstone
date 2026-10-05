@@ -71,7 +71,7 @@ class DoseConfirmedScreen extends StatelessWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: AppColors.caregiverGreen.withOpacity(0.12),
+                        color: AppColors.caregiverGreen.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(Icons.favorite_rounded, color: AppColors.caregiverGreen),

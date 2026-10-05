@@ -22,6 +22,7 @@ class PatientProvider extends ChangeNotifier {
   CaregiverPatientLinkModel? _link;
   UserModel? _caregiverUser;
   bool _isLoading = false;
+  String? _errorMessage;
 
   // Stream Subscriptions
   StreamSubscription? _profileSub;
@@ -45,6 +46,7 @@ class PatientProvider extends ChangeNotifier {
   bool get isLinkPending => _link != null && _link!.status == 'pending';
   String? get inviteCode => _link?.inviteCode;
   bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
 
   // Calculate adherence percentage for today
   double get todayAdherencePercentage {
@@ -137,11 +139,36 @@ class PatientProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Confirm dose taken (App button or IoT Box trigger)
-  Future<void> confirmDoseTaken({
+  /// Confirms a dose was taken, from the app or the box button.
+  ///
+  /// Returns false and sets [errorMessage] on failure rather than throwing —
+  /// an uncaught error here left the patient looking at an unchanged screen
+  /// with no idea the confirmation had not been recorded.
+  Future<bool> confirmDoseTaken({
     required String scheduleId,
     String? doseLogId,
     int matBoxColumn = 1,
+    String confirmedVia = 'app',
+  }) async {
+    _errorMessage = null;
+    try {
+      await _confirmDoseTaken(
+        scheduleId: scheduleId,
+        doseLogId: doseLogId,
+        confirmedVia: confirmedVia,
+      );
+      return true;
+    } catch (e) {
+      _errorMessage = 'Could not record this dose. Please try again.';
+      debugPrint('confirmDoseTaken failed: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> _confirmDoseTaken({
+    required String scheduleId,
+    String? doseLogId,
     String confirmedVia = 'app',
   }) async {
     final now = DateTime.now();
@@ -238,15 +265,6 @@ class PatientProvider extends ChangeNotifier {
     return '$hour:$minute $period';
   }
 
-  // Fetch or generate invite code for caregiver
-  Future<String> fetchOrCreateInviteCode() async {
-    if (_patientUid == null) return '';
-    if (_link != null && _link!.inviteCode.isNotEmpty) {
-      return _link!.inviteCode;
-    }
-    final code = await _firestoreService.getOrCreatePatientInviteCode(_patientUid!);
-    return code;
-  }
 
   // Unlink caregiver
   Future<void> unlinkCaregiver() async {

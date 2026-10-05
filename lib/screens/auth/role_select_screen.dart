@@ -28,20 +28,49 @@ class RoleSelectScreen extends StatelessWidget {
               const SizedBox(height: 8),
               const Text('Select how you want to use HealthSync.', style: TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFamily: 'PlusJakartaSans', height: 1.5)),
               const SizedBox(height: 24),
+              // Only self-registering roles appear here. A managed patient
+              // never reaches this screen — they enter a code on the welcome
+              // screen instead, and their account already exists.
               _RoleCard(
-                title: 'Patient',
-                subtitle: 'Track medications, confirm doses, and view your adherence progress.',
+                title: 'Just for myself',
+                subtitle: 'Manage your own medicines, set your own reminders, and track your progress independently.',
                 icon: Icons.person_outline_rounded,
-                color: AppColors.patientBlue,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen(role: 'patient'))),
+                color: AppColors.soloPurple,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen(role: 'solo'))),
               ),
               const SizedBox(height: 14),
               _RoleCard(
                 title: 'Caregiver',
-                subtitle: 'Monitor loved ones, receive alerts, and stay on top of schedules.',
+                subtitle: 'Set up medicines for someone you care for, monitor their doses, and get alerts when one is missed.',
                 icon: Icons.groups_2_outlined,
                 color: AppColors.caregiverGreen,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen(role: 'caregiver'))),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.upcomingBlueBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.key_rounded, size: 18, color: AppColors.upcomingBlue),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Someone set this up for you? Go back and tap "I have a code" instead — you do not need to sign up.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.upcomingBlue,
+                          fontFamily: 'PlusJakartaSans',
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

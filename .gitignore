@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets — service account keys and Worker env (never commit)
+*serviceAccount*.json
+*service-account*.json
+healthsync-b8394-*.json
+.dev.vars
+.env
+.env.*
+.wrangler/

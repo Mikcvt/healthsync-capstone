@@ -38,12 +38,12 @@ class DoseAlertScreen extends StatelessWidget {
                 width: 110,
                 height: 110,
                 decoration: BoxDecoration(
-                  color: AppColors.patientBlue.withOpacity(0.2),
+                  color: AppColors.patientBlue.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.patientBlue, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.patientBlue.withOpacity(0.4),
+                      color: AppColors.patientBlue.withValues(alpha: 0.4),
                       blurRadius: 30,
                       spreadRadius: 8,
                     ),
@@ -60,7 +60,7 @@ class DoseAlertScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.patientBlue.withOpacity(0.3),
+                  color: AppColors.patientBlue.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -103,7 +103,7 @@ class DoseAlertScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.white12),
                 ),

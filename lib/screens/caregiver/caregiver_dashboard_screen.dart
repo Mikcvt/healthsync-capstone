@@ -5,7 +5,7 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
 import 'caregiver_alerts_screen.dart';
-import 'link_patient_screen.dart';
+import 'add_patient_screen.dart';
 
 class CaregiverDashboardScreen extends StatelessWidget {
   const CaregiverDashboardScreen({super.key});
@@ -65,7 +65,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               if (patientCount == 0)
-                _EmptyDashboard(onLink: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LinkPatientScreen())))
+                _EmptyDashboard(onLink: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddPatientScreen())))
               else ...[
                 _NextDoseCard(
                   patientName: patientName,

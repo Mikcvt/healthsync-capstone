@@ -1,4 +1,48 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "scheduled_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patient_ref", "order": "ASCENDING" },
+        { "fieldPath": "is_active", "order": "ASCENDING" },
+        { "fieldPath": "scheduled_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patient_ref", "order": "ASCENDING" },
+        { "fieldPath": "is_active", "order": "ASCENDING" },
+        { "fieldPath": "scheduled_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "otp_codes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "caregiver_ref", "order": "ASCENDING" },
+        { "fieldPath": "patient_ref", "order": "ASCENDING" },
+        { "fieldPath": "used", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "schedules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_active", "order": "ASCENDING" },
+        { "fieldPath": "led_active", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

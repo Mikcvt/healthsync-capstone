@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../auth/welcome_screen.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
-import 'guardian_link_screen.dart';
 import 'settings_screen.dart';
 
 class PatientProfileScreen extends StatefulWidget {
@@ -20,8 +19,8 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
   bool _doseReminders = true;
   bool _guardianAlerts = true;
   bool _missedDoseAlerts = true;
-  bool _smartwatchConnected = true;
-  bool _medicineBoxOnline = true;
+  final bool _smartwatchConnected = true;
+  final bool _medicineBoxOnline = true;
 
   @override
   Widget build(BuildContext context) {
@@ -107,17 +106,6 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     _ProfileOption(
-                      label: 'Guardian link',
-                      subtitle: 'Manage caregiver access',
-                      icon: Icons.link_outlined,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const GuardianLinkScreen(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ProfileOption(
                       label: 'Settings',
                       subtitle: 'App preferences',
                       icon: Icons.settings,
@@ -179,10 +167,11 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     if (confirmed != true || !mounted) return;
     await context.read<AuthProvider>().signOut();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-      (route) => false,
-    );
+    // Pop back to AuthGate rather than pushing WelcomeScreen over it.
+    // pushAndRemoveUntil((route) => false) would destroy AuthGate, and every
+    // later sign-in would then have nothing to route it to the dashboard.
+    // AuthGate already renders WelcomeScreen when signed out.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 }
 
@@ -243,8 +232,34 @@ class _ProfileCard extends StatelessWidget {
     required this.onToggleMissedDoseAlerts,
   });
 
+  /// A managed patient has no email of their own, so show whatever identifies
+  /// them — phone if the caregiver recorded one, otherwise nothing rather than
+  /// a fabricated address.
+  static String _contactLine(UserModel? user) {
+    final parts = [
+      if (user?.email.trim().isNotEmpty == true) user!.email.trim(),
+      if (user?.phone.trim().isNotEmpty == true) user!.phone.trim(),
+    ];
+    return parts.isEmpty ? 'Managed by your caregiver' : parts.join(' · ');
+  }
+
+  static String _roleLabel(UserModel? user) {
+    if (user == null) return 'Patient';
+    if (user.isSolo) return 'Managing my own medicines';
+    if (user.isManaged) return 'Patient · managed by caregiver';
+    return 'Patient';
+  }
+
+  static String _initials(String name) {
+    final parts = name.split(' ').where((p) => p.isNotEmpty).take(2);
+    if (parts.isEmpty) return '?';
+    return parts.map((p) => p[0]).join().toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().currentUserModel;
+
     return Container(
       width: double.infinity,
       decoration: AppStyles.cardDecoration,
@@ -261,9 +276,9 @@ class _ProfileCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 alignment: Alignment.center,
-                child: const Text(
-                  'CS',
-                  style: TextStyle(
+                child: Text(
+                  _initials(user?.fullName ?? ''),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
@@ -275,29 +290,31 @@ class _ProfileCard extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
-                      'Christian San Luis',
-                      style: TextStyle(
+                      user?.fullName.trim().isNotEmpty == true
+                          ? user!.fullName
+                          : 'Your profile',
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: AppColors.textPrimary,
                         fontFamily: 'PlusJakartaSans',
                       ),
                     ),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
                     Text(
-                      'cervantesmiko12@gmail.com · +63 912 345 6789',
-                      style: TextStyle(
+                      _contactLine(user),
+                      style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
                         fontFamily: 'PlusJakartaSans',
                       ),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 10),
                     Text(
-                      'Patient',
-                      style: TextStyle(
+                      _roleLabel(user),
+                      style: const TextStyle(
                         fontSize: 14,
                         color: AppColors.patientBlue,
                         fontWeight: FontWeight.w700,
@@ -381,7 +398,7 @@ class _ToggleRow extends StatelessWidget {
         ),
         Switch(
           value: value,
-          activeColor: AppColors.patientBlue,
+          activeThumbColor: AppColors.patientBlue,
           onChanged: onChanged,
         ),
       ],

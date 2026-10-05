@@ -5,8 +5,6 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
 import 'email_verification_screen.dart';
-import '../caregiver/caregiver_main_screen.dart';
-import '../patient/patient_main_screen.dart';
 import 'role_select_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -43,23 +41,17 @@ class _LoginScreenState extends State<LoginScreen> {
     if (success) {
       final user = authProvider.currentUserModel;
       if (!authProvider.isEmailVerified) {
-        Navigator.of(context).pushAndRemoveUntil(
+        Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => const EmailVerificationScreen(),
             settings: RouteSettings(arguments: user?.role ?? 'patient'),
           ),
-          (route) => false,
-        );
-      } else if (user != null && user.isCaregiver) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const CaregiverMainScreen()),
-          (route) => false,
         );
       } else {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const PatientMainScreen()),
-          (route) => false,
-        );
+        // Hand back to AuthGate instead of pushing a home screen directly.
+        // AuthGate routes on account_type AND initialises the providers that
+        // the dashboards read from; bypassing it leaves them uninitialised.
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Failed to sign in. Please try again.';

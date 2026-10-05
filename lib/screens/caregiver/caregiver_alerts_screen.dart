@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
 import 'missed_alert_screen.dart';
 
 class CaregiverAlertsScreen extends StatelessWidget {
@@ -80,7 +79,7 @@ class CaregiverAlertsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _AlertCard(
-                color: AppColors.patientBlue.withOpacity(0.15),
+                color: AppColors.patientBlue.withValues(alpha: 0.15),
                 icon: Icons.info_outline,
                 title: 'Low stock on patient medication',
                 subtitle: 'Column 1 has only 4 tablets remaining.',
@@ -159,7 +158,7 @@ class _AlertCard extends StatelessWidget {
           border: Border.all(color: AppColors.borderGray),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),

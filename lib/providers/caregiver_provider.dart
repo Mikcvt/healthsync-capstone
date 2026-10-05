@@ -6,10 +6,13 @@ import '../models/patient_profile_model.dart';
 import '../models/user_model.dart';
 import '../models/schedule_model.dart';
 import '../models/dose_log_model.dart';
+import '../models/otp_code_model.dart';
+import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 
 class CaregiverProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
+  final ApiService _apiService = ApiService();
 
   String? _caregiverUid;
   CaregiverProfileModel? _profile;
@@ -93,33 +96,92 @@ class CaregiverProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Link a new patient via invite code
-  Future<bool> linkPatient(String inviteCode) async {
-    if (_caregiverUid == null) return false;
+  /// Creates a managed patient account through the Worker.
+  ///
+  /// The patient never signs up — this mints their Auth account and Firestore
+  /// documents so their schedule can be built before they ever open the app.
+  /// Returns the new uid, or null with [errorMessage] set.
+  Future<String?> createPatient({
+    required String firstName,
+    required String lastName,
+    String phone = '',
+    String medicalConditions = '',
+    String allergies = '',
+    String emergencyContact = '',
+    String emergencyPhone = '',
+  }) async {
+    if (_caregiverUid == null) return null;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final link = await _firestoreService.linkByInviteCode(
-        caregiverUid: _caregiverUid!,
-        inviteCode: inviteCode,
+      final uid = await _apiService.createManagedPatient(
+        firstName: firstName,
+        lastName: lastName,
+        phone: phone,
+        medicalConditions: medicalConditions,
+        allergies: allergies,
+        emergencyContact: emergencyContact,
+        emergencyPhone: emergencyPhone,
       );
-
       _isLoading = false;
-      if (link != null) {
-        await selectPatient(link.patientRef);
-        return true;
-      } else {
-        _errorMessage = 'Invalid or expired invite code. Please check with your patient.';
-        notifyListeners();
-        return false;
-      }
+      notifyListeners();
+      return uid.isEmpty ? null : uid;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return null;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
+    }
+  }
+
+  /// Returns the code currently outstanding for [patientUid], or mints a new
+  /// one. Reusing an unspent code matters: issuing a second would silently
+  /// invalidate the one the caregiver already sent.
+  Future<OtpCodeModel?> getOrCreateOtp(String patientUid) async {
+    if (_caregiverUid == null) return null;
+    _errorMessage = null;
+    try {
+      final existing = await _firestoreService.getActiveOtpForPatient(
+        patientUid: patientUid,
+        caregiverUid: _caregiverUid!,
+      );
+      if (existing != null) return existing;
+
+      return await _firestoreService.createOtpCode(
+        patientUid: patientUid,
+        caregiverUid: _caregiverUid!,
+      );
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Revokes the current code and issues a fresh one.
+  Future<OtpCodeModel?> regenerateOtp({
+    required String patientUid,
+    required String currentCode,
+  }) async {
+    if (_caregiverUid == null) return null;
+    _errorMessage = null;
+    try {
+      await _firestoreService.revokeOtpCode(currentCode);
+      return await _firestoreService.createOtpCode(
+        patientUid: patientUid,
+        caregiverUid: _caregiverUid!,
+      );
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return null;
     }
   }
 

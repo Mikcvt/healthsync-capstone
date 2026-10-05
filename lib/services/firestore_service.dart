@@ -9,6 +9,7 @@ import '../models/dose_log_model.dart';
 import '../models/notification_model.dart';
 import '../models/caregiver_patient_link_model.dart';
 import '../models/device_model.dart';
+import '../models/otp_code_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -299,126 +300,6 @@ class FirestoreService {
         );
   }
 
-  Future<CaregiverPatientLinkModel?> linkByInviteCode({
-    required String caregiverUid,
-    required String inviteCode,
-  }) async {
-    final normalizedCode = inviteCode.trim().toUpperCase();
-    final query = await _db
-        .collection('caregiver_patient_links')
-        .where('invite_code', isEqualTo: normalizedCode)
-        .get();
-
-    if (query.docs.isEmpty) return null;
-
-    QueryDocumentSnapshot<Map<String, dynamic>>? matchingDoc;
-    for (final candidate in query.docs) {
-      final data = candidate.data();
-      final status = data['status'] as String?;
-      final caregiverRef = data['caregiver_ref'] as String? ?? '';
-      final isActive = data['is_active'] as bool? ?? true;
-      if (isActive &&
-          (status == 'pending' ||
-              caregiverRef.isEmpty ||
-              caregiverRef == caregiverUid)) {
-        matchingDoc = candidate;
-        break;
-      }
-    }
-
-    final doc = matchingDoc;
-    if (doc == null) return null;
-    final link = CaregiverPatientLinkModel.fromFirestore(doc);
-    if (!link.isActive ||
-        (!link.isPending &&
-            link.caregiverRef.isNotEmpty &&
-            link.caregiverRef != caregiverUid)) {
-      return null;
-    }
-
-    final updatedLink = link.copyWith(
-      caregiverRef: caregiverUid,
-      status: 'active',
-      linkedSince: DateTime.now(),
-    );
-
-    final linkRef = _db.collection('caregiver_patient_links').doc(doc.id);
-    final patientProfileRef = _db
-        .collection('patient_profile')
-        .doc(link.patientRef);
-    await _db.runTransaction((transaction) async {
-      final currentLinkSnapshot = await transaction.get(linkRef);
-      final currentLink = CaregiverPatientLinkModel.fromFirestore(
-        currentLinkSnapshot,
-      );
-
-      if (!currentLink.isActive ||
-          (!currentLink.isPending &&
-              currentLink.caregiverRef.isNotEmpty &&
-              currentLink.caregiverRef != caregiverUid)) {
-        throw Exception('This invite code is no longer available.');
-      }
-
-      transaction.update(linkRef, updatedLink.toMap());
-      transaction.update(patientProfileRef, {'caregiver_ref': caregiverUid});
-    });
-
-    return updatedLink;
-  }
-
-  Future<String> generatePatientInviteCode(String patientUid) async {
-    final prefix = patientUid.length >= 4
-        ? patientUid.substring(0, 4).toUpperCase()
-        : patientUid.toUpperCase().padRight(4, 'X');
-    final code = 'HS-$prefix';
-    final docRef = _db.collection('caregiver_patient_links').doc();
-    final link = CaregiverPatientLinkModel(
-      linkId: docRef.id,
-      caregiverRef: '',
-      patientRef: patientUid,
-      inviteCode: code,
-      linkedSince: DateTime.now(),
-      status: 'pending',
-      createdAt: DateTime.now(),
-      isActive: true,
-    );
-    await docRef.set(link.toMap());
-    return code;
-  }
-
-  Future<String> getOrCreatePatientInviteCode(String patientUid) async {
-    final patientProfileRef = _db.collection('patient_profile').doc(patientUid);
-    final patientProfile = await patientProfileRef.get();
-    if (!patientProfile.exists) {
-      await patientProfileRef.set({
-        'profile_id': patientUid,
-        'user_ref': patientUid,
-        'medical_conditions': <String>[],
-        'allergies': <String>[],
-        'emergency_contact': '',
-        'emergency_phone': '',
-        'created_at': Timestamp.now(),
-        'is_active': true,
-      });
-    }
-
-    final existing = await _db
-        .collection('caregiver_patient_links')
-        .where('patient_ref', isEqualTo: patientUid)
-        .where('is_active', isEqualTo: true)
-        .get();
-
-    for (final doc in existing.docs) {
-      final data = doc.data();
-      if (data['status'] != 'pending') continue;
-      final code = data['invite_code'] as String?;
-      if (code != null && code.trim().isNotEmpty) {
-        return code.trim().toUpperCase();
-      }
-    }
-
-    return generatePatientInviteCode(patientUid);
-  }
 
   Future<void> unlinkCaregiverPatient(String linkId, String patientUid) async {
     await _db.collection('caregiver_patient_links').doc(linkId).update({
@@ -428,6 +309,98 @@ class FirestoreService {
     await _db.collection('patient_profile').doc(patientUid).update({
       'caregiver_ref': null,
     });
+  }
+
+  // ==========================================
+  // OTP CODES
+  //
+  // The caregiver generates a code and writes it here; the patient never reads
+  // this collection. Redemption happens in the Cloudflare Worker, which has
+  // admin credentials, validates expiry and the `used` flag, and mints a
+  // Firebase custom token. There is deliberately no markOtpUsed() here — if a
+  // client could set `used`, it could also leave it false and replay the code.
+  // ==========================================
+
+  /// Creates a code for [patientUid], stored under its own code as the document
+  /// id so the Worker can look it up with a direct `get` rather than a query.
+  Future<OtpCodeModel> createOtpCode({
+    required String patientUid,
+    required String caregiverUid,
+  }) async {
+    // Collisions are handled by writing and retrying, never by checking first.
+    //
+    // A pre-flight get() on a code that does not exist is DENIED by the rules:
+    // reads require isOwner(resource.data.caregiver_ref), and for a missing
+    // document `resource` is null, so that expression fails. Relaxing the rule
+    // to permit it would also hand anyone an existence oracle for guessing
+    // codes.
+    //
+    // Writing blind is safe instead: `allow update: if false` means a set()
+    // onto an existing code is rejected, so a collision surfaces as a failed
+    // write rather than silently reassigning another patient's code.
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final otp = OtpCodeModel.generate(
+        patientRef: patientUid,
+        caregiverRef: caregiverUid,
+      );
+      try {
+        await _db.collection('otp_codes').doc(otp.code).set(otp.toMap());
+        return otp;
+      } catch (e) {
+        // Either a collision (~1 in 887 million) or a genuine rules failure.
+        // Retrying costs nothing and distinguishes the two: a real permissions
+        // problem fails all three times.
+        lastError = e;
+      }
+    }
+    throw Exception('Could not create a code. $lastError');
+  }
+
+  /// The codes this caregiver has issued, newest first. Scoped to the caller by
+  /// the security rules — a caregiver can never list another's codes.
+  Stream<List<OtpCodeModel>> streamCaregiverOtpCodes(String caregiverUid) {
+    return _db
+        .collection('otp_codes')
+        .where('caregiver_ref', isEqualTo: caregiverUid)
+        .snapshots()
+        .map((snapshot) {
+          final codes = snapshot.docs
+              .map((doc) => OtpCodeModel.fromFirestore(doc))
+              .toList();
+          codes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return codes;
+        });
+  }
+
+  /// The code a caregiver can still hand to [patientUid], if one is outstanding.
+  /// Used by the generate-OTP screen so reopening it shows the same code rather
+  /// than silently minting a second one.
+  Future<OtpCodeModel?> getActiveOtpForPatient({
+    required String patientUid,
+    required String caregiverUid,
+  }) async {
+    final query = await _db
+        .collection('otp_codes')
+        .where('caregiver_ref', isEqualTo: caregiverUid)
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('used', isEqualTo: false)
+        .get();
+
+    final live = query.docs
+        .map((doc) => OtpCodeModel.fromFirestore(doc))
+        .where((otp) => otp.isRedeemable)
+        .toList();
+    if (live.isEmpty) return null;
+
+    live.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return live.first;
+  }
+
+  /// Withdraws an unused code — the caregiver's "regenerate" action. Deleting
+  /// rather than flagging keeps a redeemed code from ever being resurrected.
+  Future<void> revokeOtpCode(String code) async {
+    await _db.collection('otp_codes').doc(code).delete();
   }
 
   // ==========================================

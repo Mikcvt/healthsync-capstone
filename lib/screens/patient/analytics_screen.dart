@@ -72,7 +72,7 @@ class AnalyticsScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
@@ -171,7 +171,7 @@ class AnalyticsScreen extends StatelessWidget {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: AppColors.patientBlue.withOpacity(0.12),
+                        color: AppColors.patientBlue.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.share_outlined, color: AppColors.patientBlue),

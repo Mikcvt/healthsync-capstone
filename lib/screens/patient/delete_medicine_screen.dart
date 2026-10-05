@@ -69,7 +69,7 @@ class _DeleteMedicineScreenState extends State<DeleteMedicineScreen> {
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.12),
+                  color: Colors.redAccent.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

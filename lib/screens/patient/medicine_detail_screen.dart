@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../models/schedule_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'edit_medicine_screen.dart';
 import 'delete_medicine_screen.dart';
@@ -22,6 +23,7 @@ class MedicineDetailScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final currentSchedule = schedule ?? (patientProvider.schedules.isNotEmpty ? patientProvider.schedules.first : null);
     final medName = fallbackName ?? 'Medication Details';
+    final canEdit = context.watch<AuthProvider>().canEditMedications;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -41,26 +43,29 @@ class MedicineDetailScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined, color: AppColors.textPrimary),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => EditMedicineScreen(schedule: currentSchedule),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => DeleteMedicineScreen(schedule: currentSchedule),
-                ),
-              );
-            },
-          ),
+          // Hidden for managed patients: their caregiver owns the regimen.
+          if (canEdit) ...[
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: AppColors.textPrimary),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => EditMedicineScreen(schedule: currentSchedule),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DeleteMedicineScreen(schedule: currentSchedule),
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
       body: SafeArea(
@@ -83,7 +88,7 @@ class MedicineDetailScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
@@ -100,7 +105,7 @@ class MedicineDetailScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: (currentSchedule?.ledActive ?? false)
                                 ? Colors.orangeAccent
-                                : Colors.white.withOpacity(0.2),
+                                : Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Row(

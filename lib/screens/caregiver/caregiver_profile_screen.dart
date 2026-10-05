@@ -4,7 +4,6 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
-import '../auth/welcome_screen.dart';
 import 'caregiver_alerts_screen.dart';
 
 class CaregiverProfileScreen extends StatefulWidget {
@@ -76,10 +75,9 @@ class _CaregiverProfileScreenState extends State<CaregiverProfileScreen> {
     if (confirmed == true && mounted) {
       await context.read<AuthProvider>().signOut();
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-          (route) => false,
-        );
+        // Back to AuthGate — it renders WelcomeScreen when signed out, and
+        // destroying it here would break every subsequent sign-in.
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     }
   }
@@ -89,7 +87,6 @@ class _CaregiverProfileScreenState extends State<CaregiverProfileScreen> {
     final authProvider = context.watch<AuthProvider>();
     final caregiverProvider = context.watch<CaregiverProvider>();
     final user = authProvider.currentUserModel;
-    final profile = caregiverProvider.profile;
     final patientCount = caregiverProvider.patientLinks.length;
     final firstName = user?.firstName ?? 'Caregiver';
     final lastName = user?.lastName ?? '';
@@ -401,7 +398,7 @@ class _ToggleRow extends StatelessWidget {
           ),
           Switch(
             value: value,
-            activeColor: AppColors.caregiverGreen,
+            activeThumbColor: AppColors.caregiverGreen,
             onChanged: onChanged,
           ),
         ],

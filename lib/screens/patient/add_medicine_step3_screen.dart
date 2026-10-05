@@ -48,11 +48,15 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
     );
 
     setState(() => _isSaving = true);
-    final success = await scheduleProvider.saveNewMedication(uid);
+    // A caregiver authoring for a patient saves to that patient's uid, not
+    // their own.
+    final success = await scheduleProvider.saveNewMedication(
+      scheduleProvider.resolveSaveUid(uid),
+    );
     setState(() => _isSaving = false);
 
     if (success && mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => AddMedicineSuccessScreen(
             medicineName: scheduleProvider.medicationName,
@@ -60,7 +64,6 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
             scheduledTimes: scheduleProvider.scheduledTimes,
           ),
         ),
-        (route) => route.isFirst,
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -171,7 +174,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                         boxShadow: [
                           if (isSelected)
                             BoxShadow(
-                              color: AppColors.patientBlue.withOpacity(0.3),
+                              color: AppColors.patientBlue.withValues(alpha: 0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),

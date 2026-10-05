@@ -67,24 +67,32 @@ class AuthGate extends StatelessWidget {
 
     // If user is authenticated with a profile loaded
     if (authProvider.isAuthenticated) {
-      if (!authProvider.isEmailVerified) {
+      final user = authProvider.currentUserModel;
+
+      // Managed patients have no real email address — their account was created
+      // by a caregiver and they signed in with an OTP-minted custom token, so
+      // there is nothing to verify and no inbox to check.
+      if (user != null &&
+          user.requiresEmailVerification &&
+          !authProvider.isEmailVerified) {
         return const EmailVerificationScreen();
       }
-      final user = authProvider.currentUserModel;
+
       if (user != null) {
+        // Routing is driven by account_type, not role: a solo user is a patient
+        // who may edit their own medicines, and gating on role would send them
+        // to the wrong place.
         if (user.isCaregiver) {
-          // Initialize CaregiverProvider with uid
           WidgetsBinding.instance.addPostFrameCallback((_) {
             context.read<CaregiverProvider>().initForCaregiver(user.uid);
           });
           return const CaregiverMainScreen();
-        } else {
-          // Initialize PatientProvider with uid
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.read<PatientProvider>().initForPatient(user.uid);
-          });
-          return const PatientMainScreen();
         }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          context.read<PatientProvider>().initForPatient(user.uid);
+        });
+        return const PatientMainScreen();
       }
     }
 

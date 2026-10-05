@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_styles.dart';
 import 'patient_dashboard_screen.dart';
 import 'schedule_screen.dart';
 import 'notifications_screen.dart';

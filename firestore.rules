@@ -1,12 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -21,13 +21,45 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/patient_profile/$(request.auth.uid)).data.caregiver_ref == caregiverId;
     }
 
+    // The caller's own user document. Costs one document read per evaluation.
+    function callerDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Managed patients are read-only on medications by design: only the
+    // caregiver who created them may author their regimen. Solo users and
+    // caregivers carry can_edit_medications == true.
+    function canEditMedications() {
+      return isAuthenticated() && callerDoc().can_edit_medications == true;
+    }
+
+    function isCaregiverAccount() {
+      return isAuthenticated() && callerDoc().account_type == 'caregiver';
+    }
+
+    // A user may write medications for a patient if they own that patient
+    // record (solo) or are that patient's caregiver — and may edit at all.
+    function mayAuthorFor(patientId) {
+      return canEditMedications()
+        && (isOwner(patientId) || isCaregiverOf(patientId));
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isOwner(userId)
         || (resource.data.role == 'patient' && isCaregiverOf(userId))
         || (resource.data.role == 'caregiver' && isLinkedToCaregiver(userId));
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update, delete: if isOwner(userId);
+
+      // A user must not be able to promote themselves: can_edit_medications and
+      // account_type are set at creation (by the user themselves for solo and
+      // caregiver signups, or by the Worker for managed patients) and are
+      // immutable thereafter from the client. Admin SDK writes bypass rules, so
+      // the Worker can still change them.
+      allow update: if isOwner(userId)
+        && request.resource.data.account_type == resource.data.account_type
+        && request.resource.data.can_edit_medications == resource.data.can_edit_medications;
+      allow delete: if isOwner(userId);
     }
 
     // Patient profile
@@ -46,36 +78,86 @@ service cloud.firestore {
       allow read, write: if isOwner(caregiverId);
     }
 
-    // Medications reference collection
+    // Medications reference collection (shared drug catalogue)
     match /medications/{medicationId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if canEditMedications();
     }
 
-    // Patient Medications
+    // Patient Medications — gated on can_edit_medications
     match /patient_medications/{patMedId} {
-      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
+      allow read: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
+      allow create: if mayAuthorFor(request.resource.data.patient_ref);
+      allow update, delete: if mayAuthorFor(resource.data.patient_ref);
     }
 
-    // Schedules
+    // Schedules — authoring is caregiver-only, but confirming a dose is not.
+    //
+    // Taking a dose writes led_active (to switch the box LED off) and
+    // pills_remaining (to count down stock) on the schedule itself. A managed
+    // patient must be able to do both, so those two fields are carved out by
+    // name while dose times, box columns and dates stay caregiver-only.
     match /schedules/{scheduleId} {
-      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
+      allow read: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
+      allow create: if mayAuthorFor(request.resource.data.patient_ref);
+      allow update: if mayAuthorFor(resource.data.patient_ref)
+        || (isOwner(resource.data.patient_ref)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['led_active', 'pills_remaining']));
+      allow delete: if mayAuthorFor(resource.data.patient_ref);
     }
 
-    // Dose Logs
+    // Dose Logs — deliberately NOT gated on can_edit_medications. Confirming a
+    // dose is exactly what a managed patient is for.
     match /dose_logs/{doseLogId} {
-      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
+      allow read: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
+      allow create: if isOwner(request.resource.data.patient_ref)
+        || isCaregiverOf(request.resource.data.patient_ref);
+      allow update: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
     }
 
     // Notifications
     match /notifications/{notifId} {
-      allow read, write: if isOwner(resource.data.user_ref) || request.resource.data.user_ref == request.auth.uid;
+      allow read, write: if isOwner(resource.data.user_ref)
+        || request.resource.data.user_ref == request.auth.uid;
+    }
+
+    // OTP codes — the patient NEVER touches this collection. They are not even
+    // signed in when they type their code; the Cloudflare Worker validates it
+    // with admin credentials and mints a custom token.
+    //
+    // A client-readable otp_codes would be a brute-forceable list of account
+    // keys, so reads are scoped to the issuing caregiver and nothing else.
+    match /otp_codes/{code} {
+      allow read: if isOwner(resource.data.caregiver_ref);
+
+      // The caregiver may only issue codes in their own name, and may never
+      // create one already marked used.
+      allow create: if isCaregiverAccount()
+        && isOwner(request.resource.data.caregiver_ref)
+        && request.resource.data.used == false
+        && request.resource.data.patient_ref is string
+        && request.resource.data.expires_at is timestamp;
+
+      // `used` is flipped only by the Worker. No client update path exists,
+      // otherwise a code could be replayed indefinitely.
+      allow update: if false;
+
+      // Revoking an unused code (the "regenerate" action) is allowed; a
+      // redeemed one is immutable history.
+      allow delete: if isOwner(resource.data.caregiver_ref)
+        && resource.data.used == false;
     }
 
     // Caregiver-Patient Links
     match /caregiver_patient_links/{linkId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(request.resource.data.patient_ref);
+      allow create: if isOwner(request.resource.data.patient_ref)
+        || isOwner(request.resource.data.caregiver_ref);
       allow update: if isOwner(resource.data.patient_ref)
         || (isOwner(request.resource.data.caregiver_ref)
           && (!('caregiver_ref' in resource.data)
@@ -85,7 +167,12 @@ service cloud.firestore {
 
     // Devices (ESP32 Smart Box)
     match /devices/{deviceId} {
-      allow read, write: if isOwner(resource.data.patient_ref) || isCaregiverOf(resource.data.patient_ref) || request.resource.data.patient_ref == request.auth.uid;
+      allow read: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
+      allow create: if isOwner(request.resource.data.patient_ref)
+        || isCaregiverOf(request.resource.data.patient_ref);
+      allow update, delete: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref);
     }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'add_medicine_step1_screen.dart';
 import 'medicine_detail_screen.dart';
@@ -14,6 +15,7 @@ class ScheduleScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final schedules = patientProvider.schedules;
     final medications = patientProvider.medications;
+    final canEdit = context.watch<AuthProvider>().canEditMedications;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -30,14 +32,18 @@ class ScheduleScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
-              );
-            },
-          ),
+          // Only caregivers and solo users may author medicines. A managed
+          // patient is read-only by design, so the control is absent rather
+          // than present-and-failing.
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                );
+              },
+            ),
         ],
       ),
       body: SafeArea(
@@ -52,7 +58,7 @@ class ScheduleScreen extends StatelessWidget {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: AppColors.patientBlue.withOpacity(0.1),
+                          color: AppColors.patientBlue.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.calendar_month_outlined, size: 40, color: AppColors.patientBlue),
@@ -68,12 +74,15 @@ class ScheduleScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Set up your medication reminders and assign them to your smart box compartments.',
+                      Text(
+                        canEdit
+                            ? 'Set up your medication reminders and assign them to your smart box compartments.'
+                            : 'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
+                        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
                       ),
                       const SizedBox(height: 24),
+                      if (canEdit)
                       ElevatedButton.icon(
                         onPressed: () {
                           Navigator.of(context).push(
@@ -124,7 +133,7 @@ class ScheduleScreen extends StatelessWidget {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: AppColors.patientBlue.withOpacity(0.12),
+                              color: AppColors.patientBlue.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Column(
@@ -173,17 +182,19 @@ class ScheduleScreen extends StatelessWidget {
                 },
               ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
-          );
-        },
-        backgroundColor: AppColors.patientBlue,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Medicine', style: TextStyle(fontWeight: FontWeight.w700)),
-      ),
+      floatingActionButton: canEdit
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                );
+              },
+              backgroundColor: AppColors.patientBlue,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Medicine', style: TextStyle(fontWeight: FontWeight.w700)),
+            )
+          : null,
     );
   }
 }

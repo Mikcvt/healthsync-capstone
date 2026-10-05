@@ -3,8 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
-import 'caregiver_main_screen.dart';
-import 'link_patient_screen.dart';
+import 'add_patient_screen.dart';
 
 class CaregiverWelcomeScreen extends StatefulWidget {
   const CaregiverWelcomeScreen({super.key});
@@ -95,7 +94,7 @@ class _CaregiverWelcomeScreenState extends State<CaregiverWelcomeScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const LinkPatientScreen()),
+                      MaterialPageRoute(builder: (_) => const AddPatientScreen()),
                     );
                   },
                   icon: const Icon(Icons.link_rounded),
@@ -112,10 +111,8 @@ class _CaregiverWelcomeScreenState extends State<CaregiverWelcomeScreen> {
                 width: double.infinity,
                 height: 54,
                 child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const CaregiverMainScreen()),
-                    (route) => false,
-                  ),
+                  onPressed: () =>
+                      Navigator.of(context).popUntil((route) => route.isFirst),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     side: const BorderSide(color: AppColors.borderGray),

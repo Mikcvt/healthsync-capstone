@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import 'device_pairing_screen.dart';
-import 'patient_main_screen.dart';
 
 class PatientProfileSetupScreen extends StatelessWidget {
   const PatientProfileSetupScreen({super.key});
@@ -26,10 +25,8 @@ class PatientProfileSetupScreen extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const PatientMainScreen()),
-              (route) => false,
-            ),
+            onPressed: () =>
+                Navigator.of(context).popUntil((route) => route.isFirst),
             child: const Text(
               'Skip',
               style: TextStyle(

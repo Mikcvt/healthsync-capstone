@@ -193,7 +193,7 @@ class _SettingsToggleRow extends StatelessWidget {
           ),
           Switch(
             value: value,
-            activeColor: AppColors.patientBlue,
+            activeThumbColor: AppColors.patientBlue,
             onChanged: onChanged,
           ),
         ],

@@ -83,9 +83,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     final destination = role == 'caregiver'
         ? const CaregiverWelcomeScreen()
         : const PatientProfileSetupScreen();
-    Navigator.of(context).pushAndRemoveUntil(
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => destination),
-      (route) => false,
     );
   }
 

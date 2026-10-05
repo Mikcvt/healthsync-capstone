@@ -1,0 +1,58 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "healthsync-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"observability": {
+		"enabled": true
+	},
+	// Missed-dose sweep + low-stock check. Every 5 minutes = 288 runs/day,
+	// well inside the free plan's 100k requests/day.
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	},
+	"upload_source_maps": true,
+
+	// Caches the Google OAuth access token for ~55 min so we don't re-sign a
+	// JWT on every request. Without this we'd blow the free plan's 10ms CPU budget.
+	"kv_namespaces": [
+		{
+			"binding": "TOKEN_CACHE",
+			"id": "482a8f2792e1418ba3d2620ba0f36f98"
+		}
+	]
+	/**
+	 * Smart Placement
+	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+	// "placement": {  "mode": "smart" }
+	/**
+	 * Bindings
+	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+	 * databases, object storage, AI inference, real-time communication and more.
+	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+	 */
+	/**
+	 * Environment Variables
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
+	// "vars": {  "MY_VARIABLE": "production_value" }
+	/**
+	 * Static Assets
+	 * https://developers.cloudflare.com/workers/static-assets/binding/
+	 */
+	// "assets": {  "directory": "./public/",  "binding": "ASSETS" }
+	/**
+	 * Service Bindings (communicate between multiple Workers)
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+	 */
+	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+}

@@ -6,6 +6,15 @@ class DoseLogModel {
   final String patientRef;
   final String scheduledDate; // Format: "YYYY-MM-DD"
   final String scheduledTime; // e.g. "08:00 AM"
+
+  /// [scheduledDate] and [scheduledTime] together as a single instant.
+  ///
+  /// The Worker's 5-minute sweep needs `where scheduled_at < now - 30min`, and
+  /// a range query cannot be built from two separate strings. This is also what
+  /// history screens should sort on — sorting by the "08:00 AM" string puts
+  /// 10:00 AM before 8:00 AM.
+  final DateTime? scheduledAt;
+
   final String status; // 'taken', 'missed', 'snoozed', 'pending'
   final DateTime? takenAt;
   final int snoozeCount;
@@ -23,6 +32,7 @@ class DoseLogModel {
     required this.patientRef,
     required this.scheduledDate,
     required this.scheduledTime,
+    this.scheduledAt,
     this.status = 'pending',
     this.takenAt,
     this.snoozeCount = 0,
@@ -52,6 +62,11 @@ class DoseLogModel {
       patientRef: map['patient_ref'] as String? ?? '',
       scheduledDate: map['scheduled_date'] as String? ?? '',
       scheduledTime: map['scheduled_time'] as String? ?? '',
+      scheduledAt: map['scheduled_at'] is Timestamp
+          ? (map['scheduled_at'] as Timestamp).toDate()
+          : (map['scheduled_at'] != null
+              ? DateTime.tryParse(map['scheduled_at'].toString())
+              : null),
       status: map['status'] as String? ?? 'pending',
       takenAt: map['taken_at'] is Timestamp
           ? (map['taken_at'] as Timestamp).toDate()
@@ -80,6 +95,8 @@ class DoseLogModel {
       'patient_ref': patientRef,
       'scheduled_date': scheduledDate,
       'scheduled_time': scheduledTime,
+      'scheduled_at':
+          scheduledAt != null ? Timestamp.fromDate(scheduledAt!) : null,
       'status': status,
       'taken_at': takenAt != null ? Timestamp.fromDate(takenAt!) : null,
       'snooze_count': snoozeCount,
@@ -99,6 +116,7 @@ class DoseLogModel {
     String? patientRef,
     String? scheduledDate,
     String? scheduledTime,
+    DateTime? scheduledAt,
     String? status,
     DateTime? takenAt,
     int? snoozeCount,
@@ -116,6 +134,7 @@ class DoseLogModel {
       patientRef: patientRef ?? this.patientRef,
       scheduledDate: scheduledDate ?? this.scheduledDate,
       scheduledTime: scheduledTime ?? this.scheduledTime,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
       status: status ?? this.status,
       takenAt: takenAt ?? this.takenAt,
       snoozeCount: snoozeCount ?? this.snoozeCount,

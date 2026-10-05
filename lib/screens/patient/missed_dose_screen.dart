@@ -55,9 +55,9 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.1),
+                  color: Colors.redAccent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                  border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -65,7 +65,7 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.18),
+                        color: Colors.redAccent.withValues(alpha: 0.18),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
@@ -120,7 +120,7 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.patientBlue.withOpacity(0.08) : Colors.white,
+                      color: isSelected ? AppColors.patientBlue.withValues(alpha: 0.08) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isSelected ? AppColors.patientBlue : AppColors.borderGray,

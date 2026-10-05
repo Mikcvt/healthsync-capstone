@@ -5,7 +5,6 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'add_medicine_step1_screen.dart';
-import 'guardian_link_screen.dart';
 import 'intake_history_screen.dart';
 import 'medicine_box_status_screen.dart';
 import 'medicine_detail_screen.dart';
@@ -21,6 +20,7 @@ class PatientDashboardScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final user = authProvider.currentUserModel;
     final firstName = user?.firstName.isNotEmpty == true ? user!.firstName : 'Patient';
+    final canEdit = authProvider.canEditMedications;
 
     final schedules = patientProvider.schedules;
     final todayLogs = patientProvider.todayLogs;
@@ -86,7 +86,7 @@ class PatientDashboardScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -117,11 +117,11 @@ class PatientDashboardScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        _Pill(label: '$totalDoses daily doses', color: Colors.white.withOpacity(0.18)),
+                        _Pill(label: '$totalDoses daily doses', color: Colors.white.withValues(alpha: 0.18)),
                         const SizedBox(width: 10),
                         _Pill(
                           label: '${patientProvider.todayAdherencePercentage.toStringAsFixed(0)}% adherence',
-                          color: Colors.white.withOpacity(0.18),
+                          color: Colors.white.withValues(alpha: 0.18),
                         ),
                       ],
                     ),
@@ -172,46 +172,32 @@ class PatientDashboardScreen extends StatelessWidget {
                               'Connect accounts to share reminders & alerts.',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.amber.shade900.withOpacity(0.8),
+                                color: Colors.amber.shade900.withValues(alpha: 0.8),
                                 fontFamily: 'PlusJakartaSans',
                               ),
                             ),
                           ],
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const GuardianLinkScreen()),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber.shade900,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
-                        ),
-                        child: const Text('Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                      ),
+                      // No "Link" action: a patient can no longer attach a
+                      // caregiver themselves. Managed patients are created by
+                      // their caregiver already linked, and solo users manage
+                      // their own medicines by design.
                     ],
                   ),
                 ),
                 const SizedBox(height: 18),
               ] else ...[
-                GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const GuardianLinkScreen()),
-                    );
-                  },
-                  child: Container(
+                // Informational only — there is nothing for the patient to
+                // change about their caregiver link.
+                Builder(
+                  builder: (context) => Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: AppColors.ledDoneBg,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.caregiverGreen.withOpacity(0.3)),
+                      border: Border.all(color: AppColors.caregiverGreen.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -228,7 +214,6 @@ class PatientDashboardScreen extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const Icon(Icons.chevron_right_rounded, color: AppColors.caregiverGreen, size: 20),
                       ],
                     ),
                   ),
@@ -251,6 +236,7 @@ class PatientDashboardScreen extends StatelessWidget {
                       fontFamily: 'PlusJakartaSans',
                     ),
                   ),
+                  if (canEdit)
                   TextButton.icon(
                     onPressed: () {
                       Navigator.of(context).push(
@@ -291,6 +277,7 @@ class PatientDashboardScreen extends StatelessWidget {
                         style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 16),
+                      if (canEdit)
                       ElevatedButton.icon(
                         onPressed: () {
                           Navigator.of(context).push(
@@ -336,7 +323,7 @@ class PatientDashboardScreen extends StatelessWidget {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: AppColors.patientBlue.withOpacity(0.1),
+                              color: AppColors.patientBlue.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Column(
@@ -506,7 +493,7 @@ class _QuickCard extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 20),

@@ -28,6 +28,35 @@ class ScheduleProvider extends ChangeNotifier {
   int _pillsRemaining = 30;
   int _lowStockThreshold = 5;
 
+  /// Set when a caregiver is authoring on a patient's behalf, so the wizard
+  /// writes to that patient rather than to the signed-in user. Null means the
+  /// user is adding their own medicine (solo).
+  String? _targetPatientUid;
+  String? _targetPatientName;
+
+  String? get targetPatientUid => _targetPatientUid;
+  String? get targetPatientName => _targetPatientName;
+  bool get isAuthoringForPatient => _targetPatientUid != null;
+
+  /// Points the wizard at [uid]. Call before pushing step 1, and clear it when
+  /// the caregiver leaves the flow — a stale target would silently write the
+  /// next medicine to the wrong person.
+  void setTargetPatient({required String uid, required String name}) {
+    _targetPatientUid = uid;
+    _targetPatientName = name;
+    notifyListeners();
+  }
+
+  void clearTargetPatient() {
+    _targetPatientUid = null;
+    _targetPatientName = null;
+    notifyListeners();
+  }
+
+  /// The uid the wizard should save to: the targeted patient when a caregiver
+  /// is authoring, otherwise the signed-in user.
+  String resolveSaveUid(String currentUid) => _targetPatientUid ?? currentUid;
+
   bool _isSaving = false;
   String? _errorMessage;
 

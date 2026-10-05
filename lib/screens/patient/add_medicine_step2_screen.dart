@@ -16,7 +16,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
   final List<String> _times = ['08:00 AM'];
   final List<int> _selectedDays = [1, 2, 3, 4, 5, 6, 7]; // Mon=1 ... Sun=7
   final _instructionController = TextEditingController(text: 'Take after meals with water');
-  DateTime _startDate = DateTime.now();
+  final DateTime _startDate = DateTime.now();
 
   final List<String> _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 

@@ -1,29 +1,71 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Account types. A user's capabilities are driven by [accountType], never by
+/// [role] — `role` is kept only so documents written before the three-role
+/// redesign still load.
+class AccountType {
+  static const String managed = 'managed';
+  static const String solo = 'solo';
+  static const String caregiver = 'caregiver';
+}
+
 class UserModel {
   final String uid;
-  final String role; // 'patient' or 'caregiver'
+  final String role; // 'patient' | 'caregiver' | 'solo'
+  final String accountType; // 'managed' | 'solo' | 'caregiver'
   final String firstName;
   final String lastName;
   final String email;
   final String phone;
+  final bool canEditMedications;
   final DateTime createdAt;
   final bool isActive;
 
   const UserModel({
     required this.uid,
     required this.role,
+    required this.accountType,
     required this.firstName,
     required this.lastName,
     required this.email,
     this.phone = '',
+    required this.canEditMedications,
     required this.createdAt,
     this.isActive = true,
   });
 
   String get fullName => '$firstName $lastName'.trim();
+
   bool get isPatient => role == 'patient';
-  bool get isCaregiver => role == 'caregiver';
+  bool get isCaregiver => accountType == AccountType.caregiver;
+  bool get isSolo => accountType == AccountType.solo;
+  bool get isManaged => accountType == AccountType.managed;
+
+  /// A managed patient has no real email address — their account was created by
+  /// a caregiver and they sign in with an OTP-minted custom token. Used to skip
+  /// the email-verification gate in [AuthGate].
+  bool get requiresEmailVerification => !isManaged;
+
+  /// Back-fills [accountType] for documents written before the redesign.
+  static String _deriveAccountType(String role, Object? stored) {
+    if (stored is String && stored.isNotEmpty) return stored;
+    switch (role) {
+      case 'caregiver':
+        return AccountType.caregiver;
+      case 'solo':
+        return AccountType.solo;
+      default:
+        return AccountType.managed;
+    }
+  }
+
+  /// Only caregivers and solo users may author medications. A managed patient
+  /// is read-only by design, so an absent field must resolve to `false` for
+  /// them rather than defaulting open.
+  static bool _deriveCanEdit(String accountType, Object? stored) {
+    if (stored is bool) return stored;
+    return accountType != AccountType.managed;
+  }
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
@@ -31,13 +73,20 @@ class UserModel {
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    final role = map['role'] as String? ?? 'patient';
+    final accountType = _deriveAccountType(role, map['account_type']);
     return UserModel(
       uid: id ?? (map['uid'] as String? ?? ''),
-      role: map['role'] as String? ?? 'patient',
+      role: role,
+      accountType: accountType,
       firstName: map['first_name'] as String? ?? '',
       lastName: map['last_name'] as String? ?? '',
       email: map['email'] as String? ?? '',
       phone: map['phone'] as String? ?? '',
+      canEditMedications: _deriveCanEdit(
+        accountType,
+        map['can_edit_medications'],
+      ),
       createdAt: map['created_at'] is Timestamp
           ? (map['created_at'] as Timestamp).toDate()
           : (map['created_at'] != null
@@ -51,10 +100,12 @@ class UserModel {
     return {
       'uid': uid,
       'role': role,
+      'account_type': accountType,
       'first_name': firstName,
       'last_name': lastName,
       'email': email,
       'phone': phone,
+      'can_edit_medications': canEditMedications,
       'created_at': Timestamp.fromDate(createdAt),
       'is_active': isActive,
     };
@@ -63,20 +114,24 @@ class UserModel {
   UserModel copyWith({
     String? uid,
     String? role,
+    String? accountType,
     String? firstName,
     String? lastName,
     String? email,
     String? phone,
+    bool? canEditMedications,
     DateTime? createdAt,
     bool? isActive,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
       role: role ?? this.role,
+      accountType: accountType ?? this.accountType,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       email: email ?? this.email,
       phone: phone ?? this.phone,
+      canEditMedications: canEditMedications ?? this.canEditMedications,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
     );
