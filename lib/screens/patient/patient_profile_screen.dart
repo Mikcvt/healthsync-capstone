@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
+import '../../models/device_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/patient_provider.dart';
+import '../../services/preferences_service.dart';
+import '../../utils/date_formatter.dart';
 import 'change_password_screen.dart';
+import 'device_pairing_screen.dart';
 import 'edit_profile_screen.dart';
+import 'notifications_screen.dart';
 import 'settings_screen.dart';
 
 class PatientProfileScreen extends StatefulWidget {
@@ -16,11 +23,22 @@ class PatientProfileScreen extends StatefulWidget {
 }
 
 class _PatientProfileScreenState extends State<PatientProfileScreen> {
-  bool _doseReminders = true;
-  bool _guardianAlerts = true;
-  bool _missedDoseAlerts = true;
-  final bool _smartwatchConnected = true;
-  final bool _medicineBoxOnline = true;
+  final _preferences = PreferencesService();
+  PatientPreferences _prefs = const PatientPreferences();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  /// Reminder toggles are persisted on the device. They were plain setState
+  /// fields, so every switch reset itself as soon as the screen closed.
+  Future<void> _loadPreferences() async {
+    final loaded = await _preferences.load();
+    if (!mounted) return;
+    setState(() => _prefs = loaded);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,23 +56,28 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                   children: [
                     const SizedBox(height: 16),
                     _ProfileCard(
-                      doseReminders: _doseReminders,
-                      guardianAlerts: _guardianAlerts,
-                      missedDoseAlerts: _missedDoseAlerts,
-                      onToggleDoseReminders: (value) => setState(() {
-                        _doseReminders = value;
-                      }),
-                      onToggleGuardianAlerts: (value) => setState(() {
-                        _guardianAlerts = value;
-                      }),
-                      onToggleMissedDoseAlerts: (value) => setState(() {
-                        _missedDoseAlerts = value;
-                      }),
+                      doseReminders: _prefs.doseReminders,
+                      reminderSound: _prefs.reminderSound,
+                      fullScreenAlert: _prefs.fullScreenAlert,
+                      onToggleDoseReminders: (value) {
+                        setState(() =>
+                            _prefs = _prefs.copyWith(doseReminders: value));
+                        _preferences.setDoseReminders(value);
+                      },
+                      onToggleReminderSound: (value) {
+                        setState(() =>
+                            _prefs = _prefs.copyWith(reminderSound: value));
+                        _preferences.setReminderSound(value);
+                      },
+                      onToggleFullScreenAlert: (value) {
+                        setState(() =>
+                            _prefs = _prefs.copyWith(fullScreenAlert: value));
+                        _preferences.setFullScreenAlert(value);
+                      },
                     ),
                     const SizedBox(height: 16),
                     _DeviceStatusCard(
-                      smartwatchConnected: _smartwatchConnected,
-                      medicineBoxOnline: _medicineBoxOnline,
+                      device: context.watch<PatientProvider>().device,
                     ),
                     const SizedBox(height: 16),
                     Text('Quick actions', style: AppStyles.heading3),
@@ -64,9 +87,13 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                         Expanded(
                           child: _ActionPill(
                             icon: Icons.sync,
-                            label: 'Sync devices',
+                            label: 'Medicine box',
                             color: AppColors.patientBlue,
-                            onTap: () {},
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const DevicePairingScreen(),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -75,7 +102,11 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                             icon: Icons.history_rounded,
                             label: 'Reminder log',
                             color: AppColors.caregiverGreen,
-                            onTap: () {},
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationsScreen(),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -120,7 +151,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       label: 'About HealthSync',
                       subtitle: 'Version 1.0.0',
                       icon: Icons.info_outline,
-                      onTap: () {},
+                      onTap: () => showAboutHealthSync(context),
                     ),
                     const SizedBox(height: 12),
                     _ProfileOption(
@@ -197,7 +228,7 @@ class _ProfileHeader extends StatelessWidget {
               color: Colors.white,
               fontSize: 28,
               fontWeight: FontWeight.w900,
-              fontFamily: 'PlusJakartaSans',
+              fontFamily: AppStyles.fontFamily,
             ),
           ),
           SizedBox(height: 8),
@@ -206,7 +237,7 @@ class _ProfileHeader extends StatelessWidget {
             style: TextStyle(
               color: Colors.white70,
               fontSize: 14,
-              fontFamily: 'PlusJakartaSans',
+              fontFamily: AppStyles.fontFamily,
             ),
           ),
         ],
@@ -217,19 +248,19 @@ class _ProfileHeader extends StatelessWidget {
 
 class _ProfileCard extends StatelessWidget {
   final bool doseReminders;
-  final bool guardianAlerts;
-  final bool missedDoseAlerts;
+  final bool reminderSound;
+  final bool fullScreenAlert;
   final ValueChanged<bool> onToggleDoseReminders;
-  final ValueChanged<bool> onToggleGuardianAlerts;
-  final ValueChanged<bool> onToggleMissedDoseAlerts;
+  final ValueChanged<bool> onToggleReminderSound;
+  final ValueChanged<bool> onToggleFullScreenAlert;
 
   const _ProfileCard({
     required this.doseReminders,
-    required this.guardianAlerts,
-    required this.missedDoseAlerts,
+    required this.reminderSound,
+    required this.fullScreenAlert,
     required this.onToggleDoseReminders,
-    required this.onToggleGuardianAlerts,
-    required this.onToggleMissedDoseAlerts,
+    required this.onToggleReminderSound,
+    required this.onToggleFullScreenAlert,
   });
 
   /// A managed patient has no email of their own, so show whatever identifies
@@ -282,7 +313,7 @@ class _ProfileCard extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
-                    fontFamily: 'PlusJakartaSans',
+                    fontFamily: AppStyles.fontFamily,
                   ),
                 ),
               ),
@@ -299,7 +330,7 @@ class _ProfileCard extends StatelessWidget {
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: AppColors.textPrimary,
-                        fontFamily: 'PlusJakartaSans',
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -308,7 +339,7 @@ class _ProfileCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
-                        fontFamily: 'PlusJakartaSans',
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -318,7 +349,7 @@ class _ProfileCard extends StatelessWidget {
                         fontSize: 14,
                         color: AppColors.patientBlue,
                         fontWeight: FontWeight.w700,
-                        fontFamily: 'PlusJakartaSans',
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                   ],
@@ -329,23 +360,23 @@ class _ProfileCard extends StatelessWidget {
           const SizedBox(height: 20),
           _ToggleRow(
             label: 'Dose reminders',
-            subtitle: 'Mobile push notifications',
+            subtitle: 'Notify me when a dose is due',
             value: doseReminders,
             onChanged: onToggleDoseReminders,
           ),
           const Divider(height: 24, thickness: 1, color: AppColors.borderGray),
           _ToggleRow(
-            label: 'Guardian alerts',
-            subtitle: 'Allow caregiver monitoring',
-            value: guardianAlerts,
-            onChanged: onToggleGuardianAlerts,
+            label: 'Reminder sound',
+            subtitle: 'Play a sound with each reminder',
+            value: reminderSound,
+            onChanged: onToggleReminderSound,
           ),
           const Divider(height: 24, thickness: 1, color: AppColors.borderGray),
           _ToggleRow(
-            label: 'Missed dose alerts',
-            subtitle: 'Alert after 30 min overdue',
-            value: missedDoseAlerts,
-            onChanged: onToggleMissedDoseAlerts,
+            label: 'Full-screen alert',
+            subtitle: 'Open the dose screen, not just a notification',
+            value: fullScreenAlert,
+            onChanged: onToggleFullScreenAlert,
           ),
         ],
       ),
@@ -381,7 +412,7 @@ class _ToggleRow extends StatelessWidget {
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
               const SizedBox(height: 4),
@@ -390,7 +421,7 @@ class _ToggleRow extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
             ],
@@ -407,16 +438,13 @@ class _ToggleRow extends StatelessWidget {
 }
 
 class _DeviceStatusCard extends StatelessWidget {
-  final bool smartwatchConnected;
-  final bool medicineBoxOnline;
+  final DeviceModel? device;
 
-  const _DeviceStatusCard({
-    required this.smartwatchConnected,
-    required this.medicineBoxOnline,
-  });
+  const _DeviceStatusCard({required this.device});
 
   @override
   Widget build(BuildContext context) {
+    final paired = device != null;
     return Container(
       width: double.infinity,
       decoration: AppStyles.cardDecoration,
@@ -424,16 +452,21 @@ class _DeviceStatusCard extends StatelessWidget {
       child: Column(
         children: [
           _StatusRow(
-            label: 'Smartwatch',
-            value: smartwatchConnected ? 'WearOS · Connected' : 'Disconnected',
-            active: smartwatchConnected,
+            label: 'Medicine box',
+            value: !paired
+                ? 'Not paired'
+                : '${device!.serialNumber} · '
+                    '${device!.isOnline ? AppStrings.deviceOnline : AppStrings.deviceOffline}',
+            active: paired && device!.isOnline,
           ),
-          const Divider(height: 26, thickness: 1, color: AppColors.borderGray),
-          _StatusRow(
-            label: 'Medicine Box',
-            value: medicineBoxOnline ? 'HSD-00142 · Online' : 'Offline',
-            active: medicineBoxOnline,
-          ),
+          if (paired) ...[
+            const Divider(height: 26, thickness: 1, color: AppColors.borderGray),
+            _StatusRow(
+              label: 'Last sync',
+              value: DateFormatter.toRelativeTime(device!.lastSync),
+              active: device!.isOnline,
+            ),
+          ],
         ],
       ),
     );
@@ -465,7 +498,7 @@ class _StatusRow extends StatelessWidget {
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
               const SizedBox(height: 4),
@@ -474,7 +507,7 @@ class _StatusRow extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 13,
                   color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
             ],
@@ -537,7 +570,7 @@ class _ActionPill extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
             ),
@@ -597,7 +630,7 @@ class _ProfileOption extends StatelessWidget {
                         color: dangerous
                             ? AppColors.missedRed
                             : AppColors.textPrimary,
-                        fontFamily: 'PlusJakartaSans',
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                     if (subtitle.isNotEmpty) ...[
@@ -607,7 +640,7 @@ class _ProfileOption extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.textSecondary,
-                          fontFamily: 'PlusJakartaSans',
+                          fontFamily: AppStyles.fontFamily,
                         ),
                       ),
                     ],

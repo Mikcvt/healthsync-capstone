@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
 import 'email_verification_screen.dart';
 import 'role_select_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,13 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Failed to sign in. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.missedRed,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      SnackbarHelper.showError(context, errorMsg);
     }
   }
 

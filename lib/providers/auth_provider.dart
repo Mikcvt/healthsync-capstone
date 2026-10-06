@@ -6,6 +6,29 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 
+/// What the app knows about the signed-in user right now.
+///
+/// [AuthGate] needs all four: treating "signed in but profile not yet loaded"
+/// the same as "signed out" is what made the welcome screen flash on every
+/// launch, and left a signed-in user stranded there when offline.
+enum AuthStatus {
+  /// Firebase has not yet reported whether a session exists.
+  checking,
+
+  /// No session. Show the welcome flow.
+  signedOut,
+
+  /// Session exists; the users/{uid} document has not arrived yet.
+  loadingProfile,
+
+  /// Session exists but has no profile document — unrecoverable from the UI,
+  /// so the user is offered a retry and a sign-out rather than a blank screen.
+  profileMissing,
+
+  /// Session and profile both loaded. Route on [UserModel.accountType].
+  ready,
+}
+
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
@@ -20,8 +43,25 @@ class AuthProvider extends ChangeNotifier {
     _initAuthListener();
   }
 
+  /// True once Firebase has reported an initial auth state.
+  bool _authResolved = false;
+
+  /// True once the profile stream has emitted at least once for this session,
+  /// so an absent profile can be told apart from one still in flight.
+  bool _profileResolved = false;
+
   UserModel? get currentUserModel => _currentUserModel;
-  bool get isAuthenticated => _authService.currentUser != null && _currentUserModel != null;
+
+  AuthStatus get status {
+    if (!_authResolved) return AuthStatus.checking;
+    if (_authService.currentUser == null) return AuthStatus.signedOut;
+    if (_currentUserModel != null) return AuthStatus.ready;
+    return _profileResolved
+        ? AuthStatus.profileMissing
+        : AuthStatus.loadingProfile;
+  }
+
+  bool get isAuthenticated => status == AuthStatus.ready;
   bool get isPatient => _currentUserModel?.isPatient ?? true;
   bool get isCaregiver => _currentUserModel?.isCaregiver ?? false;
   bool get isSolo => _currentUserModel?.isSolo ?? false;
@@ -38,23 +78,43 @@ class AuthProvider extends ChangeNotifier {
 
   void _initAuthListener() {
     _authSubscription = _authService.authStateChanges.listen((user) async {
+      _authResolved = true;
       if (user != null) {
         _listenToUserProfile(user.uid);
       } else {
         _userProfileSubscription?.cancel();
         _currentUserModel = null;
+        _profileResolved = false;
         notifyListeners();
       }
+      notifyListeners();
     });
   }
 
   void _listenToUserProfile(String uid) {
     _userProfileSubscription?.cancel();
+    _profileResolved = false;
     NotificationService().saveTokenToUser(uid);
-    _userProfileSubscription = _authService.streamUserProfile(uid).listen((profile) {
+    _userProfileSubscription =
+        _authService.streamUserProfile(uid).listen((profile) {
       _currentUserModel = profile;
+      _profileResolved = true;
+      notifyListeners();
+    }, onError: (Object e) {
+      // A rules failure or a dropped connection must not leave the gate stuck
+      // on a spinner forever.
+      debugPrint('Profile stream error: $e');
+      _profileResolved = true;
       notifyListeners();
     });
+  }
+
+  /// Re-attaches the profile stream after a [AuthStatus.profileMissing] retry.
+  void retryProfileLoad() {
+    final uid = _authService.currentUser?.uid;
+    if (uid == null) return;
+    _listenToUserProfile(uid);
+    notifyListeners();
   }
 
   void _setLoading(bool value) {

@@ -30,6 +30,15 @@ function syntheticEmail(uidSeed: string): string {
 	return `patient-${uidSeed}@healthsync.invalid`;
 }
 
+/** The caregiver's form collects free text; Firestore holds an array. */
+function splitList(raw: string | undefined): string[] {
+	if (!raw) return [];
+	return raw
+		.split(',')
+		.map((item) => item.trim())
+		.filter((item) => item.length > 0);
+}
+
 export async function handleCreatePatient(request: Request, env: Env): Promise<Response> {
 	const idToken = getBearerToken(request);
 	if (!idToken) return error('Sign in required.', 401, 'unauthenticated');
@@ -92,8 +101,11 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 		profile_id: patientUid,
 		user_ref: patientUid,
 		caregiver_ref: caregiverUid,
-		medical_conditions: body.medical_conditions?.trim() ?? '',
-		allergies: body.allergies?.trim() ?? '',
+		// Arrays, not strings: the app models these as List<String> and its
+		// parser threw a TypeError on the string form, which took down the
+		// whole patient_profile stream.
+		medical_conditions: splitList(body.medical_conditions),
+		allergies: splitList(body.allergies),
 		emergency_contact: body.emergency_contact?.trim() ?? '',
 		emergency_phone: body.emergency_phone?.trim() ?? '',
 		created_at: now,

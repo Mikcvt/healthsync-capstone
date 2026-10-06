@@ -34,7 +34,7 @@ HealthSync helps patients take their medications on time using two components:
 | Server-side jobs | **Cloudflare Worker** (free plan) — OTP redemption, custom tokens, FCM fan-out, missed-dose cron. Cloud Functions are NOT used: they cannot deploy on Spark. |
 | Hardware | ESP32 microcontroller via HTTP REST API |
 | State management | Provider |
-| Font | Plus Jakarta Sans |
+| Font | Plus Jakarta Sans — **bundled** in `fonts/`, declared in `pubspec.yaml` (not `google_fonts`) |
 | Design source | Figma |
 | Version control | Git / GitHub — branch: `dev` |
 
@@ -203,8 +203,11 @@ is_active       bool
 profile_id         string
 user_ref           string (→ users)
 caregiver_ref      string (→ users)
-medical_conditions string
-allergies          string
+medical_conditions array  of string  ← NOT a string. The Dart model parses with
+allergies          array  of string     a list reader; the Worker writes arrays
+                                        to match. A plain string here threw a
+                                        TypeError and took down the whole
+                                        patient_profile stream.
 emergency_contact  string
 emergency_phone    string
 created_at         timestamp
@@ -215,7 +218,7 @@ created_at         timestamp
 profile_id         string
 user_ref           string (→ users)
 alert_pref_missed  bool
-alert_pref_low_stock bool
+alert_pref_low_stock bool   (NOT alert_pref_vitals — see below)
 alert_pref_daily   bool
 created_at         timestamp
 ```
@@ -265,11 +268,16 @@ created_at      timestamp
 
 ### dose_logs
 ```
-dose_log_id         string
-schedule_ref        string (→ schedules)
-patient_ref         string (→ users)
-scheduled_date      date
-scheduled_time      string
+dose_log_id         string   (deterministic: {schedule_id}_{YYYY-MM-DD}_{HH:mm})
+schedule_ref        string   (→ schedules)
+patient_ref         string   (→ users)
+scheduled_date      date     ("YYYY-MM-DD", for same-day lookups)
+scheduled_time      string   ("08:00 PM", display form)
+scheduled_at        timestamp  ← date + time as one instant.
+                               REQUIRED: the Worker's missed-dose sweep queries
+                               `scheduled_at < now - 30min`, and a range query
+                               cannot be built from two strings. Sorting history
+                               by the "08:00 AM" string also puts 10 AM first.
 status              string ("taken" | "missed" | "snoozed" | "pending")
 taken_at            timestamp
 snooze_count        number
@@ -320,6 +328,8 @@ patient_ref     string (→ users)
 status          string ("online" | "offline")
 last_sync       timestamp
 columns_active  number
+                NOTE: there is no battery_level field. This build has no
+                battery monitoring on any GPIO pin.
 created_at      timestamp
 is_active       bool
 ```
@@ -340,8 +350,13 @@ used            bool
 
 ```
 Dose time reached
-    → ESP32 sets led_active: true in Firestore → LED lights up on box
+    → the APP (or the Worker) sets led_active: true in Firestore
+    → ESP32 polls led_active and lights the LED on the box
     → FCM push notification sent to patient
+
+  NOTE: the phone knows the real time and the schedule; the box is a display.
+  Earlier drafts of this file said both "ESP32 sets led_active" and "ESP32
+  polls led_active" — it is the second. The ESP32 never decides a dose is due.
 
 Patient confirms via app OR push button on box
     → dose_logs status: "taken"
@@ -395,72 +410,101 @@ GPIO pin assignments:
 
 ---
 
-## Screens to build (track progress here)
+## Screens — current status
+
+**A screen is DONE when** it reads its data from a provider or stream, its write
+path reaches Firestore, and its failure path shows a message through
+`SnackbarHelper`. Rendering correctly is not done.
+
+That rule exists because the previous checklist marked `device_pairing_screen`
+and `patient_profile_setup_screen` as done when neither saved anything, which is
+how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 
 ### AUTH screens
 ```
-[ ] welcome_screen.dart               ✅ DONE
-[ ] role_select_screen.dart
-[ ] register_screen.dart
-[ ] login_screen.dart
-[ ] forgot_password_screen.dart
-[ ] email_verification_screen.dart
-[ ] otp_entry_screen.dart             (patient enters code)
-[ ] otp_success_screen.dart
+[x] welcome_screen.dart               three-way split: caregiver / code / solo
+[x] role_select_screen.dart
+[x] register_screen.dart              accepts role: solo
+[x] login_screen.dart
+[x] forgot_password_screen.dart
+[x] email_verification_screen.dart    skipped for managed patients
+[x] otp_entry_screen.dart             8-char code → Worker → custom token
+[x] otp_success_screen.dart           shows the pre-loaded schedule
 ```
 
 ### PATIENT screens
 ```
-[ ] patient_main_screen.dart          (bottom nav wrapper)
-[ ] patient_dashboard_screen.dart
-[ ] schedule_screen.dart
-[ ] add_medicine_step1_screen.dart
-[ ] add_medicine_step2_screen.dart
-[ ] add_medicine_step3_screen.dart
-[ ] add_medicine_success_screen.dart
-[ ] medicine_detail_screen.dart
-[ ] edit_medicine_screen.dart
-[ ] delete_medicine_screen.dart
-[ ] medicine_box_status_screen.dart
-[ ] dose_alert_screen.dart
-[ ] dose_confirmed_screen.dart
-[ ] missed_dose_screen.dart
-[ ] intake_history_screen.dart
-[ ] analytics_screen.dart
-[ ] notifications_screen.dart
-[ ] patient_profile_screen.dart
-[ ] edit_profile_screen.dart
-[ ] guardian_link_screen.dart
-[ ] change_password_screen.dart
-[ ] settings_screen.dart
-[ ] device_pairing_screen.dart        ✅ DONE
-[ ] patient_profile_setup_screen.dart ✅ DONE (bug fixed)
+[x] patient_main_screen.dart          bottom nav wrapper
+[x] patient_dashboard_screen.dart
+[x] schedule_screen.dart
+[x] add_medicine_step1_screen.dart
+[x] add_medicine_step2_screen.dart
+[x] add_medicine_step3_screen.dart
+[x] add_medicine_success_screen.dart
+[x] medicine_detail_screen.dart
+[x] edit_medicine_screen.dart         via PatientProvider
+[x] delete_medicine_screen.dart       retires the medication AND its schedules
+[x] medicine_box_status_screen.dart   live 8-column view off devices + schedules
+[x] dose_alert_screen.dart            Take / Snooze / Skip all write Firestore
+[x] dose_confirmed_screen.dart
+[x] missed_dose_screen.dart           writes skipped_reason
+[x] analytics_screen.dart
+[x] notifications_screen.dart         reads the notifications collection
+[x] patient_profile_screen.dart
+[x] edit_profile_screen.dart          saves to users + patient_profile
+[x] change_password_screen.dart
+[x] settings_screen.dart              device-local prefs via PreferencesService
+[x] device_pairing_screen.dart        serial entry → creates a devices doc
+[x] patient_profile_setup_screen.dart saves before continuing
+
+DELETED — a static duplicate of a working screen:
+  intake_history_screen.dart   → use analytics_screen.dart
+  scan_qr_screen.dart          → QR scanning belongs with Phase 7 hardware
 ```
 
 ### CAREGIVER screens
 ```
-[ ] caregiver_main_screen.dart        (bottom nav wrapper)
-[ ] caregiver_dashboard_screen.dart
-[ ] my_patients_screen.dart
-[ ] add_patient_screen.dart
-[ ] setup_medications_screen.dart
-[ ] generate_otp_screen.dart
-[ ] patient_detail_screen.dart
-[ ] patient_schedule_screen.dart
-[ ] patient_history_screen.dart
-[ ] caregiver_alerts_screen.dart
-[ ] reports_screen.dart
-[ ] caregiver_profile_screen.dart
-[ ] caregiver_settings_screen.dart
-[ ] caregiver_main_screen.dart
+[x] caregiver_main_screen.dart        bottom nav wrapper
+[x] caregiver_welcome_screen.dart
+[x] caregiver_dashboard_screen.dart
+[x] my_patients_screen.dart
+[x] add_patient_screen.dart           calls the Worker's POST /patients
+[x] setup_medications_screen.dart     authors to the patient's uid
+[x] generate_otp_screen.dart          48-hour countdown, share sheet
+[x] patient_detail_screen.dart
+[x] patient_schedule_screen.dart      real day strip + materialised doses
+[x] patient_history_screen.dart       real dose_logs, grouped by day
+[x] caregiver_alerts_screen.dart      reads the notifications collection
+[x] reports_screen.dart               live adherence from dose logs
+[x] caregiver_profile_screen.dart
+[x] caregiver_settings_screen.dart
+
+DELETED — a static duplicate of a working screen:
+  patient_analytics_screen.dart  → use reports_screen.dart
+  missed_alert_screen.dart       → use caregiver_alerts_screen.dart
 ```
 
-### SOLO USER screens
+### SOLO USER screens (Phase 6)
 ```
 [ ] solo_dashboard_screen.dart
 [ ] solo_analytics_screen.dart
-(shares all other patient screens)
+(shares every other patient screen, with edit controls enabled —
+ gate on canEditMedications, never on role)
 ```
+
+---
+
+## No phantom features
+
+This build has **8 LEDs, a push button, a buzzer, a DS3231 RTC and a microSD
+card**. It has no heart-rate sensor, no pulse oximeter, no battery monitoring,
+no smartwatch and no SMS gateway.
+
+Earlier screens displayed `HR 78 bpm`, `SpO2 98%`, `Battery 84%`,
+`WearOS · Connected` and an "SMS fallback" toggle. All of it was traced from
+mockups, and all of it is now removed. **Do not reintroduce a reading the
+hardware cannot produce** — a panelist who sees "SpO2 98%" will ask which sensor
+produced it.
 
 ---
 
@@ -560,6 +604,43 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
 ✅ Firebase project not showing in flutterfire configure — fixed by
    logging out and back in with correct Google account, then running:
    flutterfire configure --project=healthsync-b8394
+
+── Phase 4.5 (Oct 2026) ──────────────────────────────────────────────
+
+✅ No pending dose logs existed at all, so the Worker's 30-minute missed-dose
+   sweep had nothing to find and could never fire. Added the materializer:
+   healthsync-api/src/handlers/materialize.ts, on the same 5-minute cron.
+
+✅ reportDoseEvent() had zero callers — the caregiver never got a dose-taken
+   push. Now called from PatientProvider after the Firestore write.
+
+✅ caregiver_notified was hardcoded true on every write, which told the sweep
+   to skip the very doses whose notification had been dropped.
+
+✅ Snooze showed "Dose snoozed for 10 minutes" and wrote nothing. Now writes
+   snooze_count; the third snooze marks the dose missed.
+
+✅ patient_profile.medical_conditions: the Worker wrote a string, the Dart model
+   parsed it with List<String>.from() — which throws. Every managed patient's
+   profile stream died. Both sides now use arrays.
+
+✅ edit_profile_screen's Save button only called Navigator.pop(), and its fields
+   were prefilled with a teammate's real name, email and blood type.
+
+✅ Device pairing was a dead end: pairSmartBox() had no callers, so no devices
+   document was ever created.
+
+✅ AuthGate showed WelcomeScreen while the profile loaded, so the login screen
+   flashed on every launch and a signed-in user was stranded there when offline.
+   AuthStatus now has checking / loadingProfile / profileMissing / ready.
+
+✅ Fonts were fetched at runtime through google_fonts despite the TTFs sitting
+   in fonts/. Now bundled, per coding standard 7.
+
+⚠️ STILL OPEN: applicationId is "com.example.healthsync". Google Play REJECTS
+   com.example.* and the id cannot be changed after the first upload. Changing
+   it needs a new package registered in the Firebase console plus a re-run of
+   flutterfire configure, so it is left for whoever holds those credentials.
 ```
 
 ---

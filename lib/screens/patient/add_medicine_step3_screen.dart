@@ -5,6 +5,7 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/schedule_provider.dart';
 import 'add_medicine_success_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class AddMedicineStep3Screen extends StatefulWidget {
   const AddMedicineStep3Screen({super.key});
@@ -32,9 +33,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
     final uid = authProvider.currentUid;
 
     if (uid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User is not logged in.')),
-      );
+      SnackbarHelper.showError(context, 'You are not signed in.');
       return;
     }
 
@@ -66,11 +65,9 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
         ),
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(scheduleProvider.errorMessage ?? 'Failed to save medication.'),
-          backgroundColor: Colors.redAccent,
-        ),
+      SnackbarHelper.showError(
+        context,
+        scheduleProvider.errorMessage ?? 'Could not save this medication.',
       );
     }
   }

@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../caregiver/caregiver_welcome_screen.dart';
 import '../patient/patient_profile_setup_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({super.key});
@@ -88,11 +89,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     );
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
+  void _showMessage(String message) =>
+      SnackbarHelper.showInfo(context, message);
 
   @override
   Widget build(BuildContext context) {

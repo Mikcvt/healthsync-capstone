@@ -143,9 +143,44 @@ class FirestoreService {
         .update(model.toMap());
   }
 
+  /// Retires a medication **and every schedule that points at it**.
+  ///
+  /// Deactivating only one side is what left medicines sitting in the list with
+  /// their schedules gone, and schedules firing for medicines the patient had
+  /// already removed.
   Future<void> deletePatientMedication(String patMedId) async {
-    await _db.collection('patient_medications').doc(patMedId).update({
+    final batch = _db.batch();
+
+    batch.update(_db.collection('patient_medications').doc(patMedId), {
       'is_active': false,
+      'updated_at': Timestamp.now(),
+    });
+
+    final schedules = await _db
+        .collection('schedules')
+        .where('pat_med_ref', isEqualTo: patMedId)
+        .get();
+    for (final doc in schedules.docs) {
+      batch.update(doc.reference, {'is_active': false, 'led_active': false});
+    }
+
+    await batch.commit();
+  }
+
+  Future<ScheduleModel?> getSchedule(String scheduleId) async {
+    final doc = await _db.collection('schedules').doc(scheduleId).get();
+    if (doc.exists && doc.data() != null) {
+      return ScheduleModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  /// Deactivates one schedule, leaving its medication in place — used when a
+  /// medicine keeps some of its dose times but loses others.
+  Future<void> deactivateSchedule(String scheduleId) async {
+    await _db.collection('schedules').doc(scheduleId).update({
+      'is_active': false,
+      'led_active': false,
     });
   }
 
@@ -194,9 +229,17 @@ class FirestoreService {
   // ==========================================
   // DOSE LOGS
   // ==========================================
+  /// Dose logs for [patientUid], newest first.
+  ///
+  /// [since] bounds the window. It is not an optimisation: an unbounded stream
+  /// re-reads the patient's entire history on every write, and the Spark plan
+  /// allows 50k document reads a day. Ninety days covers every screen in the
+  /// app, and the analytics screens never ask for more.
   Stream<List<DoseLogModel>> streamPatientDoseLogs(
     String patientUid, {
     String? dateStr,
+    DateTime? since,
+    int limit = 500,
   }) {
     Query query = _db
         .collection('dose_logs')
@@ -205,12 +248,24 @@ class FirestoreService {
 
     if (dateStr != null) {
       query = query.where('scheduled_date', isEqualTo: dateStr);
+    } else if (since != null) {
+      query = query
+          .where('scheduled_at', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .orderBy('scheduled_at', descending: true);
     }
 
-    return query.snapshots().map(
+    return query.limit(limit).snapshots().map(
       (snapshot) =>
           snapshot.docs.map((doc) => DoseLogModel.fromFirestore(doc)).toList(),
     );
+  }
+
+  Future<DoseLogModel?> getDoseLog(String doseLogId) async {
+    final doc = await _db.collection('dose_logs').doc(doseLogId).get();
+    if (doc.exists && doc.data() != null) {
+      return DoseLogModel.fromFirestore(doc);
+    }
+    return null;
   }
 
   Future<String> recordDoseLog(DoseLogModel log) async {
@@ -227,9 +282,11 @@ class FirestoreService {
     int? snoozeCount,
     String? skippedReason,
     bool? caregiverNotified,
+    String? confirmedVia,
   }) async {
     final Map<String, dynamic> updates = {'status': status};
     if (takenAt != null) updates['taken_at'] = Timestamp.fromDate(takenAt);
+    if (confirmedVia != null) updates['confirmed_via'] = confirmedVia;
     if (snoozeCount != null) updates['snooze_count'] = snoozeCount;
     if (skippedReason != null) updates['skipped_reason'] = skippedReason;
     if (caregiverNotified != null) {
@@ -242,17 +299,48 @@ class FirestoreService {
   // ==========================================
   // NOTIFICATIONS
   // ==========================================
-  Stream<List<NotificationModel>> streamUserNotifications(String userUid) {
+  /// Notifications for [userUid], newest first.
+  ///
+  /// Sorted client-side so the collection needs no composite index — the
+  /// result set is capped at [limit] and a caregiver with several patients
+  /// still produces only a handful a day.
+  Stream<List<NotificationModel>> streamUserNotifications(
+    String userUid, {
+    int limit = 100,
+  }) {
     return _db
         .collection('notifications')
         .where('user_ref', isEqualTo: userUid)
         .where('is_active', isEqualTo: true)
+        .limit(limit)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
+        .map((snapshot) {
+          final items = snapshot.docs
               .map((doc) => NotificationModel.fromFirestore(doc))
-              .toList(),
-        );
+              .toList();
+          items.sort((a, b) => b.sentAt.compareTo(a.sentAt));
+          return items;
+        });
+  }
+
+  /// Marks every unread notification for [userUid] read in one batch, so
+  /// opening the alerts screen does not cost one write per row.
+  Future<void> markAllNotificationsRead(String userUid) async {
+    final unread = await _db
+        .collection('notifications')
+        .where('user_ref', isEqualTo: userUid)
+        .where('is_active', isEqualTo: true)
+        .limit(100)
+        .get();
+
+    final batch = _db.batch();
+    var pending = 0;
+    for (final doc in unread.docs) {
+      if (doc.data()['read_at'] != null) continue;
+      batch.update(doc.reference, {'read_at': Timestamp.now()});
+      pending++;
+    }
+    if (pending > 0) await batch.commit();
   }
 
   Future<void> createNotification(NotificationModel notif) async {
@@ -435,7 +523,6 @@ class FirestoreService {
       status: 'online',
       lastSync: DateTime.now(),
       columnsActive: 0,
-      batteryLevel: 100,
       createdAt: DateTime.now(),
       isActive: true,
     );

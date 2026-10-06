@@ -43,8 +43,39 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
 
+	// The dose log is the authority on whose dose this is — never the caller's
+	// own uid, and never a field in the request body.
+	//
+	// Two bugs lived here. Using callerUid as the patient meant a caregiver
+	// confirming a dose on a patient's behalf looked up the caregiver's own
+	// patient_profile, found no caregiver_ref, and silently notified nobody.
+	// And writing caregiver_notified without checking ownership let any signed-in
+	// user suppress the missed-dose alert for any dose log id they could guess.
+	let patientUid = callerUid;
+
+	if (body.dose_log_id) {
+		const log = await db.get('dose_logs', body.dose_log_id);
+		if (!log) {
+			return error('That dose could not be found.', 404, 'dose_not_found');
+		}
+
+		const logPatient = typeof log.patient_ref === 'string' ? log.patient_ref : '';
+		if (!logPatient) {
+			return error('That dose is not linked to a patient.', 409, 'dose_corrupt');
+		}
+
+		// The caller must be the patient, or that patient's caregiver.
+		if (logPatient !== callerUid) {
+			const profile = await db.get('patient_profile', logPatient);
+			if (profile?.caregiver_ref !== callerUid) {
+				return error('You cannot report this dose.', 403, 'forbidden');
+			}
+		}
+		patientUid = logPatient;
+	}
+
 	const notified = await notifyCaregiver(db, accessToken, sa.project_id, {
-		patientUid: callerUid,
+		patientUid,
 		status,
 		medicationName: body.medication_name ?? 'their medication',
 	});

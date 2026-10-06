@@ -7,8 +7,6 @@
  * false and gets picked up here.
  */
 
-import type { Env } from '../index';
-import { getAccessToken, parseServiceAccount } from '../lib/google-auth';
 import { Firestore } from '../lib/firestore';
 import { notifyCaregiver } from './dose-events';
 
@@ -22,11 +20,11 @@ const MISSED_AFTER_MINUTES = 30;
  */
 const MAX_DOSES_PER_RUN = 40;
 
-export async function runSweep(env: Env): Promise<{ missed: number; notified: number }> {
-	const sa = parseServiceAccount(env.FIREBASE_SA_KEY);
-	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
-	const db = new Firestore(sa.project_id, accessToken);
-
+export async function runSweep(
+	db: Firestore,
+	accessToken: string,
+	projectId: string,
+): Promise<{ missed: number; notified: number }> {
 	const cutoff = new Date(Date.now() - MISSED_AFTER_MINUTES * 60 * 1000);
 
 	// One query, one commit — the reason dose_logs carries a scheduled_at
@@ -72,7 +70,7 @@ export async function runSweep(env: Env): Promise<{ missed: number; notified: nu
 		if (dose.data.caregiver_notified === true) continue;
 
 		try {
-			const sent = await notifyCaregiver(db, accessToken, sa.project_id, {
+			const sent = await notifyCaregiver(db, accessToken, projectId, {
 				patientUid,
 				status: 'missed',
 				medicationName: 'their medication',

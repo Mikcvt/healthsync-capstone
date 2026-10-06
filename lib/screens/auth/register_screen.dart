@@ -5,6 +5,7 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class RegisterScreen extends StatefulWidget {
   final String role;
@@ -61,13 +62,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Registration failed. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.missedRed,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      SnackbarHelper.showError(context, errorMsg);
     }
   }
 

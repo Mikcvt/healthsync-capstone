@@ -27,6 +27,29 @@ class PatientProfileModel {
     this.isActive = true,
   });
 
+  /// Reads a field that may be stored either as an array or as a single
+  /// comma-separated string.
+  ///
+  /// Both shapes exist in the wild: the Cloudflare Worker wrote these as plain
+  /// strings when creating managed patients, while the app wrote arrays. The
+  /// previous `List<String>.from()` threw a TypeError on the string form, which
+  /// took the whole profile stream down with it.
+  static List<String> _toStringList(Object? value) {
+    if (value == null) return const [];
+    if (value is List) {
+      return value
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return value
+        .toString()
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   factory PatientProfileModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
     return PatientProfileModel.fromMap(data, doc.id);
@@ -36,8 +59,8 @@ class PatientProfileModel {
     return PatientProfileModel(
       profileId: id ?? (map['profile_id'] as String? ?? ''),
       userRef: map['user_ref'] as String? ?? '',
-      medicalConditions: List<String>.from(map['medical_conditions'] ?? []),
-      allergies: List<String>.from(map['allergies'] ?? []),
+      medicalConditions: _toStringList(map['medical_conditions']),
+      allergies: _toStringList(map['allergies']),
       emergencyContact: map['emergency_contact'] as String? ?? '',
       emergencyPhone: map['emergency_phone'] as String? ?? '',
       caregiverRef: map['caregiver_ref'] as String?,

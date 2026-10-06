@@ -1,20 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
+import '../../models/dose_log_model.dart';
 import '../../providers/caregiver_provider.dart';
-import 'patient_analytics_screen.dart';
+import '../../utils/date_formatter.dart';
 import 'patient_history_screen.dart';
 import 'patient_schedule_screen.dart';
+import 'reports_screen.dart';
+import 'setup_medications_screen.dart';
 
+/// Everything the caregiver needs about one patient, on one screen.
+///
+/// The name was the only real value here before: the stat pills, today's
+/// medication rows, the 87% adherence bar and the patient info tiles
+/// ("Hypertension, T2D", "Dr. Martin", "B+", "31 years old") were all typed in,
+/// and three of the medication rows reported a heart rate from a sensor this
+/// build does not have.
 class PatientDetailScreen extends StatelessWidget {
   const PatientDetailScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final patientName =
-        context.watch<CaregiverProvider>().selectedPatientUser?.fullName ??
-        'Patient';
+    final caregiver = context.watch<CaregiverProvider>();
+    final patient = caregiver.selectedPatientUser;
+    final patientName = patient?.fullName ?? 'Patient';
+    final profile = caregiver.selectedPatientProfile;
+    final link = caregiver.patientLinks
+        .where((l) => l.patientRef == caregiver.selectedPatientUid)
+        .firstOrNull;
+
+    final todayLogs = caregiver.logsForDay(DateTime.now());
+    final taken = todayLogs.where((l) => l.isTaken).length;
+    final pending =
+        todayLogs.where((l) => l.isPending || l.isSnoozed).length;
+    final missed = todayLogs.where((l) => l.isMissed).length;
+    final weekly = caregiver.adherenceOver(7);
+
+    if (caregiver.selectedPatientUid == null) {
+      return const _NoSelection();
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -29,9 +56,9 @@ class PatientDetailScreen extends StatelessWidget {
         ),
         title: Text(
           patientName,
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.textPrimary,
-            fontFamily: 'PlusJakartaSans',
+            fontFamily: AppStyles.fontFamily,
             fontWeight: FontWeight.w900,
             fontSize: 22,
           ),
@@ -43,30 +70,41 @@ class PatientDetailScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Your patient · Linked May 20, 2026',
-                style: TextStyle(
+              Text(
+                link == null
+                    ? 'Your patient'
+                    : 'Your patient · linked '
+                        '${DateFormatter.toShortDate(link.linkedSince)}',
+                style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
               const SizedBox(height: 22),
+
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _StatPill(label: '87%', value: 'This week'),
+                    _StatPill(
+                      label: '${(weekly * 100).round()}%',
+                      value: 'This week',
+                    ),
                     const SizedBox(width: 12),
-                    _StatPill(label: '2/3', value: 'Today done'),
+                    _StatPill(
+                      label: '$taken/${todayLogs.length}',
+                      value: 'Today done',
+                    ),
                     const SizedBox(width: 12),
-                    _StatPill(label: '1', value: 'Pending'),
+                    _StatPill(label: '$pending', value: 'Pending'),
                     const SizedBox(width: 12),
-                    _StatPill(label: '0', value: 'Missed'),
+                    _StatPill(label: '$missed', value: 'Missed'),
                   ],
                 ),
               ),
               const SizedBox(height: 22),
+
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -74,82 +112,75 @@ class PatientDetailScreen extends StatelessWidget {
                     _TabButton(
                       label: 'Schedule',
                       selected: true,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PatientScheduleScreen(patientName: patientName),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PatientScheduleScreen(patientName: patientName),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     _TabButton(
                       label: 'History',
                       selected: false,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PatientHistoryScreen(patientName: patientName),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PatientHistoryScreen(patientName: patientName),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 10),
-                    _TabButton(label: 'Vitals', selected: false),
-                    const SizedBox(width: 10),
                     _TabButton(
-                      label: 'Analytics',
+                      label: 'Reports',
                       selected: false,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PatientAnalyticsScreen(
-                              patientName: patientName,
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
+
               const Text(
                 'Today’s medications',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
               const SizedBox(height: 14),
-              const _MedicationCard(
-                title: 'Amlodipine 5mg',
-                detail: 'On time · HR: 78 bpm · Normal',
-                status: 'Done',
-                statusColor: AppColors.takenGreenBg,
-                leftColor: AppColors.takenGreenBg,
-              ),
-              const SizedBox(height: 12),
-              const _MedicationCard(
-                title: 'Losartan 50mg',
-                detail: 'On time · HR: 80 bpm · Normal',
-                status: 'Done',
-                statusColor: AppColors.takenGreenBg,
-                leftColor: AppColors.takenGreenBg,
-              ),
-              const SizedBox(height: 12),
-              const _MedicationCard(
-                title: 'Metformin 500mg pending',
-                detail: 'Scheduled 8:00 · Col 3',
-                status: '1 pending',
-                statusColor: AppColors.pendingAmberBg,
-                leftColor: AppColors.pendingAmberBg,
-              ),
-              const SizedBox(height: 18),
+
+              if (todayLogs.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: AppStyles.cardDecoration,
+                  child: Text(
+                    caregiver.selectedPatientSchedules.isEmpty
+                        ? AppStrings.noPatientSchedule
+                        : AppStrings.noSchedulesToday,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: AppColors.textSecondary,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
+                  ),
+                )
+              else
+                for (final log in todayLogs) ...[
+                  _MedicationCard(
+                    title: caregiver.medicationNameForLog(log),
+                    log: log,
+                    column: caregiver.scheduleById(log.scheduleRef)?.matBoxColumn,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              const SizedBox(height: 6),
+
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: AppStyles.cardDecoration,
@@ -158,21 +189,23 @@ class PatientDetailScreen extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '$patientName’s weekly adherence',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: AppColors.textPrimary,
-                          fontFamily: 'PlusJakartaSans',
+                          fontFamily: AppStyles.fontFamily,
                         ),
                       ),
                     ),
                     Text(
-                      '87%',
+                      '${(weekly * 100).round()}%',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.caregiverGreen,
-                        fontFamily: 'PlusJakartaSans',
+                        color: weekly >= 0.8
+                            ? AppColors.caregiverGreen
+                            : AppColors.missedRed,
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                   ],
@@ -182,15 +215,18 @@ class PatientDetailScreen extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: LinearProgressIndicator(
-                  value: 0.87,
+                  value: weekly,
                   minHeight: 10,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    AppColors.caregiverGreen,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    weekly >= 0.8
+                        ? AppColors.caregiverGreen
+                        : AppColors.missedRed,
                   ),
                   backgroundColor: AppColors.ledPending,
                 ),
               ),
               const SizedBox(height: 28),
+
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: AppStyles.cardDecoration,
@@ -203,62 +239,107 @@ class PatientDetailScreen extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textSecondary,
-                        fontFamily: 'PlusJakartaSans',
+                        fontFamily: AppStyles.fontFamily,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: const [
-                        Expanded(
-                          child: _InfoTile(
-                            label: 'Condition',
-                            value: 'Hypertension, T2D',
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: _InfoTile(
-                            label: 'Doctor',
-                            value: 'Dr. Martin',
-                          ),
-                        ),
-                      ],
+                    // Only fields the schema actually holds. Blood type and age
+                    // were on the mockup but exist nowhere in patient_profile.
+                    _InfoTile(
+                      label: 'Conditions',
+                      value: profile?.medicalConditions.isNotEmpty == true
+                          ? profile!.medicalConditions.join(', ')
+                          : 'None recorded',
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: const [
-                        Expanded(
-                          child: _InfoTile(label: 'Blood type', value: 'B+'),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: _InfoTile(label: 'Age', value: '31 years old'),
-                        ),
-                      ],
+                    _InfoTile(
+                      label: 'Allergies',
+                      value: profile?.allergies.isNotEmpty == true
+                          ? profile!.allergies.join(', ')
+                          : 'None recorded',
                     ),
+                    const SizedBox(height: 12),
+                    _InfoTile(
+                      label: 'Emergency contact',
+                      value: profile?.emergencyContact.isNotEmpty == true
+                          ? [
+                              profile!.emergencyContact,
+                              if (profile.emergencyPhone.isNotEmpty)
+                                profile.emergencyPhone,
+                            ].join(' · ')
+                          : 'None recorded',
+                    ),
+                    if (patient?.phone.isNotEmpty == true) ...[
+                      const SizedBox(height: 12),
+                      _InfoTile(label: 'Phone', value: patient!.phone),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 20),
+
+              // Replaces a "Send message to {patient}" button that did nothing:
+              // there is no messaging channel in this system, and the action a
+              // caregiver actually needs from here is to edit the regimen.
               SizedBox(
                 width: double.infinity,
                 height: 54,
-                child: ElevatedButton(
-                  onPressed: () {},
+                child: ElevatedButton.icon(
+                  onPressed: caregiver.selectedPatientUid == null
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SetupMedicationsScreen(
+                                patientUid: caregiver.selectedPatientUid!,
+                                patientName: patientName,
+                              ),
+                            ),
+                          ),
+                  icon: const Icon(Icons.medication_outlined),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
+                    backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  child: Text(
-                    'Send message to $patientName',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  label: const Text(
+                    'Manage medications',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
                   ),
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoSelection extends StatelessWidget {
+  const _NoSelection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text(
+            AppStrings.noPatientSelected,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+              fontFamily: AppStyles.fontFamily,
+            ),
           ),
         ),
       ),
@@ -274,37 +355,31 @@ class _StatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.borderGray),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontFamily: 'PlusJakartaSans',
-              ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+              fontFamily: AppStyles.fontFamily,
             ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
-                fontFamily: 'PlusJakartaSans',
-              ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontFamily: AppStyles.fontFamily,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -315,26 +390,33 @@ class _TabButton extends StatelessWidget {
   final bool selected;
   final VoidCallback? onTap;
 
-  const _TabButton({required this.label, required this.selected, this.onTap});
+  const _TabButton({
+    required this.label,
+    required this.selected,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.caregiverGreen : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.borderGray),
+          color: selected ? AppColors.caregiverGreen : AppColors.cardWhite,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.caregiverGreen : AppColors.borderGray,
+          ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : AppColors.textPrimary,
-            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w800,
+            color: selected ? Colors.white : AppColors.textSecondary,
+            fontFamily: AppStyles.fontFamily,
           ),
         ),
       ),
@@ -344,74 +426,93 @@ class _TabButton extends StatelessWidget {
 
 class _MedicationCard extends StatelessWidget {
   final String title;
-  final String detail;
-  final String status;
-  final Color statusColor;
-  final Color leftColor;
+  final DoseLogModel log;
+  final int? column;
 
   const _MedicationCard({
     required this.title,
-    required this.detail,
-    required this.status,
-    required this.statusColor,
-    required this.leftColor,
+    required this.log,
+    this.column,
   });
+
+  (String, Color, Color) get _status {
+    switch (log.status) {
+      case 'taken':
+        return ('Taken', AppColors.takenGreen, AppColors.takenGreenBg);
+      case 'missed':
+        return ('Missed', AppColors.missedRed, AppColors.missedRedBg);
+      case 'snoozed':
+        return ('Snoozed', AppColors.pendingAmber, AppColors.pendingAmberBg);
+      default:
+        return ('Pending', AppColors.upcomingBlue, AppColors.upcomingBlueBg);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final (label, accent, background) = _status;
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppStyles.cardDecoration.copyWith(
-        border: Border.all(color: leftColor),
-      ),
+      decoration: AppStyles.cardDecoration,
       child: Row(
         children: [
           Container(
             width: 6,
-            height: 60,
+            height: 64,
             decoration: BoxDecoration(
-              color: leftColor,
-              borderRadius: BorderRadius.circular(8),
+              color: accent,
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(16),
+              ),
             ),
           ),
-          const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    fontFamily: 'PlusJakartaSans',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  detail,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'PlusJakartaSans',
+                  const SizedBox(height: 3),
+                  Text(
+                    [
+                      log.scheduledTime,
+                      if (column != null) 'Compartment $column',
+                    ].join(' · '),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              status,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: accent,
+                  fontFamily: AppStyles.fontFamily,
+                ),
               ),
             ),
           ),
@@ -429,36 +530,33 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderGray),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 128,
+          child: Text(
             label,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 12.5,
               color: AppColors.textSecondary,
-              fontFamily: 'PlusJakartaSans',
+              fontFamily: AppStyles.fontFamily,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
+        ),
+        Expanded(
+          child: Text(
             value,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 12.5,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              fontFamily: 'PlusJakartaSans',
+              height: 1.4,
+              fontFamily: AppStyles.fontFamily,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

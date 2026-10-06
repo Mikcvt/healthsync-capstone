@@ -31,6 +31,17 @@ class AppColors {
     colors: [Color(0xFF1B5FD4), Color(0xFF2D7BF5)],
   );
 
+  /// The softer blue-to-teal wash behind the welcome screen. Lighter than
+  /// [primaryGradient], which is for headers and primary buttons.
+  static const Color brandBlueSoft = Color(0xFF4A90D9);
+  static const Color brandTeal = Color(0xFF2BB5A0);
+
+  static const LinearGradient welcomeGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [brandBlueSoft, brandTeal],
+  );
+
   static const LinearGradient greenGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,

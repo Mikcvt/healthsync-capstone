@@ -6,9 +6,17 @@ import '../models/patient_profile_model.dart';
 import '../models/user_model.dart';
 import '../models/schedule_model.dart';
 import '../models/dose_log_model.dart';
+import '../models/notification_model.dart';
+import '../models/patient_medication_model.dart';
 import '../models/otp_code_model.dart';
 import '../services/api_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/date_formatter.dart';
+
+/// How far back the selected patient's dose history reaches. Bounded because
+/// an unbounded stream re-reads the whole history on every write, against the
+/// Spark plan's 50k reads a day.
+const Duration _historyWindow = Duration(days: 90);
 
 class CaregiverProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
@@ -22,24 +30,117 @@ class CaregiverProvider extends ChangeNotifier {
   PatientProfileModel? _selectedPatientProfile;
   List<ScheduleModel> _selectedPatientSchedules = [];
   List<DoseLogModel> _selectedPatientLogs = [];
+  List<PatientMedicationModel> _selectedPatientMedications = [];
+  List<NotificationModel> _notifications = [];
   bool _isLoading = false;
+  bool _linksLoaded = false;
   String? _errorMessage;
 
   StreamSubscription? _profileSub;
   StreamSubscription? _linksSub;
+  StreamSubscription? _notificationsSub;
   StreamSubscription? _patientSchedulesSub;
   StreamSubscription? _patientLogsSub;
+  StreamSubscription? _patientMedicationsSub;
 
   CaregiverProfileModel? get profile => _profile;
   List<CaregiverPatientLinkModel> get patientLinks => _patientLinks;
   String? get selectedPatientUid => _selectedPatientUid;
   UserModel? get selectedPatientUser => _selectedPatientUser;
   PatientProfileModel? get selectedPatientProfile => _selectedPatientProfile;
-  List<ScheduleModel> get selectedPatientSchedules => _selectedPatientSchedules;
-  List<DoseLogModel> get selectedPatientLogs => _selectedPatientLogs;
+  List<PatientMedicationModel> get selectedPatientMedications =>
+      _selectedPatientMedications;
+  List<NotificationModel> get notifications => _notifications;
   bool get hasLinkedPatients => _patientLinks.isNotEmpty;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// True until the patient-links stream has emitted once, so an empty list can
+  /// be told apart from one that has not arrived.
+  bool get isLoadingPatients => _caregiverUid != null && !_linksLoaded;
+
+  int get unreadNotificationCount =>
+      _notifications.where((n) => n.readAt == null).length;
+
+  /// The selected patient's schedules, earliest time of day first — the order
+  /// every schedule and history view presents them in.
+  List<ScheduleModel> get selectedPatientSchedules {
+    final sorted = [..._selectedPatientSchedules];
+    sorted.sort((a, b) => DateFormatter.minutesOfDay(a.scheduledTime)
+        .compareTo(DateFormatter.minutesOfDay(b.scheduledTime)));
+    return sorted;
+  }
+
+  /// Dose logs for the selected patient, newest scheduled time first.
+  List<DoseLogModel> get selectedPatientLogs {
+    final sorted = [..._selectedPatientLogs];
+    sorted.sort((a, b) {
+      final aAt = a.scheduledAt;
+      final bAt = b.scheduledAt;
+      if (aAt != null && bAt != null) return bAt.compareTo(aAt);
+      return b.scheduledDate.compareTo(a.scheduledDate);
+    });
+    return sorted;
+  }
+
+  /// The selected patient's logs for one calendar day.
+  List<DoseLogModel> logsForDay(DateTime day) {
+    final key = DateFormatter.toDateKey(day);
+    return selectedPatientLogs.where((log) {
+      if (log.scheduledDate.isNotEmpty) return log.scheduledDate == key;
+      final at = log.scheduledAt;
+      return at != null && DateFormatter.isSameDay(at, day);
+    }).toList();
+  }
+
+  PatientMedicationModel? medicationFor(String patMedRef) {
+    for (final med in _selectedPatientMedications) {
+      if (med.patMedId == patMedRef) return med;
+    }
+    return null;
+  }
+
+  /// A readable medicine name for a schedule, for alert bodies and list rows.
+  String medicationNameFor(ScheduleModel schedule) {
+    final name = medicationFor(schedule.patMedRef)?.medicationName.trim() ?? '';
+    return name.isEmpty ? 'Medication' : name;
+  }
+
+  /// The medicine name behind a dose log, resolved through its schedule.
+  String medicationNameForLog(DoseLogModel log) {
+    for (final schedule in _selectedPatientSchedules) {
+      if (schedule.scheduleId == log.scheduleRef) {
+        return medicationNameFor(schedule);
+      }
+    }
+    return 'Medication';
+  }
+
+  ScheduleModel? scheduleById(String scheduleId) {
+    for (final schedule in _selectedPatientSchedules) {
+      if (schedule.scheduleId == scheduleId) return schedule;
+    }
+    return null;
+  }
+
+  /// Adherence over [days] for the selected patient, as a 0-1 ratio.
+  ///
+  /// Shared by the reports screen and the per-patient views so the same patient
+  /// cannot show two different percentages on two screens.
+  double adherenceOver(int days) {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    final window = _selectedPatientLogs.where((log) {
+      final at = log.scheduledAt;
+      return at == null || at.isAfter(cutoff);
+    });
+    final resolved = window.where((l) => l.isTaken || l.isMissed).length;
+    if (resolved == 0) return 1.0;
+    return window.where((l) => l.isTaken).length / resolved;
+  }
+
+  /// Schedules of the selected patient whose stock has hit the threshold.
+  List<ScheduleModel> get lowStockSchedules =>
+      _selectedPatientSchedules.where((s) => s.isLowStock).toList();
 
   // Adherence calculation for selected patient
   double get patientAdherencePercentage {
@@ -62,13 +163,44 @@ class CaregiverProvider extends ChangeNotifier {
     });
 
     // Listen to linked patients
-    _linksSub = _firestoreService.streamCaregiverLinks(uid).listen((links) async {
+    _linksSub =
+        _firestoreService.streamCaregiverLinks(uid).listen((links) async {
       _patientLinks = links;
+      _linksLoaded = true;
       if (_selectedPatientUid == null && links.isNotEmpty) {
         selectPatient(links.first.patientRef);
       }
       notifyListeners();
+    }, onError: (Object e) {
+      _linksLoaded = true;
+      debugPrint('Caregiver links stream error: $e');
+      notifyListeners();
     });
+
+    // The caregiver's own alert feed, written by the Worker when it pushes.
+    _notificationsSub =
+        _firestoreService.streamUserNotifications(uid).listen((items) {
+      _notifications = items;
+      notifyListeners();
+    }, onError: (Object e) => debugPrint('Notifications stream error: $e'));
+  }
+
+  Future<void> markNotificationRead(String notifId) async {
+    try {
+      await _firestoreService.markNotificationAsRead(notifId);
+    } catch (e) {
+      debugPrint('markNotificationRead failed: $e');
+    }
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    final uid = _caregiverUid;
+    if (uid == null) return;
+    try {
+      await _firestoreService.markAllNotificationsRead(uid);
+    } catch (e) {
+      debugPrint('markAllNotificationsRead failed: $e');
+    }
   }
 
   // Select active patient to monitor
@@ -76,22 +208,42 @@ class CaregiverProvider extends ChangeNotifier {
     _selectedPatientUid = patientUid;
     _patientSchedulesSub?.cancel();
     _patientLogsSub?.cancel();
+    _patientMedicationsSub?.cancel();
 
-    // Fetch user & profile info
+    // Cleared up front so the UI never shows the previous patient's data
+    // against the new patient's name while the streams reconnect.
+    _selectedPatientSchedules = [];
+    _selectedPatientLogs = [];
+    _selectedPatientMedications = [];
+    notifyListeners();
+
     _selectedPatientUser = await _firestoreService.getUser(patientUid);
-    _selectedPatientProfile = await _firestoreService.getPatientProfile(patientUid);
+    _selectedPatientProfile =
+        await _firestoreService.getPatientProfile(patientUid);
 
-    // Stream schedules
-    _patientSchedulesSub = _firestoreService.streamPatientSchedules(patientUid).listen((schs) {
+    _patientSchedulesSub = _firestoreService
+        .streamPatientSchedules(patientUid)
+        .listen((schs) {
       _selectedPatientSchedules = schs;
       notifyListeners();
-    });
+    }, onError: (Object e) => debugPrint('Patient schedules error: $e'));
 
-    // Stream logs
-    _patientLogsSub = _firestoreService.streamPatientDoseLogs(patientUid).listen((logs) {
+    _patientLogsSub = _firestoreService
+        .streamPatientDoseLogs(
+          patientUid,
+          since: DateTime.now().subtract(_historyWindow),
+        )
+        .listen((logs) {
       _selectedPatientLogs = logs;
       notifyListeners();
-    });
+    }, onError: (Object e) => debugPrint('Patient logs error: $e'));
+
+    _patientMedicationsSub = _firestoreService
+        .streamPatientMedications(patientUid)
+        .listen((meds) {
+      _selectedPatientMedications = meds;
+      notifyListeners();
+    }, onError: (Object e) => debugPrint('Patient medications error: $e'));
 
     notifyListeners();
   }
@@ -188,13 +340,13 @@ class CaregiverProvider extends ChangeNotifier {
   // Update alert preferences
   Future<void> updateAlertPreferences({
     bool? alertPrefMissed,
-    bool? alertPrefVitals,
+    bool? alertPrefLowStock,
     bool? alertPrefDaily,
   }) async {
     if (_profile == null || _caregiverUid == null) return;
     final updated = _profile!.copyWith(
       alertPrefMissed: alertPrefMissed,
-      alertPrefVitals: alertPrefVitals,
+      alertPrefLowStock: alertPrefLowStock,
       alertPrefDaily: alertPrefDaily,
     );
     await _firestoreService.setCaregiverProfile(updated);
@@ -211,8 +363,10 @@ class CaregiverProvider extends ChangeNotifier {
       _selectedPatientProfile = null;
       _selectedPatientSchedules = [];
       _selectedPatientLogs = [];
+      _selectedPatientMedications = [];
       _patientSchedulesSub?.cancel();
       _patientLogsSub?.cancel();
+      _patientMedicationsSub?.cancel();
     }
     notifyListeners();
   }
@@ -220,8 +374,10 @@ class CaregiverProvider extends ChangeNotifier {
   void _cancelSubscriptions() {
     _profileSub?.cancel();
     _linksSub?.cancel();
+    _notificationsSub?.cancel();
     _patientSchedulesSub?.cancel();
     _patientLogsSub?.cancel();
+    _patientMedicationsSub?.cancel();
   }
 
   @override

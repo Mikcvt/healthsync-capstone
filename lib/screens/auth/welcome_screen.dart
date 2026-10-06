@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+
+import '../../constants/app_colors.dart';
+
 import 'login_screen.dart';
 import 'otp_entry_screen.dart';
 import 'role_select_screen.dart';
@@ -22,8 +25,8 @@ class WelcomeScreen extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF4A90D9), // top-left blue
-                  Color(0xFF2BB5A0), // bottom-right teal-green
+                  AppColors.brandBlueSoft,
+                  AppColors.brandTeal,
                 ],
               ),
             ),
@@ -139,7 +142,7 @@ class WelcomeScreen extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                             fontFamily: 'PlusJakartaSans',
                             height: 1.2,
                           ),
@@ -149,7 +152,7 @@ class WelcomeScreen extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF2BB5A0),
+                            color: AppColors.brandTeal,
                             fontFamily: 'PlusJakartaSans',
                             height: 1.2,
                           ),
@@ -175,22 +178,22 @@ class WelcomeScreen extends StatelessWidget {
                   // Feature rows
                   _FeatureRow(
                     icon: Icons.medical_services_outlined,
-                    iconBgColor: const Color(0xFFEBF1FF),
-                    iconColor: const Color(0xFF1B5FD4),
+                    iconBgColor: AppColors.blueLight,
+                    iconColor: AppColors.patientBlue,
                     text: 'LED-guided smart medicine box',
                   ),
                   const SizedBox(height: 14),
                   _FeatureRow(
                     icon: Icons.access_time_outlined,
-                    iconBgColor: const Color(0xFFFEF3C7),
-                    iconColor: const Color(0xFFF59E0B),
-                    text: 'Smartwatch vibration reminders',
+                    iconBgColor: AppColors.ledActiveBg,
+                    iconColor: AppColors.ledActive,
+                    text: 'On-time reminders on your phone',
                   ),
                   const SizedBox(height: 14),
                   _FeatureRow(
                     icon: Icons.group_outlined,
-                    iconBgColor: const Color(0xFFE4F7F0),
-                    iconColor: const Color(0xFF0D9B6B),
+                    iconBgColor: AppColors.greenLight,
+                    iconColor: AppColors.caregiverGreen,
                     text: 'Real-time caregiver monitoring',
                   ),
                   const SizedBox(height: 32),
@@ -208,7 +211,7 @@ class WelcomeScreen extends StatelessWidget {
                         );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0D9B6B),
+                        backgroundColor: AppColors.caregiverGreen,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -244,12 +247,12 @@ class WelcomeScreen extends StatelessWidget {
                       icon: const Icon(
                         Icons.key_rounded,
                         size: 20,
-                        color: Color(0xFF1B5FD4),
+                        color: AppColors.patientBlue,
                       ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1B5FD4),
+                        foregroundColor: AppColors.patientBlue,
                         side: const BorderSide(
-                          color: Color(0xFF1B5FD4),
+                          color: AppColors.patientBlue,
                           width: 1.5,
                         ),
                         shape: RoundedRectangleBorder(
@@ -262,7 +265,7 @@ class WelcomeScreen extends StatelessWidget {
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'PlusJakartaSans',
-                          color: Color(0xFF1B5FD4),
+                          color: AppColors.patientBlue,
                         ),
                       ),
                     ),
@@ -282,9 +285,9 @@ class WelcomeScreen extends StatelessWidget {
                         );
                       },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F172A),
+                        foregroundColor: AppColors.textPrimary,
                         side: const BorderSide(
-                          color: Color(0xFFE2E8F0),
+                          color: AppColors.borderGray,
                           width: 1.5,
                         ),
                         shape: RoundedRectangleBorder(
@@ -297,7 +300,7 @@ class WelcomeScreen extends StatelessWidget {
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'PlusJakartaSans',
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),
@@ -313,7 +316,7 @@ class WelcomeScreen extends StatelessWidget {
                             text: 'By continuing to our ',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textMuted,
                               fontFamily: 'PlusJakartaSans',
                             ),
                           ),
@@ -321,7 +324,7 @@ class WelcomeScreen extends StatelessWidget {
                             text: 'Terms & Privacy',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF1B5FD4),
+                              color: AppColors.patientBlue,
                               fontFamily: 'PlusJakartaSans',
                               fontWeight: FontWeight.w600,
                             ),
@@ -378,7 +381,7 @@ class _FeatureRow extends StatelessWidget {
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF0F172A),
+            color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',
           ),
         ),

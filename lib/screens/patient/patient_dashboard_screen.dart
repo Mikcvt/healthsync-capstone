@@ -5,7 +5,8 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'add_medicine_step1_screen.dart';
-import 'intake_history_screen.dart';
+import 'analytics_screen.dart';
+import 'missed_dose_screen.dart';
 import 'medicine_box_status_screen.dart';
 import 'medicine_detail_screen.dart';
 import 'notifications_screen.dart';
@@ -302,14 +303,26 @@ class PatientDashboardScreen extends StatelessWidget {
                       ? matchingMed!.medicationName
                       : (sch.caregiverDoctor.isNotEmpty ? 'Medication (Col ${sch.matBoxColumn})' : 'Scheduled Medication');
 
+                  // A missed dose opens the reason picker instead of the
+                  // detail screen: the one useful thing the patient can still
+                  // do for it is say why.
+                  final todayLog = patientProvider.todayLogForSchedule(sch.scheduleId);
+
                   return GestureDetector(
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => MedicineDetailScreen(
-                            schedule: sch,
-                            fallbackName: medName,
-                          ),
+                          builder: (_) => todayLog?.isMissed == true
+                              ? MissedDoseScreen(
+                                  medicineName: medName,
+                                  scheduledTime: sch.scheduledTime,
+                                  doseLogId: todayLog!.doseLogId,
+                                  scheduleId: sch.scheduleId,
+                                )
+                              : MedicineDetailScreen(
+                                  schedule: sch,
+                                  fallbackName: medName,
+                                ),
                         ),
                       );
                     },
@@ -424,7 +437,7 @@ class PatientDashboardScreen extends StatelessWidget {
                       color: AppColors.caregiverGreen,
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const IntakeHistoryScreen()),
+                          MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
                         );
                       },
                     ),

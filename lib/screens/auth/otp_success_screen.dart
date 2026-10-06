@@ -11,15 +11,35 @@ import '../../services/firestore_service.dart';
 ///
 /// Seeing their real medicines here is the proof that the "no setup" promise
 /// held — landing on an empty dashboard would feel like the code failed.
-class OtpSuccessScreen extends StatelessWidget {
+class OtpSuccessScreen extends StatefulWidget {
   final String patientName;
 
   const OtpSuccessScreen({super.key, required this.patientName});
 
   @override
-  Widget build(BuildContext context) {
+  State<OtpSuccessScreen> createState() => _OtpSuccessScreenState();
+}
+
+class _OtpSuccessScreenState extends State<OtpSuccessScreen> {
+  /// Created once, in initState. Building the stream inside `build` made a
+  /// fresh subscription on every rebuild and re-read the whole schedule.
+  Stream<List<ScheduleModel>>? _schedules;
+  String? _uid;
+
+  @override
+  void initState() {
+    super.initState();
     final uid = context.read<AuthProvider>().currentUid;
-    final firstName = patientName.split(' ').first;
+    _uid = uid;
+    if (uid != null) {
+      _schedules = FirestoreService().streamPatientSchedules(uid);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = _uid;
+    final firstName = widget.patientName.split(' ').first;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -78,11 +98,10 @@ class OtpSuccessScreen extends StatelessWidget {
               const SizedBox(height: 12),
 
               Expanded(
-                child: uid == null
+                child: uid == null || _schedules == null
                     ? const SizedBox.shrink()
                     : StreamBuilder<List<ScheduleModel>>(
-                        stream:
-                            FirestoreService().streamPatientSchedules(uid),
+                        stream: _schedules,
                         builder: (context, snapshot) {
                           if (snapshot.connectionState ==
                               ConnectionState.waiting) {

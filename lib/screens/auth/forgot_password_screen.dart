@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/snackbar_helper.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -36,13 +37,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       });
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Failed to send recovery email.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppColors.missedRed,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      SnackbarHelper.showError(context, errorMsg);
     }
   }
 

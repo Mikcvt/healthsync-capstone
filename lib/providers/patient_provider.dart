@@ -1,286 +1,643 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../constants/app_strings.dart';
 import '../models/patient_profile_model.dart';
 import '../models/patient_medication_model.dart';
 import '../models/schedule_model.dart';
 import '../models/dose_log_model.dart';
 import '../models/device_model.dart';
+import '../models/notification_model.dart';
 import '../models/caregiver_patient_link_model.dart';
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/date_formatter.dart';
+
+/// How far back the history stream reaches.
+///
+/// Bounded deliberately: an unbounded stream re-reads the patient's whole
+/// history on every write, and the Spark plan allows 50k reads a day. Every
+/// screen in the app asks for 90 days or less.
+const Duration _historyWindow = Duration(days: 90);
+
+/// The outcome of a dose action, so the screen can show the right message
+/// without having to interpret a bool.
+enum DoseActionResult {
+  success,
+
+  /// The dose was already confirmed. Not an error — usually a double tap — but
+  /// nothing was written, so stock is not decremented twice.
+  alreadyConfirmed,
+
+  /// Snoozed past the cap, so the dose was marked missed instead.
+  snoozeLimitReached,
+
+  failed,
+}
 
 class PatientProvider extends ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
+  final ApiService _apiService = ApiService();
 
   String? _patientUid;
   PatientProfileModel? _profile;
   List<PatientMedicationModel> _medications = [];
   List<ScheduleModel> _schedules = [];
-  List<DoseLogModel> _todayLogs = [];
   List<DoseLogModel> _allLogs = [];
+  List<NotificationModel> _notifications = [];
   DeviceModel? _device;
   CaregiverPatientLinkModel? _link;
   UserModel? _caregiverUser;
-  bool _isLoading = false;
+
+  bool _medicationsLoaded = false;
+  bool _schedulesLoaded = false;
+  bool _logsLoaded = false;
   String? _errorMessage;
 
-  // Stream Subscriptions
   StreamSubscription? _profileSub;
   StreamSubscription? _medicationsSub;
   StreamSubscription? _schedulesSub;
-  StreamSubscription? _todayLogsSub;
   StreamSubscription? _allLogsSub;
+  StreamSubscription? _notificationsSub;
   StreamSubscription? _deviceSub;
   StreamSubscription? _linksSub;
 
-  // Getters
+  // ==========================================
+  // READS
+  // ==========================================
+
   PatientProfileModel? get profile => _profile;
   List<PatientMedicationModel> get medications => _medications;
-  List<ScheduleModel> get schedules => _schedules;
-  List<DoseLogModel> get todayLogs => _todayLogs;
-  List<DoseLogModel> get allLogs => _allLogs;
+  List<NotificationModel> get notifications => _notifications;
   DeviceModel? get device => _device;
   CaregiverPatientLinkModel? get link => _link;
   UserModel? get caregiverUser => _caregiverUser;
   bool get isLinkedToCaregiver => _link != null && _link!.status == 'active';
   bool get isLinkPending => _link != null && _link!.status == 'pending';
-  String? get inviteCode => _link?.inviteCode;
-  bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Calculate adherence percentage for today
-  double get todayAdherencePercentage {
-    if (_todayLogs.isEmpty) return 100.0;
-    final takenCount = _todayLogs.where((l) => l.isTaken).length;
-    final totalResolved = _todayLogs.where((l) => l.isTaken || l.isMissed).length;
-    if (totalResolved == 0) return 100.0;
-    return (takenCount / totalResolved) * 100.0;
+  /// True until the three streams the dashboard needs have each emitted once.
+  /// The previous flag was set true and false inside the same method body, so
+  /// no spinner in the app ever rendered.
+  bool get isLoading =>
+      _patientUid != null &&
+      !(_medicationsLoaded && _schedulesLoaded && _logsLoaded);
+
+  /// Active schedules, earliest time of day first. Dose screens and the box
+  /// view both rely on this order.
+  List<ScheduleModel> get schedules {
+    final sorted = [..._schedules];
+    sorted.sort((a, b) => DateFormatter.minutesOfDay(a.scheduledTime)
+        .compareTo(DateFormatter.minutesOfDay(b.scheduledTime)));
+    return sorted;
   }
 
-  // Calculate overall adherence percentage
-  double get overallAdherencePercentage {
-    if (_allLogs.isEmpty) return 100.0;
-    final takenCount = _allLogs.where((l) => l.isTaken).length;
-    final totalResolved = _allLogs.where((l) => l.isTaken || l.isMissed).length;
-    if (totalResolved == 0) return 100.0;
-    return (takenCount / totalResolved) * 100.0;
+  List<DoseLogModel> get allLogs => _allLogs;
+
+  /// Today's logs, derived from the history stream rather than fetched by a
+  /// second dated query.
+  ///
+  /// The old dated stream captured "today" once when the provider initialised,
+  /// so an app left open past midnight showed yesterday's doses forever.
+  /// Deriving it means the list is correct whenever it is read, and costs one
+  /// stream instead of two.
+  List<DoseLogModel> get todayLogs {
+    final today = DateTime.now();
+    final key = DateFormatter.toDateKey(today);
+    return _allLogs.where((log) {
+      if (log.scheduledDate.isNotEmpty) return log.scheduledDate == key;
+      final at = log.scheduledAt;
+      return at != null && DateFormatter.isSameDay(at, today);
+    }).toList();
   }
 
-  // Next upcoming dose
+  int get unreadNotificationCount =>
+      _notifications.where((n) => n.readAt == null).length;
+
+  /// Doses still awaiting a decision today, earliest first.
+  List<DoseLogModel> get pendingTodayLogs {
+    final pending = todayLogs
+        .where((log) => log.isPending || log.isSnoozed)
+        .toList();
+    pending.sort((a, b) => DateFormatter.minutesOfDay(a.scheduledTime)
+        .compareTo(DateFormatter.minutesOfDay(b.scheduledTime)));
+    return pending;
+  }
+
+  double get todayAdherencePercentage => _adherenceOf(todayLogs);
+  double get overallAdherencePercentage => _adherenceOf(_allLogs);
+
+  /// Adherence counts only doses that have been resolved. Pending doses are
+  /// excluded in both directions — counting them as missed would show a patient
+  /// 0% at breakfast for a dose not yet due.
+  double _adherenceOf(List<DoseLogModel> logs) {
+    final resolved = logs.where((l) => l.isTaken || l.isMissed).length;
+    if (resolved == 0) return 100.0;
+    final taken = logs.where((l) => l.isTaken).length;
+    return (taken / resolved) * 100.0;
+  }
+
+  /// The next dose due today, or the first of tomorrow's if today is done.
+  ///
+  /// Previously this returned `_schedules.first` from an unsorted stream, so
+  /// the dashboard's "next dose" was whichever document Firestore happened to
+  /// return first.
   ScheduleModel? get nextDueDose {
-    if (_schedules.isEmpty) return null;
-    return _schedules.first;
+    final ordered = schedules;
+    if (ordered.isEmpty) return null;
+
+    final nowMinutes = DateTime.now().hour * 60 + DateTime.now().minute;
+    for (final schedule in ordered) {
+      if (DateFormatter.minutesOfDay(schedule.scheduledTime) >= nowMinutes) {
+        return schedule;
+      }
+    }
+    return ordered.first;
   }
+
+  /// Schedules whose stock has fallen to the threshold.
+  List<ScheduleModel> get lowStockSchedules =>
+      _schedules.where((s) => s.isLowStock).toList();
+
+  PatientMedicationModel? medicationFor(String patMedRef) {
+    for (final med in _medications) {
+      if (med.patMedId == patMedRef) return med;
+    }
+    return null;
+  }
+
+  /// A display name for a schedule's medicine, falling back to something
+  /// readable rather than an empty string in a notification body.
+  String medicationNameFor(ScheduleModel schedule) {
+    final med = medicationFor(schedule.patMedRef);
+    final name = med?.medicationName.trim() ?? '';
+    return name.isEmpty ? 'your medication' : name;
+  }
+
+  ScheduleModel? scheduleById(String scheduleId) {
+    for (final schedule in _schedules) {
+      if (schedule.scheduleId == scheduleId) return schedule;
+    }
+    return null;
+  }
+
+  /// Today's log for [scheduleId], if one has been materialised.
+  DoseLogModel? todayLogForSchedule(String scheduleId) {
+    for (final log in todayLogs) {
+      if (log.scheduleRef == scheduleId) return log;
+    }
+    return null;
+  }
+
+  // ==========================================
+  // LIFECYCLE
+  // ==========================================
 
   void initForPatient(String uid) {
     if (_patientUid == uid) return;
     _patientUid = uid;
     _cancelSubscriptions();
 
-    _isLoading = true;
+    _medicationsLoaded = false;
+    _schedulesLoaded = false;
+    _logsLoaded = false;
     notifyListeners();
 
-    final todayStr = _formatDate(DateTime.now());
-
-    // Listen to profile
     _profileSub = _firestoreService.streamPatientProfile(uid).listen((p) {
       _profile = p;
       notifyListeners();
-    });
+    }, onError: _onStreamError);
 
-    // Listen to medications
-    _medicationsSub = _firestoreService.streamPatientMedications(uid).listen((meds) {
+    _medicationsSub =
+        _firestoreService.streamPatientMedications(uid).listen((meds) {
       _medications = meds;
+      _medicationsLoaded = true;
       notifyListeners();
+    }, onError: (Object e) {
+      _medicationsLoaded = true;
+      _onStreamError(e);
     });
 
-    // Listen to schedules
     _schedulesSub = _firestoreService.streamPatientSchedules(uid).listen((schs) {
       _schedules = schs;
+      _schedulesLoaded = true;
       notifyListeners();
+    }, onError: (Object e) {
+      _schedulesLoaded = true;
+      _onStreamError(e);
     });
 
-    // Listen to today's dose logs
-    _todayLogsSub = _firestoreService.streamPatientDoseLogs(uid, dateStr: todayStr).listen((logs) {
-      _todayLogs = logs;
-      notifyListeners();
-    });
-
-    // Listen to all dose history
-    _allLogsSub = _firestoreService.streamPatientDoseLogs(uid).listen((logs) {
+    _allLogsSub = _firestoreService
+        .streamPatientDoseLogs(uid, since: DateTime.now().subtract(_historyWindow))
+        .listen((logs) {
       _allLogs = logs;
+      _logsLoaded = true;
       notifyListeners();
+    }, onError: (Object e) {
+      _logsLoaded = true;
+      _onStreamError(e);
     });
 
-    // Listen to device
+    _notificationsSub =
+        _firestoreService.streamUserNotifications(uid).listen((items) {
+      _notifications = items;
+      notifyListeners();
+    }, onError: _onStreamError);
+
     _deviceSub = _firestoreService.streamPatientDevice(uid).listen((dev) {
       _device = dev;
       notifyListeners();
-    });
+    }, onError: _onStreamError);
 
-    // Listen to caregiver links
     _linksSub = _firestoreService.streamPatientLinks(uid).listen((links) async {
-      if (links.isNotEmpty) {
-        final active = links.where((l) => l.status == 'active').firstOrNull;
-        _link = active ?? links.first;
-        if (_link != null && _link!.caregiverRef.isNotEmpty) {
-          _caregiverUser = await _firestoreService.getUser(_link!.caregiverRef);
-        } else {
-          _caregiverUser = null;
-        }
-      } else {
+      if (links.isEmpty) {
         _link = null;
         _caregiverUser = null;
+      } else {
+        final active = links.where((l) => l.status == 'active').firstOrNull;
+        _link = active ?? links.first;
+        _caregiverUser = _link!.caregiverRef.isEmpty
+            ? null
+            : await _firestoreService.getUser(_link!.caregiverRef);
       }
       notifyListeners();
-    });
+    }, onError: _onStreamError);
+  }
 
-    _isLoading = false;
+  void _onStreamError(Object e) {
+    debugPrint('PatientProvider stream error: $e');
+    _errorMessage = AppStrings.offlineGeneric;
     notifyListeners();
   }
 
-  /// Confirms a dose was taken, from the app or the box button.
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // THE DOSE LOOP
+  // ==========================================
+
+  /// Confirms a dose, from the app or the box button.
   ///
-  /// Returns false and sets [errorMessage] on failure rather than throwing —
-  /// an uncaught error here left the patient looking at an unchanged screen
-  /// with no idea the confirmation had not been recorded.
-  Future<bool> confirmDoseTaken({
+  /// Order matters. The dose log is written to Firestore **first** and the
+  /// Worker is told **after**, fire-and-forget: a failed notification must never
+  /// cost the patient their confirmation, and the cron sweep is the backstop if
+  /// the call never lands.
+  Future<DoseActionResult> confirmDoseTaken({
     required String scheduleId,
     String? doseLogId,
-    int matBoxColumn = 1,
     String confirmedVia = 'app',
   }) async {
     _errorMessage = null;
+    final uid = _patientUid;
+    if (uid == null) return DoseActionResult.failed;
+
     try {
-      await _confirmDoseTaken(
+      final existing = doseLogId != null && doseLogId.isNotEmpty
+          ? await _firestoreService.getDoseLog(doseLogId)
+          : todayLogForSchedule(scheduleId);
+
+      // Confirming twice must not decrement stock twice. A double tap on a
+      // slow connection is the common case, not an edge case.
+      if (existing != null && existing.isTaken) {
+        return DoseActionResult.alreadyConfirmed;
+      }
+
+      final now = DateTime.now();
+      final schedule = scheduleById(scheduleId);
+      String resolvedLogId;
+
+      if (existing != null) {
+        await _firestoreService.updateDoseLogStatus(
+          doseLogId: existing.doseLogId,
+          status: 'taken',
+          takenAt: now,
+          confirmedVia: confirmedVia,
+          // Left false on purpose. Only the Worker knows whether a push
+          // actually left, and hardcoding true here disarmed the sweep's
+          // backstop for every dropped notification.
+          caregiverNotified: false,
+        );
+        resolvedLogId = existing.doseLogId;
+      } else {
+        // No materialised log — an off-schedule confirmation. scheduled_at is
+        // always populated, or the sweep cannot see this row and history
+        // cannot sort it.
+        final scheduledAt = schedule != null
+            ? DateFormatter.parseScheduleTime(schedule.scheduledTime, onDate: now)
+            : null;
+        resolvedLogId = await _firestoreService.recordDoseLog(
+          DoseLogModel(
+            doseLogId: '',
+            scheduleRef: scheduleId,
+            patientRef: uid,
+            scheduledDate: DateFormatter.toDateKey(now),
+            scheduledTime: schedule?.scheduledTime ??
+                DateFormatter.toTimeLabel(now),
+            scheduledAt: scheduledAt ?? now,
+            status: 'taken',
+            takenAt: now,
+            confirmedVia: confirmedVia,
+            caregiverNotified: false,
+            recordedBy: uid,
+            createdAt: now,
+          ),
+        );
+      }
+
+      // Switch the box LED off and count the stock down. Two separate writes
+      // because the security rules allow a managed patient to touch exactly
+      // these two fields, one key at a time.
+      await _firestoreService.updateScheduleLed(scheduleId, false);
+      if (schedule != null) {
+        await _firestoreService.decrementPillsRemaining(
+          scheduleId,
+          schedule.pillsRemaining > 0 ? 1 : 0,
+        );
+      }
+
+      notifyListeners();
+      _reportDoseEvent(
+        doseLogId: resolvedLogId,
+        status: 'taken',
         scheduleId: scheduleId,
-        doseLogId: doseLogId,
-        confirmedVia: confirmedVia,
       );
+      return DoseActionResult.success;
+    } catch (e) {
+      debugPrint('confirmDoseTaken failed: $e');
+      _errorMessage = AppStrings.doseConfirmFailed;
+      notifyListeners();
+      return DoseActionResult.failed;
+    }
+  }
+
+  /// Snoozes a dose by ten minutes, up to three times.
+  ///
+  /// The cap is enforced here and again in the Worker's sweep — the app cannot
+  /// be the only place it lives, because the app may be closed when the third
+  /// snooze expires.
+  Future<DoseActionResult> snoozeDose({
+    required String doseLogId,
+    required int currentSnoozeCount,
+    String? scheduleId,
+  }) async {
+    _errorMessage = null;
+    try {
+      if (currentSnoozeCount >= 3) {
+        final marked = await markDoseMissed(
+          doseLogId: doseLogId,
+          reason: 'Exceeded the 3-snooze limit',
+          scheduleId: scheduleId,
+        );
+        return marked == DoseActionResult.success
+            ? DoseActionResult.snoozeLimitReached
+            : DoseActionResult.failed;
+      }
+
+      await _firestoreService.updateDoseLogStatus(
+        doseLogId: doseLogId,
+        status: 'snoozed',
+        snoozeCount: currentSnoozeCount + 1,
+      );
+      notifyListeners();
+      return DoseActionResult.success;
+    } catch (e) {
+      debugPrint('snoozeDose failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return DoseActionResult.failed;
+    }
+  }
+
+  /// Marks a dose missed and turns the compartment LED off, so the box stops
+  /// prompting for a dose the system has written off.
+  Future<DoseActionResult> markDoseMissed({
+    required String doseLogId,
+    String reason = 'Not confirmed',
+    String? scheduleId,
+  }) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.updateDoseLogStatus(
+        doseLogId: doseLogId,
+        status: 'missed',
+        skippedReason: reason,
+        caregiverNotified: false,
+      );
+      if (scheduleId != null && scheduleId.isNotEmpty) {
+        await _firestoreService.updateScheduleLed(scheduleId, false);
+      }
+      notifyListeners();
+      _reportDoseEvent(
+        doseLogId: doseLogId,
+        status: 'missed',
+        scheduleId: scheduleId,
+      );
+      return DoseActionResult.success;
+    } catch (e) {
+      debugPrint('markDoseMissed failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return DoseActionResult.failed;
+    }
+  }
+
+  /// Tells the Worker to alert the caregiver. Intentionally not awaited by
+  /// callers: the dose is already recorded, and `ApiService.reportDoseEvent`
+  /// swallows its own failures.
+  void _reportDoseEvent({
+    required String doseLogId,
+    required String status,
+    String? scheduleId,
+  }) {
+    final schedule = scheduleId == null ? null : scheduleById(scheduleId);
+    _apiService.reportDoseEvent(
+      doseLogId: doseLogId,
+      status: status,
+      medicationName:
+          schedule == null ? 'their medication' : medicationNameFor(schedule),
+    );
+  }
+
+  // ==========================================
+  // MEDICATIONS (solo users only — gated on can_edit_medications)
+  // ==========================================
+
+  Future<bool> updateSchedule(ScheduleModel schedule) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.updateSchedule(schedule);
       return true;
     } catch (e) {
-      _errorMessage = 'Could not record this dose. Please try again.';
-      debugPrint('confirmDoseTaken failed: $e');
+      debugPrint('updateSchedule failed: $e');
+      _errorMessage = AppStrings.genericError;
       notifyListeners();
       return false;
     }
   }
 
-  Future<void> _confirmDoseTaken({
-    required String scheduleId,
-    String? doseLogId,
-    String confirmedVia = 'app',
+  /// Retires a medicine and every schedule attached to it.
+  Future<bool> deleteMedication(String patMedId) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.deletePatientMedication(patMedId);
+      return true;
+    } catch (e) {
+      debugPrint('deleteMedication failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Removes one dose time while leaving the medicine in place.
+  Future<bool> deleteSchedule(String scheduleId) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.deactivateSchedule(scheduleId);
+      return true;
+    } catch (e) {
+      debugPrint('deleteSchedule failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ==========================================
+  // PROFILE, NOTIFICATIONS, DEVICE
+  // ==========================================
+
+  Future<bool> saveProfile(PatientProfileModel updated) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.setPatientProfile(updated);
+      _profile = updated;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('saveProfile failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Saves the clinical details collected during first-run setup.
+  Future<bool> saveProfileDetails({
+    String? medicalConditions,
+    String? allergies,
+    String? emergencyContact,
+    String? emergencyPhone,
+    DateTime? dateOfBirth,
+    String? gender,
   }) async {
-    final now = DateTime.now();
-    final todayStr = _formatDate(now);
+    final uid = _patientUid;
+    if (uid == null) return false;
 
-    // 1. Turn off LED for the compartment
-    await _firestoreService.updateScheduleLed(scheduleId, false);
+    final base = _profile ??
+        PatientProfileModel(
+          profileId: uid,
+          userRef: uid,
+          createdAt: DateTime.now(),
+        );
 
-    // 2. Decrement remaining pills
-    await _firestoreService.decrementPillsRemaining(scheduleId, 1);
+    return saveProfile(base.copyWith(
+      medicalConditions: _splitList(medicalConditions),
+      allergies: _splitList(allergies),
+      emergencyContact: emergencyContact,
+      emergencyPhone: emergencyPhone,
+      dateOfBirth: dateOfBirth,
+      gender: gender,
+    ));
+  }
 
-    // 3. Update or create dose log
-    if (doseLogId != null && doseLogId.isNotEmpty) {
-      await _firestoreService.updateDoseLogStatus(
-        doseLogId: doseLogId,
-        status: 'taken',
-        takenAt: now,
-        caregiverNotified: true,
-      );
-    } else {
-      final newLog = DoseLogModel(
-        doseLogId: '',
-        scheduleRef: scheduleId,
-        patientRef: _patientUid ?? '',
-        scheduledDate: todayStr,
-        scheduledTime: _formatTime(now),
-        status: 'taken',
-        takenAt: now,
-        confirmedVia: confirmedVia,
-        caregiverNotified: true,
-        createdAt: now,
-      );
-      await _firestoreService.recordDoseLog(newLog);
+  /// Forms collect these as free text ("dust, peanuts"); Firestore holds them
+  /// as arrays. Null means "leave unchanged", which is why this returns null
+  /// rather than an empty list.
+  static List<String>? _splitList(String? raw) {
+    if (raw == null) return null;
+    return raw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> markNotificationRead(String notifId) async {
+    try {
+      await _firestoreService.markNotificationAsRead(notifId);
+    } catch (e) {
+      debugPrint('markNotificationRead failed: $e');
     }
-    notifyListeners();
   }
 
-  // Snooze dose (+10 mins)
-  Future<void> snoozeDose(String doseLogId, int currentSnoozeCount) async {
-    if (currentSnoozeCount >= 3) {
-      // Exceeded max snoozes -> mark missed
-      await markDoseMissed(doseLogId, reason: 'Exceeded max snooze limit (3x)');
-      return;
+  Future<void> markAllNotificationsRead() async {
+    final uid = _patientUid;
+    if (uid == null) return;
+    try {
+      await _firestoreService.markAllNotificationsRead(uid);
+    } catch (e) {
+      debugPrint('markAllNotificationsRead failed: $e');
     }
-
-    await _firestoreService.updateDoseLogStatus(
-      doseLogId: doseLogId,
-      status: 'snoozed',
-      snoozeCount: currentSnoozeCount + 1,
-    );
-    notifyListeners();
   }
 
-  // Mark dose missed
-  Future<void> markDoseMissed(String doseLogId, {String reason = 'No response'}) async {
-    await _firestoreService.updateDoseLogStatus(
-      doseLogId: doseLogId,
-      status: 'missed',
-      skippedReason: reason,
-      caregiverNotified: true,
-    );
-    notifyListeners();
+  /// Pairs a smart box by serial number.
+  ///
+  /// Returns false with [errorMessage] set rather than throwing — the pairing
+  /// screen previously called nothing at all, so no device document was ever
+  /// created.
+  Future<bool> pairSmartBox(
+    String serialNumber, {
+    String deviceName = 'HealthSync Smart Box',
+  }) async {
+    final uid = _patientUid;
+    if (uid == null) return false;
+    _errorMessage = null;
+    try {
+      await _firestoreService.pairDevice(
+        patientUid: uid,
+        serialNumber: serialNumber,
+        deviceName: deviceName,
+      );
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('pairSmartBox failed: $e');
+      _errorMessage = AppStrings.devicePairFailed;
+      notifyListeners();
+      return false;
+    }
   }
 
-  // Update profile
-  Future<void> saveProfile(PatientProfileModel updated) async {
-    await _firestoreService.setPatientProfile(updated);
-    _profile = updated;
-    notifyListeners();
-  }
-
-  // Pair IoT Smart Medicine Box
-  Future<void> pairSmartBox(String serialNumber, {String deviceName = 'HealthSync Box'}) async {
-    if (_patientUid == null) return;
-    await _firestoreService.pairDevice(
-      patientUid: _patientUid!,
-      serialNumber: serialNumber,
-      deviceName: deviceName,
-    );
-    notifyListeners();
-  }
-
-  String _formatDate(DateTime dt) {
-    final y = dt.year.toString().padLeft(4, '0');
-    final m = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
-  }
-
-  String _formatTime(DateTime dt) {
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final period = dt.hour >= 12 ? 'PM' : 'AM';
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '$hour:$minute $period';
-  }
-
-
-  // Unlink caregiver
-  Future<void> unlinkCaregiver() async {
-    if (_link == null || _patientUid == null) return;
-    await _firestoreService.unlinkCaregiverPatient(_link!.linkId, _patientUid!);
-    _link = null;
-    _caregiverUser = null;
-    notifyListeners();
+  Future<bool> unlinkCaregiver() async {
+    if (_link == null || _patientUid == null) return false;
+    _errorMessage = null;
+    try {
+      await _firestoreService.unlinkCaregiverPatient(
+        _link!.linkId,
+        _patientUid!,
+      );
+      _link = null;
+      _caregiverUser = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('unlinkCaregiver failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
   }
 
   void _cancelSubscriptions() {
     _profileSub?.cancel();
     _medicationsSub?.cancel();
     _schedulesSub?.cancel();
-    _todayLogsSub?.cancel();
     _allLogsSub?.cancel();
+    _notificationsSub?.cancel();
     _deviceSub?.cancel();
     _linksSub?.cancel();
   }

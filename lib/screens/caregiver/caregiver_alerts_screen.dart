@@ -1,12 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
-import 'missed_alert_screen.dart';
+import '../../constants/app_strings.dart';
+import '../../constants/app_styles.dart';
+import '../../models/notification_model.dart';
+import '../../providers/caregiver_provider.dart';
+import '../../utils/date_formatter.dart';
 
+/// The caregiver's alert feed.
+///
+/// Reads the `notifications` collection, which the Cloudflare Worker writes
+/// whenever it sends a push — a missed dose from the cron sweep, or a
+/// confirmation from `/dose-events`. The previous version listed five invented
+/// alerts, two of which reported heart rates from a sensor this build does not
+/// have.
 class CaregiverAlertsScreen extends StatelessWidget {
   const CaregiverAlertsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final caregiver = context.watch<CaregiverProvider>();
+    final alerts = caregiver.notifications;
+    final unread = caregiver.unreadNotificationCount;
+    final grouped = _groupByDay(alerts);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -16,89 +33,112 @@ class CaregiverAlertsScreen extends StatelessWidget {
           'Alerts',
           style: TextStyle(
             color: AppColors.textPrimary,
-            fontFamily: 'PlusJakartaSans',
-            fontWeight: FontWeight.w900,
-            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            fontFamily: AppStyles.fontFamily,
           ),
         ),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(36),
-          child: Padding(
-            padding: EdgeInsets.only(left: 20, bottom: 12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '3 unread',
+        actions: [
+          if (unread > 0)
+            TextButton(
+              onPressed: caregiver.markAllNotificationsRead,
+              child: const Text(
+                'Mark all read',
                 style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 14,
+                  color: AppColors.caregiverGreen,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: AppStyles.fontFamily,
                 ),
               ),
             ),
-          ),
-        ),
+        ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            children: [
-              _AlertCard(
-                color: AppColors.missedRedBg,
-                icon: Icons.close,
-                title: 'Patient missed a dose',
-                subtitle: '8:00 PM dose was not confirmed after 30 minutes.',
-                status: '8:30 PM',
-                dotColor: AppColors.missedRed,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const MissedAlertScreen(),
+        child: alerts.isEmpty
+            ? const _EmptyAlerts()
+            : ListView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                children: [
+                  Text(
+                    unread > 0 ? '$unread unread' : 'All caught up',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
+                      fontFamily: AppStyles.fontFamily,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 16),
+                  for (final entry in grouped.entries) ...[
+                    _SectionHeader(label: entry.key),
+                    const SizedBox(height: 10),
+                    for (final alert in entry.value) ...[
+                      _AlertCard(
+                        alert: alert,
+                        onTap: alert.isRead
+                            ? null
+                            : () => caregiver
+                                .markNotificationRead(alert.notifId),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    const SizedBox(height: 8),
+                  ],
+                ],
               ),
-              const SizedBox(height: 12),
-              _AlertCard(
-                color: AppColors.takenGreenBg,
-                icon: Icons.check,
-                title: 'Patient took Losartan 50mg',
-                subtitle: 'Taken on time. HR at intake: 80 bpm (normal)',
-                status: '12:03 PM',
-                dotColor: AppColors.caregiverGreen,
+      ),
+    );
+  }
+
+  Map<String, List<NotificationModel>> _groupByDay(
+    List<NotificationModel> alerts,
+  ) {
+    final grouped = <String, List<NotificationModel>>{};
+    for (final alert in alerts) {
+      grouped
+          .putIfAbsent(DateFormatter.toRelativeDay(alert.sentAt), () => [])
+          .add(alert);
+    }
+    return grouped;
+  }
+}
+
+class _EmptyAlerts extends StatelessWidget {
+  const _EmptyAlerts();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_none_rounded,
+                size: 52, color: AppColors.textMuted),
+            SizedBox(height: 14),
+            Text(
+              AppStrings.noAlerts,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+                fontFamily: AppStyles.fontFamily,
               ),
-              const SizedBox(height: 12),
-              _AlertCard(
-                color: AppColors.ledPendingBg,
-                icon: Icons.warning_amber_rounded,
-                title: 'Elevated heart rate',
-                subtitle: '140 bpm at the time of his last dose.',
-                status: '7:02 AM',
-                dotColor: AppColors.pendingAmber,
+            ),
+            SizedBox(height: 6),
+            Text(
+              'Missed doses and low stock will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textMuted,
+                height: 1.5,
+                fontFamily: AppStyles.fontFamily,
               ),
-              const SizedBox(height: 12),
-              _AlertCard(
-                color: AppColors.patientBlue.withValues(alpha: 0.15),
-                icon: Icons.info_outline,
-                title: 'Low stock on patient medication',
-                subtitle: 'Column 1 has only 4 tablets remaining.',
-                status: '6:00 AM',
-                dotColor: AppColors.patientBlue,
-              ),
-              const SizedBox(height: 20),
-              const _SectionHeader(label: 'Yesterday'),
-              const SizedBox(height: 12),
-              _AlertCard(
-                color: AppColors.takenGreenBg,
-                icon: Icons.check,
-                title: 'Patient completed all doses',
-                subtitle: 'All 3 medications taken on time',
-                status: 'Yesterday',
-                dotColor: AppColors.caregiverGreen,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -112,118 +152,130 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textSecondary,
-          fontFamily: 'PlusJakartaSans',
-        ),
+    return Text(
+      label.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 11,
+        letterSpacing: 1.2,
+        fontWeight: FontWeight.w800,
+        color: AppColors.textMuted,
+        fontFamily: AppStyles.fontFamily,
       ),
     );
   }
 }
 
 class _AlertCard extends StatelessWidget {
-  final Color color;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String status;
-  final Color dotColor;
+  final NotificationModel alert;
   final VoidCallback? onTap;
 
-  const _AlertCard({
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.status,
-    required this.dotColor,
-    this.onTap,
-  });
+  const _AlertCard({required this.alert, this.onTap});
+
+  (IconData, Color, Color) get _appearance {
+    switch (alert.notificationType) {
+      case 'missed':
+      case 'missed_alert':
+        return (
+          Icons.error_outline_rounded,
+          AppColors.missedRed,
+          AppColors.missedRedBg
+        );
+      case 'confirmed':
+        return (
+          Icons.check_circle_outline_rounded,
+          AppColors.takenGreen,
+          AppColors.takenGreenBg
+        );
+      case 'low_stock':
+        return (
+          Icons.inventory_2_outlined,
+          AppColors.pendingAmber,
+          AppColors.pendingAmberBg
+        );
+      default:
+        return (
+          Icons.notifications_active_outlined,
+          AppColors.upcomingBlue,
+          AppColors.upcomingBlueBg
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final (icon, accent, background) = _appearance;
+
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.borderGray),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+        padding: const EdgeInsets.all(16),
+        decoration: AppStyles.cardDecoration,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 46,
-              height: 46,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(16),
+                color: background,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: AppColors.textPrimary),
+              child: Icon(icon, color: accent, size: 21),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          alert.title,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: alert.isRead
+                                ? FontWeight.w700
+                                : FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            fontFamily: AppStyles.fontFamily,
+                          ),
+                        ),
+                      ),
+                      if (!alert.isRead)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.caregiverGreen,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    title,
+                    alert.message,
                     style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      height: 1.5,
+                      color: AppColors.textSecondary,
+                      fontFamily: AppStyles.fontFamily,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    subtitle,
+                    DateFormatter.toRelativeTime(alert.sentAt),
                     style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                      fontFamily: AppStyles.fontFamily,
                     ),
                   ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: dotColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'PlusJakartaSans',
-                  ),
-                ),
-              ],
             ),
           ],
         ),

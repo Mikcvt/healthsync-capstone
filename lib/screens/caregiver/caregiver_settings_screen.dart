@@ -5,6 +5,7 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
 import '../patient/change_password_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class CaregiverSettingsScreen extends StatefulWidget {
   const CaregiverSettingsScreen({super.key});
@@ -119,11 +120,8 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
     }
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
+  void _showMessage(String message) =>
+      SnackbarHelper.showInfo(context, message);
 
   @override
   Widget build(BuildContext context) {
@@ -222,11 +220,11 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
                 ),
                 const Divider(height: 1, color: AppColors.borderGray),
                 _ToggleRow(
-                  label: 'Vitals alerts',
-                  subtitle: 'Receive patient health updates',
-                  value: caregiver.profile?.alertPrefVitals ?? true,
+                  label: 'Low stock alerts',
+                  subtitle: 'Notify me when a compartment is running low',
+                  value: caregiver.profile?.alertPrefLowStock ?? true,
                   onChanged: (value) =>
-                      caregiver.updateAlertPreferences(alertPrefVitals: value),
+                      caregiver.updateAlertPreferences(alertPrefLowStock: value),
                 ),
                 const Divider(height: 1, color: AppColors.borderGray),
                 _ToggleRow(

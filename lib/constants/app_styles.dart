@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppStyles {
+  /// The bundled family declared in `pubspec.yaml`. Bundled rather than fetched
+  /// through `google_fonts` so the app renders correctly on first launch and
+  /// offline, per coding standard 7.
+  static const String fontFamily = 'PlusJakartaSans';
+
   // Card decoration
   static BoxDecoration cardDecoration = BoxDecoration(
     color: AppColors.cardWhite,
@@ -68,32 +72,38 @@ class AppStyles {
   }
 
   // Text styles
-  static TextStyle heading1 = GoogleFonts.plusJakartaSans(
+  static TextStyle heading1 = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 26,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
   );
-  static TextStyle heading2 = GoogleFonts.plusJakartaSans(
+  static TextStyle heading2 = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 20,
     fontWeight: FontWeight.w800,
     color: AppColors.textPrimary,
   );
-  static TextStyle heading3 = GoogleFonts.plusJakartaSans(
+  static TextStyle heading3 = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 16,
     fontWeight: FontWeight.w700,
     color: AppColors.textPrimary,
   );
-  static TextStyle bodyLarge = GoogleFonts.plusJakartaSans(
+  static TextStyle bodyLarge = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 14,
     fontWeight: FontWeight.w500,
     color: AppColors.textPrimary,
   );
-  static TextStyle bodySmall = GoogleFonts.plusJakartaSans(
+  static TextStyle bodySmall = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 12,
     fontWeight: FontWeight.w400,
     color: AppColors.textSecondary,
   );
-  static TextStyle caption = GoogleFonts.plusJakartaSans(
+  static TextStyle caption = const TextStyle(
+    fontFamily: AppStyles.fontFamily,
     fontSize: 10,
     fontWeight: FontWeight.w600,
     color: AppColors.textMuted,

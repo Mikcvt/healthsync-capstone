@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
 import '../../models/schedule_model.dart';
-import '../../services/firestore_service.dart';
+import '../../providers/patient_provider.dart';
+import '../../utils/date_formatter.dart';
+import '../../utils/snackbar_helper.dart';
+import '../../utils/validators.dart';
 
 class EditMedicineScreen extends StatefulWidget {
   final ScheduleModel? schedule;
@@ -38,48 +43,74 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
   }
 
   Future<void> _pickTime() async {
+    // Seeded from the time already on the schedule rather than always 8:00 AM,
+    // so reopening the picker does not discard the current value.
+    final current = DateFormatter.parseScheduleTime(_timeController.text);
     final picked = await showTimePicker(
       context: context,
-      initialTime: const TimeOfDay(hour: 8, minute: 0),
+      initialTime: current == null
+          ? const TimeOfDay(hour: 8, minute: 0)
+          : TimeOfDay(hour: current.hour, minute: current.minute),
     );
-    if (picked != null) {
-      final hour = picked.hourOfPeriod == 0 ? 12 : picked.hourOfPeriod;
-      final minute = picked.minute.toString().padLeft(2, '0');
-      final period = picked.period == DayPeriod.am ? 'AM' : 'PM';
-      setState(() {
-        _timeController.text = '${hour.toString().padLeft(2, '0')}:$minute $period';
-      });
-    }
+    if (picked == null) return;
+    setState(() {
+      _timeController.text = DateFormatter.toTimeLabel(
+        DateTime(2000, 1, 1, picked.hour, picked.minute),
+      );
+    });
   }
 
+  /// Saves through [PatientProvider].
+  ///
+  /// This used to construct a FirestoreService inside the widget and call it
+  /// with no try/catch, which broke coding standard 2 and meant a failed write
+  /// left the button spinning forever while still showing a success message.
   Future<void> _onSave() async {
-    if (widget.schedule == null) {
+    final schedule = widget.schedule;
+    if (schedule == null) {
       Navigator.pop(context);
       return;
     }
 
-    setState(() => _isSaving = true);
-    final pills = int.tryParse(_pillsController.text) ?? widget.schedule!.pillsRemaining;
-    final threshold = int.tryParse(_thresholdController.text) ?? widget.schedule!.lowStockThreshold;
+    // A time the app cannot parse is a dose the box will never light for, so
+    // it is rejected here rather than written and silently skipped.
+    final timeError = _timeController.text.trim().isEmpty ||
+        DateFormatter.parseScheduleTime(_timeController.text) == null;
+    if (timeError) {
+      SnackbarHelper.showError(context, 'Choose a valid dose time.');
+      return;
+    }
+    final pillsError =
+        Validators.positiveInt(_pillsController.text, 'pills remaining');
+    if (pillsError != null) {
+      SnackbarHelper.showError(context, pillsError);
+      return;
+    }
 
-    final updated = widget.schedule!.copyWith(
-      scheduledTime: _timeController.text.trim(),
-      matBoxColumn: _selectedColumn,
-      pillsRemaining: pills,
-      lowStockThreshold: threshold,
+    setState(() => _isSaving = true);
+    final patient = context.read<PatientProvider>();
+    final saved = await patient.updateSchedule(
+      schedule.copyWith(
+        scheduledTime: _timeController.text.trim(),
+        matBoxColumn: _selectedColumn,
+        pillsRemaining:
+            int.tryParse(_pillsController.text) ?? schedule.pillsRemaining,
+        lowStockThreshold: int.tryParse(_thresholdController.text) ??
+            schedule.lowStockThreshold,
+      ),
     );
 
-    await FirestoreService().updateSchedule(updated);
+    if (!mounted) return;
     setState(() => _isSaving = false);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Medication updated successfully.'),
-          backgroundColor: AppColors.patientBlue,
-        ),
-      );
+    if (saved) {
+      SnackbarHelper.showSuccess(context, 'Medication updated.');
       Navigator.pop(context);
+    } else {
+      SnackbarHelper.showError(
+        context,
+        patient.errorMessage ?? AppStrings.genericError,
+      );
     }
   }
 

@@ -78,10 +78,16 @@ service cloud.firestore {
       allow read, write: if isOwner(caregiverId);
     }
 
-    // Medications reference collection (shared drug catalogue)
+    // Medications reference collection (shared drug catalogue).
+    //
+    // Read-only from every client. can_edit_medications governs a user's own
+    // regimen, not this shared list — gating writes on it meant any solo user
+    // could rewrite or delete catalogue entries for every other user. Seeding
+    // and corrections go through the console or the Worker, both of which
+    // bypass these rules with admin credentials.
     match /medications/{medicationId} {
       allow read: if isAuthenticated();
-      allow write: if canEditMedications();
+      allow write: if false;
     }
 
     // Patient Medications — gated on can_edit_medications
@@ -116,8 +122,16 @@ service cloud.firestore {
         || isCaregiverOf(resource.data.patient_ref);
       allow create: if isOwner(request.resource.data.patient_ref)
         || isCaregiverOf(request.resource.data.patient_ref);
-      allow update: if isOwner(resource.data.patient_ref)
-        || isCaregiverOf(resource.data.patient_ref);
+
+      // The identity of a dose is fixed once written. A client may record what
+      // happened to it — taken, snoozed, skipped — but may not move it in time
+      // or reassign it, because scheduled_at is what the Worker's sweep queries
+      // and patient_ref is what the rules above authorise against.
+      allow update: if (isOwner(resource.data.patient_ref)
+          || isCaregiverOf(resource.data.patient_ref))
+        && request.resource.data.patient_ref == resource.data.patient_ref
+        && request.resource.data.schedule_ref == resource.data.schedule_ref
+        && request.resource.data.scheduled_at == resource.data.scheduled_at;
     }
 
     // Notifications
@@ -154,8 +168,14 @@ service cloud.firestore {
     }
 
     // Caregiver-Patient Links
+    //
+    // Scoped to the two parties named on the link. `allow read: if
+    // isAuthenticated()` let any signed-in account enumerate every
+    // caregiver-patient relationship in the system, which for medical data is
+    // a disclosure in its own right even without the dose history attached.
     match /caregiver_patient_links/{linkId} {
-      allow read: if isAuthenticated();
+      allow read: if isOwner(resource.data.patient_ref)
+        || isOwner(resource.data.caregiver_ref);
       allow create: if isOwner(request.resource.data.patient_ref)
         || isOwner(request.resource.data.caregiver_ref);
       allow update: if isOwner(resource.data.patient_ref)

@@ -9,7 +9,6 @@ class DeviceModel {
   final String status; // 'online', 'offline', 'pairing'
   final DateTime lastSync;
   final int columnsActive; // 1–8
-  final int batteryLevel; // percentage 0-100
   final String firmwareVersion;
   final DateTime createdAt;
   final bool isActive;
@@ -23,7 +22,6 @@ class DeviceModel {
     this.status = 'offline',
     required this.lastSync,
     this.columnsActive = 0,
-    this.batteryLevel = 100,
     this.firmwareVersion = 'v1.0.0',
     required this.createdAt,
     this.isActive = true,
@@ -50,7 +48,6 @@ class DeviceModel {
               ? DateTime.tryParse(map['last_sync'].toString()) ?? DateTime.now()
               : DateTime.now()),
       columnsActive: (map['columns_active'] as num?)?.toInt() ?? 0,
-      batteryLevel: (map['battery_level'] as num?)?.toInt() ?? 100,
       firmwareVersion: map['firmware_version'] as String? ?? 'v1.0.0',
       createdAt: map['created_at'] is Timestamp
           ? (map['created_at'] as Timestamp).toDate()
@@ -71,7 +68,6 @@ class DeviceModel {
       'status': status,
       'last_sync': Timestamp.fromDate(lastSync),
       'columns_active': columnsActive,
-      'battery_level': batteryLevel,
       'firmware_version': firmwareVersion,
       'created_at': Timestamp.fromDate(createdAt),
       'is_active': isActive,
@@ -87,7 +83,6 @@ class DeviceModel {
     String? status,
     DateTime? lastSync,
     int? columnsActive,
-    int? batteryLevel,
     String? firmwareVersion,
     DateTime? createdAt,
     bool? isActive,
@@ -101,7 +96,6 @@ class DeviceModel {
       status: status ?? this.status,
       lastSync: lastSync ?? this.lastSync,
       columnsActive: columnsActive ?? this.columnsActive,
-      batteryLevel: batteryLevel ?? this.batteryLevel,
       firmwareVersion: firmwareVersion ?? this.firmwareVersion,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,

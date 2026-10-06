@@ -4,6 +4,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/schedule_provider.dart';
 import 'add_medicine_step3_screen.dart';
+import '../../utils/snackbar_helper.dart';
 
 class AddMedicineStep2Screen extends StatefulWidget {
   const AddMedicineStep2Screen({super.key});
@@ -48,14 +49,16 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
 
   void _onNext() {
     if (_times.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one dose time.')),
+      SnackbarHelper.showWarning(
+        context,
+        'Choose at least one dose time.',
       );
       return;
     }
     if (_selectedDays.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one day of the week.')),
+      SnackbarHelper.showWarning(
+        context,
+        'Choose at least one day of the week.',
       );
       return;
     }

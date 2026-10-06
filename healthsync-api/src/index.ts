@@ -7,7 +7,8 @@
  *   POST /patients      caregiver creates a managed patient's Auth account
  *   POST /otp/redeem    code in, Firebase custom token out (no password login)
  *   POST /dose-events   dose outcome fans out to the caregiver over FCM
- *   cron every 5 min    marks unconfirmed doses missed after 30 minutes
+ *   cron every 5 min    materialises upcoming doses, then marks unconfirmed
+ *                       ones missed after 30 minutes
  *
  * Everything else the app does — every read and every write a user is permitted
  * to make — goes straight from Flutter to Firestore under the security rules.
@@ -16,7 +17,10 @@
 import { handleCreatePatient } from './handlers/patients';
 import { handleRedeemOtp } from './handlers/otp';
 import { handleDoseEvent } from './handlers/dose-events';
+import { runMaterialize } from './handlers/materialize';
 import { runSweep } from './handlers/sweep';
+import { Firestore } from './lib/firestore';
+import { getAccessToken, parseServiceAccount } from './lib/google-auth';
 import { error, json } from './lib/http';
 
 export interface Env {
@@ -57,14 +61,43 @@ export default {
 	},
 
 	async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-		ctx.waitUntil(
-			runSweep(env)
-				.then((result) => {
-					if (result.missed > 0) {
-						console.log(`Sweep: ${result.missed} dose(s) marked missed, ${result.notified} caregiver(s) notified.`);
-					}
-				})
-				.catch((err) => console.error('Sweep failed:', err)),
-		);
+		ctx.waitUntil(runCron(env));
 	},
 } satisfies ExportedHandler<Env>;
+
+/**
+ * The 5-minute cron, in order: create the dose logs that are coming, then mark
+ * the ones that have gone unconfirmed.
+ *
+ * Both jobs share one access token and one Firestore client. That is not tidiness
+ * — the free plan allows 10ms of CPU and 50 subrequests per invocation, and
+ * minting a second OAuth token would spend an RSA signature for nothing.
+ *
+ * Materialising runs first so a dose created this minute is eligible for the
+ * sweep in 30 minutes rather than 35.
+ */
+async function runCron(env: Env): Promise<void> {
+	const sa = parseServiceAccount(env.FIREBASE_SA_KEY);
+	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
+	const db = new Firestore(sa.project_id, accessToken);
+
+	// A failure in one job must not cancel the other: an unreachable caregiver
+	// should never stop tomorrow's doses from being created.
+	try {
+		const { created } = await runMaterialize(db);
+		if (created > 0) {
+			console.log(`Materialise: created ${created} pending dose log(s).`);
+		}
+	} catch (err) {
+		console.error('Materialise failed:', err);
+	}
+
+	try {
+		const { missed, notified } = await runSweep(db, accessToken, sa.project_id);
+		if (missed > 0) {
+			console.log(`Sweep: ${missed} dose(s) marked missed, ${notified} caregiver(s) notified.`);
+		}
+	} catch (err) {
+		console.error('Sweep failed:', err);
+	}
+}

@@ -7,6 +7,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'edit_medicine_screen.dart';
 import 'delete_medicine_screen.dart';
+import '../../utils/snackbar_helper.dart';
+import '../../constants/app_strings.dart';
 
 class MedicineDetailScreen extends StatelessWidget {
   final ScheduleModel? schedule;
@@ -246,15 +248,34 @@ class MedicineDetailScreen extends StatelessWidget {
                   height: 54,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      await patientProvider.confirmDoseTaken(scheduleId: currentSchedule.scheduleId);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Dose for $medName marked as taken!'),
-                            backgroundColor: AppColors.caregiverGreen,
-                          ),
-                        );
-                        Navigator.pop(context);
+                      // The result is honoured rather than assumed: this used
+                      // to report "marked as taken" even when the write failed
+                      // or the dose was already confirmed.
+                      final result = await patientProvider.confirmDoseTaken(
+                        scheduleId: currentSchedule.scheduleId,
+                      );
+                      if (!context.mounted) return;
+
+                      switch (result) {
+                        case DoseActionResult.success:
+                          SnackbarHelper.showSuccess(
+                            context,
+                            'Dose for $medName recorded.',
+                          );
+                          Navigator.pop(context);
+                        case DoseActionResult.alreadyConfirmed:
+                          SnackbarHelper.showInfo(
+                            context,
+                            AppStrings.doseAlreadyTaken,
+                          );
+                          Navigator.pop(context);
+                        case DoseActionResult.failed:
+                        case DoseActionResult.snoozeLimitReached:
+                          SnackbarHelper.showError(
+                            context,
+                            patientProvider.errorMessage ??
+                                AppStrings.doseConfirmFailed,
+                          );
                       }
                     },
                     icon: const Icon(Icons.check_circle_outline, color: Colors.white),

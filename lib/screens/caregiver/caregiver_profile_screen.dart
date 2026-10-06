@@ -15,7 +15,7 @@ class CaregiverProfileScreen extends StatefulWidget {
 
 class _CaregiverProfileScreenState extends State<CaregiverProfileScreen> {
   bool _alertMissed = true;
-  bool _alertVitals = true;
+  bool _alertLowStock = true;
   bool _alertDaily = true;
   bool _prefsLoaded = false;
 
@@ -26,7 +26,7 @@ class _CaregiverProfileScreenState extends State<CaregiverProfileScreen> {
       final profile = context.read<CaregiverProvider>().profile;
       if (profile != null) {
         _alertMissed = profile.alertPrefMissed;
-        _alertVitals = profile.alertPrefVitals;
+        _alertLowStock = profile.alertPrefLowStock;
         _alertDaily = profile.alertPrefDaily;
         _prefsLoaded = true;
       }
@@ -217,14 +217,14 @@ class _CaregiverProfileScreenState extends State<CaregiverProfileScreen> {
                           ),
                           const Divider(color: AppColors.borderGray, height: 1),
                           _ToggleRow(
-                            icon: Icons.monitor_heart_outlined,
-                            label: 'Vitals alerts',
-                            subtitle: 'Heart rate & health data updates',
-                            value: _alertVitals,
+                            icon: Icons.inventory_2_outlined,
+                            label: 'Low stock alerts',
+                            subtitle: 'When a compartment is running low',
+                            value: _alertLowStock,
                             color: AppColors.patientBlue,
                             onChanged: (val) {
-                              setState(() => _alertVitals = val);
-                              caregiverProvider.updateAlertPreferences(alertPrefVitals: val);
+                              setState(() => _alertLowStock = val);
+                              caregiverProvider.updateAlertPreferences(alertPrefLowStock: val);
                             },
                           ),
                           const Divider(color: AppColors.borderGray, height: 1),

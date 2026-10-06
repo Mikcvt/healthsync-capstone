@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/snackbar_helper.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -34,10 +35,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     final success = await auth.changePassword(currentPassword: _currentController.text, newPassword: _newController.text);
     if (!mounted) return;
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated successfully.')));
+      SnackbarHelper.showSuccess(context, 'Password updated.');
       Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.errorMessage ?? 'Could not update password.')));
+      SnackbarHelper.showError(context, auth.errorMessage ?? 'Could not update password.');
     }
   }
 

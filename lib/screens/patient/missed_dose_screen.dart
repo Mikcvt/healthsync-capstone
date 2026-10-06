@@ -1,14 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_strings.dart';
+import '../../providers/patient_provider.dart';
+import '../../utils/snackbar_helper.dart';
 
+/// Records why a dose was missed, into `dose_logs.skipped_reason`.
+///
+/// The reason picker was already here but the button only showed a SnackBar
+/// reading "Missed dose reason recorded." and wrote nothing. The screen also
+/// had no route into it from anywhere in the app.
 class MissedDoseScreen extends StatefulWidget {
   final String medicineName;
   final String scheduledTime;
 
+  /// The dose being explained. Without it there is nothing to write the reason
+  /// to, and the screen says so rather than appearing to save.
+  final String? doseLogId;
+  final String? scheduleId;
+
   const MissedDoseScreen({
     super.key,
-    this.medicineName = 'Metformin 500mg',
-    this.scheduledTime = '08:00 AM',
+    this.medicineName = 'Your medication',
+    this.scheduledTime = '',
+    this.doseLogId,
+    this.scheduleId,
   });
 
   @override
@@ -16,6 +32,7 @@ class MissedDoseScreen extends StatefulWidget {
 }
 
 class _MissedDoseScreenState extends State<MissedDoseScreen> {
+  bool _isSaving = false;
   String _selectedReason = 'Forgot to take';
   final List<String> _reasons = [
     'Forgot to take',
@@ -24,6 +41,43 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
     'Prescription ran out',
     'Other reason',
   ];
+
+  /// Writes the reason onto the dose log, marking it missed.
+  Future<void> _onLogReason() async {
+    final doseLogId = widget.doseLogId;
+
+    // Nothing to attach the reason to. The cron sweep will still mark the dose
+    // missed on its own, so this is informational rather than an error.
+    if (doseLogId == null || doseLogId.isEmpty) {
+      SnackbarHelper.showInfo(
+        context,
+        'This dose has no record to update yet.',
+      );
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    final patient = context.read<PatientProvider>();
+    final result = await patient.markDoseMissed(
+      doseLogId: doseLogId,
+      reason: _selectedReason,
+      scheduleId: widget.scheduleId,
+    );
+
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+
+    if (result == DoseActionResult.success) {
+      SnackbarHelper.showSuccess(context, 'Reason recorded.');
+      Navigator.of(context).pop();
+    } else {
+      SnackbarHelper.showError(
+        context,
+        patient.errorMessage ?? AppStrings.genericError,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,18 +211,20 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Missed dose reason recorded.')),
-                    );
-                    Navigator.pop(context);
-                  },
+                  onPressed: _isSaving ? null : _onLogReason,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
+                    backgroundColor: AppColors.missedRed,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    disabledBackgroundColor: AppColors.borderGray,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
-                  child: const Text('Log Reason & Dismiss', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                        )
+                      : const Text('Log Reason & Dismiss', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

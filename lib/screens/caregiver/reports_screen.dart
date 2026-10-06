@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/caregiver_provider.dart';
+import '../../utils/snackbar_helper.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -90,7 +91,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _copyReport(String patientName, int taken, int missed, int pending, double adherence) {
     final summary = 'HealthSync report\nPatient: $patientName\nPeriod: $_days days\nAdherence: ${(adherence * 100).round()}%\nTaken: $taken\nMissed: $missed\nPending: $pending';
     Clipboard.setData(ClipboardData(text: summary));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report summary copied to clipboard.')));
+    SnackbarHelper.showSuccess(context, 'Report summary copied to clipboard.');
   }
 }
 

@@ -15,7 +15,7 @@ import 'generate_otp_screen.dart';
 /// Adding reuses the patient-side add-medicine wizard; [ScheduleProvider] is
 /// pointed at this patient first so the wizard writes to them rather than to
 /// the caregiver.
-class SetupMedicationsScreen extends StatelessWidget {
+class SetupMedicationsScreen extends StatefulWidget {
   final String patientUid;
   final String patientName;
 
@@ -25,10 +25,29 @@ class SetupMedicationsScreen extends StatelessWidget {
     required this.patientName,
   });
 
+  @override
+  State<SetupMedicationsScreen> createState() =>
+      _SetupMedicationsScreenState();
+}
+
+class _SetupMedicationsScreenState extends State<SetupMedicationsScreen> {
+  final _firestore = FirestoreService();
+
+  /// Subscribed once. Creating these inside `build` made a new stream on every
+  /// rebuild, so each keystroke elsewhere in the tree re-read the patient's
+  /// whole medication list against the Spark plan's read quota.
+  late final Stream<List<PatientMedicationModel>> _medications =
+      _firestore.streamPatientMedications(widget.patientUid);
+  late final Stream<List<ScheduleModel>> _schedules =
+      _firestore.streamPatientSchedules(widget.patientUid);
+
   void _addMedicine(BuildContext context) {
     final schedule = context.read<ScheduleProvider>();
     schedule.resetForm();
-    schedule.setTargetPatient(uid: patientUid, name: patientName);
+    schedule.setTargetPatient(
+      uid: widget.patientUid,
+      name: widget.patientName,
+    );
     Navigator.of(context)
         .push(
           MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
@@ -40,8 +59,7 @@ class SetupMedicationsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firestore = FirestoreService();
-    final firstName = patientName.split(' ').first;
+    final firstName = widget.patientName.split(' ').first;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -70,8 +88,8 @@ class SetupMedicationsScreen extends StatelessWidget {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => GenerateOtpScreen(
-                  patientUid: patientUid,
-                  patientName: patientName,
+                  patientUid: widget.patientUid,
+                  patientName: widget.patientName,
                 ),
               ),
             ),
@@ -80,7 +98,7 @@ class SetupMedicationsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: StreamBuilder<List<PatientMedicationModel>>(
-          stream: firestore.streamPatientMedications(patientUid),
+          stream: _medications,
           builder: (context, medSnapshot) {
             if (medSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(
@@ -91,7 +109,7 @@ class SetupMedicationsScreen extends StatelessWidget {
             final meds = medSnapshot.data ?? const [];
 
             return StreamBuilder<List<ScheduleModel>>(
-              stream: firestore.streamPatientSchedules(patientUid),
+              stream: _schedules,
               builder: (context, scheduleSnapshot) {
                 final schedules = scheduleSnapshot.data ?? const [];
 

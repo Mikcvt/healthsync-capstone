@@ -21,16 +21,17 @@ class DeviceService {
     });
   }
 
-  // Update ESP32 heartbeat / sync ping
+  /// ESP32 heartbeat.
+  ///
+  /// No battery level: this build has no battery monitoring on any GPIO pin,
+  /// and the field only ever carried the literal 100 written at pairing time.
   Future<void> recordHeartbeat({
     required String deviceId,
-    required int batteryLevel,
     required int activeColumnsCount,
   }) async {
     await _firestore.collection('devices').doc(deviceId).update({
       'status': 'online',
       'last_sync': FieldValue.serverTimestamp(),
-      'battery_level': batteryLevel,
       'columns_active': activeColumnsCount,
     });
   }
@@ -45,35 +46,31 @@ class DeviceService {
     });
   }
 
-  // Generate 8-column compartment status map for UI visualization
-  // Returns a List of 8 maps containing column index (1-8), status, schedule, and pills
-  List<Map<String, dynamic>> buildCompartmentGrid(List<ScheduleModel> schedules) {
-    final List<Map<String, dynamic>> columns = [];
-
-    for (int i = 1; i <= 8; i++) {
-      final matchingSchedule = schedules.where((s) => s.matBoxColumn == i).firstOrNull;
-
-      if (matchingSchedule != null) {
-        columns.add({
-          'column_number': i,
-          'is_assigned': true,
-          'schedule': matchingSchedule,
-          'led_active': matchingSchedule.ledActive,
-          'pills_remaining': matchingSchedule.pillsRemaining,
-          'is_low_stock': matchingSchedule.isLowStock,
-        });
-      } else {
-        columns.add({
-          'column_number': i,
-          'is_assigned': false,
-          'schedule': null,
-          'led_active': false,
-          'pills_remaining': 0,
-          'is_low_stock': false,
-        });
-      }
-    }
-
-    return columns;
+  /// The physical box has exactly eight compartments, so the grid is always
+  /// eight entries — an unassigned column is shown as empty rather than
+  /// omitted, because the patient is looking at real hardware.
+  List<BoxCompartment> buildCompartmentGrid(List<ScheduleModel> schedules) {
+    return List<BoxCompartment>.generate(8, (index) {
+      final column = index + 1;
+      final schedule =
+          schedules.where((s) => s.matBoxColumn == column).firstOrNull;
+      return BoxCompartment(
+        columnNumber: column,
+        schedule: schedule,
+      );
+    });
   }
+}
+
+/// One compartment of the 8-column box, assigned or not.
+class BoxCompartment {
+  final int columnNumber;
+  final ScheduleModel? schedule;
+
+  const BoxCompartment({required this.columnNumber, this.schedule});
+
+  bool get isAssigned => schedule != null;
+  bool get ledActive => schedule?.ledActive ?? false;
+  int get pillsRemaining => schedule?.pillsRemaining ?? 0;
+  bool get isLowStock => schedule?.isLowStock ?? false;
 }

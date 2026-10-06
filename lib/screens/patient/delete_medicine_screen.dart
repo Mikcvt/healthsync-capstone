@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_strings.dart';
 import '../../models/schedule_model.dart';
-import '../../services/firestore_service.dart';
+import '../../providers/patient_provider.dart';
+import '../../utils/snackbar_helper.dart';
 
 class DeleteMedicineScreen extends StatefulWidget {
   final ScheduleModel? schedule;
@@ -15,26 +18,34 @@ class DeleteMedicineScreen extends StatefulWidget {
 class _DeleteMedicineScreenState extends State<DeleteMedicineScreen> {
   bool _isDeleting = false;
 
+  /// Retires the medication **and** its schedules.
+  ///
+  /// The previous version deactivated only this one schedule, leaving the
+  /// `patient_medications` document active — so the medicine stayed in the
+  /// patient's list with its dose times gone. It also wrote through a
+  /// FirestoreService built inside the widget, with no error handling.
   Future<void> _onDelete() async {
-    if (widget.schedule == null) {
+    final schedule = widget.schedule;
+    if (schedule == null) {
       Navigator.pop(context);
       return;
     }
 
     setState(() => _isDeleting = true);
-    // Deactivate schedule
-    final updated = widget.schedule!.copyWith(isActive: false, ledActive: false);
-    await FirestoreService().updateSchedule(updated);
+    final patient = context.read<PatientProvider>();
+    final deleted = await patient.deleteMedication(schedule.patMedRef);
+
+    if (!mounted) return;
     setState(() => _isDeleting = false);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Medication removed from your schedule.'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+    if (deleted) {
+      SnackbarHelper.showSuccess(context, 'Medication removed.');
       Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      SnackbarHelper.showError(
+        context,
+        patient.errorMessage ?? AppStrings.genericError,
+      );
     }
   }
 

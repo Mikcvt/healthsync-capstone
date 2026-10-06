@@ -10,8 +10,8 @@
 	"observability": {
 		"enabled": true
 	},
-	// Missed-dose sweep + low-stock check. Every 5 minutes = 288 runs/day,
-	// well inside the free plan's 100k requests/day.
+	// Materialises upcoming dose logs, then runs the missed-dose sweep.
+	// Every 5 minutes = 288 runs/day, well inside the free plan's 100k/day.
 	"triggers": {
 		"crons": [
 			"*/5 * * * *"

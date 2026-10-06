@@ -103,7 +103,7 @@ class MyPatientsScreen extends StatelessWidget {
 /// Loads each patient's own record rather than relying on the provider's
 /// currently-selected patient, so every row shows a real name instead of a
 /// uid fragment.
-class _PatientCard extends StatelessWidget {
+class _PatientCard extends StatefulWidget {
   final String patientUid;
   final bool isSelected;
   final VoidCallback onTap;
@@ -115,9 +115,20 @@ class _PatientCard extends StatelessWidget {
   });
 
   @override
+  State<_PatientCard> createState() => _PatientCardState();
+}
+
+class _PatientCardState extends State<_PatientCard> {
+  /// Subscribed once rather than rebuilt in `build`. A stream created during
+  /// build is a new stream each time, so selecting a patient re-read the user
+  /// document of every card in the list.
+  late final Stream<UserModel?> _patient =
+      FirestoreService().streamUser(widget.patientUid);
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<UserModel?>(
-      stream: FirestoreService().streamUser(patientUid),
+      stream: _patient,
       builder: (context, snapshot) {
         final patient = snapshot.data;
         final name = patient?.fullName.trim();
@@ -125,13 +136,13 @@ class _PatientCard extends StatelessWidget {
             (name == null || name.isEmpty) ? 'Loading…' : name;
 
         return InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           borderRadius: BorderRadius.circular(16),
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(18),
             decoration: AppStyles.cardDecoration.copyWith(
-              border: isSelected
+              border: widget.isSelected
                   ? Border.all(color: AppColors.caregiverGreen, width: 1.5)
                   : null,
             ),
@@ -174,7 +185,7 @@ class _PatientCard extends StatelessWidget {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => SetupMedicationsScreen(
-                        patientUid: patientUid,
+                        patientUid: widget.patientUid,
                         patientName: displayName,
                       ),
                     ),
