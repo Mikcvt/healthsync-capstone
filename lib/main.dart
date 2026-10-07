@@ -12,6 +12,7 @@ import 'screens/auth/welcome_screen.dart';
 import 'screens/auth/email_verification_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
+import 'services/dose_reminder_scheduler.dart';
 import 'services/notification_service.dart';
 
 void main() async {
@@ -21,6 +22,8 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     await NotificationService().initialize();
+    // Load the timezone database before any screen can schedule a dose.
+    await DoseReminderScheduler().initialize();
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
   }

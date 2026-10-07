@@ -1,3 +1,5 @@
+import '../../widgets/shared/floating_nav_bar.dart';
+import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
@@ -40,7 +42,10 @@ class ScheduleScreen extends StatelessWidget {
               icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                  MaterialPageRoute(
+                            builder: (_) => const AddMedicineStep1Screen(),
+                            settings: const RouteSettings(name: addMedicineFlowRoute),
+                          ),
                 );
               },
             ),
@@ -86,7 +91,10 @@ class ScheduleScreen extends StatelessWidget {
                       ElevatedButton.icon(
                         onPressed: () {
                           Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                            MaterialPageRoute(
+                            builder: (_) => const AddMedicineStep1Screen(),
+                            settings: const RouteSettings(name: addMedicineFlowRoute),
+                          ),
                           );
                         },
                         icon: const Icon(Icons.add, size: 20),
@@ -103,7 +111,7 @@ class ScheduleScreen extends StatelessWidget {
                 ),
               )
             : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, FloatingNavBar.contentPadding),
                 itemCount: schedules.length,
                 itemBuilder: (ctx, index) {
                   final sch = schedules[index];
@@ -186,7 +194,10 @@ class ScheduleScreen extends StatelessWidget {
           ? FloatingActionButton.extended(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AddMedicineStep1Screen()),
+                  MaterialPageRoute(
+                            builder: (_) => const AddMedicineStep1Screen(),
+                            settings: const RouteSettings(name: addMedicineFlowRoute),
+                          ),
                 );
               },
               backgroundColor: AppColors.patientBlue,

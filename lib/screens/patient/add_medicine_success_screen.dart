@@ -1,3 +1,4 @@
+import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
@@ -93,7 +94,12 @@ class AddMedicineSuccessScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  // Leaves the whole wizard, not just this screen. A plain
+                  // pop() dropped the user back on step 2, because step 3 was
+                  // replaced by this screen rather than stacked on top of it.
+                  onPressed: () => Navigator.of(context).popUntil(
+                    (route) => route.settings.name != addMedicineFlowRoute,
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.patientBlue,
                     foregroundColor: Colors.white,

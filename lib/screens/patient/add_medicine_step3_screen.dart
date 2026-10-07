@@ -1,3 +1,4 @@
+import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
@@ -62,6 +63,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
             columnNumber: _selectedColumn,
             scheduledTimes: scheduleProvider.scheduledTimes,
           ),
+          settings: const RouteSettings(name: addMedicineFlowRoute),
         ),
       );
     } else if (mounted) {

@@ -21,6 +21,14 @@ class DoseLogModel {
   final String confirmedVia; // 'app', 'box', 'caregiver'
   final bool caregiverNotified;
   final int doseCount;
+  /// When the patient acknowledged a missed dose.
+  ///
+  /// A missed dose stays on the dashboard until they have seen it — that is the
+  /// whole point of flagging it. Once acknowledged it drops off the dashboard
+  /// and lives only in history, so the list shows what still needs attention
+  /// rather than growing all day.
+  final DateTime? acknowledgedAt;
+
   final String skippedReason;
   final String recordedBy;
   final DateTime createdAt;
@@ -39,6 +47,7 @@ class DoseLogModel {
     this.confirmedVia = 'app',
     this.caregiverNotified = false,
     this.doseCount = 1,
+    this.acknowledgedAt,
     this.skippedReason = '',
     this.recordedBy = 'patient',
     required this.createdAt,
@@ -77,6 +86,9 @@ class DoseLogModel {
       confirmedVia: map['confirmed_via'] as String? ?? 'app',
       caregiverNotified: map['caregiver_notified'] as bool? ?? false,
       doseCount: (map['dose_count'] as num?)?.toInt() ?? 1,
+      acknowledgedAt: map['acknowledged_at'] is Timestamp
+          ? (map['acknowledged_at'] as Timestamp).toDate()
+          : null,
       skippedReason: map['skipped_reason'] as String? ?? '',
       recordedBy: map['recorded_by'] as String? ?? 'patient',
       createdAt: map['created_at'] is Timestamp
@@ -103,6 +115,8 @@ class DoseLogModel {
       'confirmed_via': confirmedVia,
       'caregiver_notified': caregiverNotified,
       'dose_count': doseCount,
+      'acknowledged_at':
+          acknowledgedAt != null ? Timestamp.fromDate(acknowledgedAt!) : null,
       'skipped_reason': skippedReason,
       'recorded_by': recordedBy,
       'created_at': Timestamp.fromDate(createdAt),
@@ -123,6 +137,7 @@ class DoseLogModel {
     String? confirmedVia,
     bool? caregiverNotified,
     int? doseCount,
+    DateTime? acknowledgedAt,
     String? skippedReason,
     String? recordedBy,
     DateTime? createdAt,
@@ -141,6 +156,7 @@ class DoseLogModel {
       confirmedVia: confirmedVia ?? this.confirmedVia,
       caregiverNotified: caregiverNotified ?? this.caregiverNotified,
       doseCount: doseCount ?? this.doseCount,
+      acknowledgedAt: acknowledgedAt ?? this.acknowledgedAt,
       skippedReason: skippedReason ?? this.skippedReason,
       recordedBy: recordedBy ?? this.recordedBy,
       createdAt: createdAt ?? this.createdAt,

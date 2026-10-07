@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../../constants/app_colors.dart';
-import 'patient_dashboard_screen.dart';
-import 'schedule_screen.dart';
+import '../../providers/patient_provider.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
+import 'medicine_box_status_screen.dart';
 import 'notifications_screen.dart';
+import 'patient_dashboard_screen.dart';
 import 'patient_profile_screen.dart';
+import 'schedule_screen.dart';
 
 class PatientMainScreen extends StatefulWidget {
   const PatientMainScreen({super.key});
@@ -15,52 +20,55 @@ class PatientMainScreen extends StatefulWidget {
 class _PatientMainScreenState extends State<PatientMainScreen> {
   int _selectedIndex = 0;
 
-  static final List<Widget> _screens = [
-    const PatientDashboardScreen(),
-    const ScheduleScreen(),
-    const NotificationsScreen(),
-    const PatientProfileScreen(),
+  // Five tabs per the spec — Box was previously unreachable from the nav even
+  // though the screen existed.
+  static const List<Widget> _screens = [
+    PatientDashboardScreen(),
+    ScheduleScreen(),
+    MedicineBoxStatusScreen(),
+    NotificationsScreen(),
+    PatientProfileScreen(),
   ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
+    final unread = context.watch<PatientProvider>().unreadNotificationCount;
+
     return Scaffold(
       backgroundColor: AppColors.background,
+      extendBody: true,
       body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: FloatingNavBar(
         currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        backgroundColor: Colors.white,
-        selectedItemColor: AppColors.patientBlue,
-        unselectedItemColor: AppColors.textSecondary,
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home_rounded),
+        onTap: (i) => setState(() => _selectedIndex = i),
+        accent: AppColors.patientBlue,
+        destinations: [
+          const NavDestination(
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home_rounded,
             label: 'Home',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined),
-            activeIcon: Icon(Icons.calendar_today),
+          const NavDestination(
+            icon: Icons.calendar_today_outlined,
+            activeIcon: Icons.calendar_today_rounded,
             label: 'Schedule',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_none),
-            activeIcon: Icon(Icons.notifications),
-            label: 'Alerts',
+          const NavDestination(
+            icon: Icons.widgets_outlined,
+            activeIcon: Icons.widgets_rounded,
+            label: 'Box',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
+          NavDestination(
+            icon: Icons.notifications_none_rounded,
+            activeIcon: Icons.notifications_rounded,
+            label: 'Alerts',
+            badgeCount: unread,
+          ),
+          const NavDestination(
+            icon: Icons.person_outline,
+            activeIcon: Icons.person,
             label: 'Profile',
+            isAvatar: true,
           ),
         ],
       ),

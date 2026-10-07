@@ -121,6 +121,14 @@ function asDate(value: unknown): Date | null {
 	return null;
 }
 
+/**
+ * How long after a dose time a newly created schedule still counts for it.
+ *
+ * Entering a medicine at 8:03 for an 8:00 dose should still produce today's
+ * dose; entering it at 11:00 should not.
+ */
+const CREATION_GRACE_MS = 15 * 60 * 1000;
+
 /** Whether [dateKey] falls inside the schedule's start and end dates. */
 function withinRange(schedule: Record<string, unknown>, dateKey: string): boolean {
 	const dayStart = manilaInstant(dateKey, 23, 59);
@@ -152,6 +160,7 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 	const known = new Set(existing.map((row) => row.id));
 
 	const writes: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
+	const expectedIds = new Set<string>();
 
 	for (let dayOffset = 0; dayOffset < HORIZON_DAYS; dayOffset++) {
 		const target = new Date(now.getTime() + dayOffset * 86_400_000);
@@ -173,9 +182,31 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 
 			const hhmm = `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`;
 			const logId = `${schedule.id}_${dateKey}_${hhmm}`;
+
+			// Every id the current schedules justify, whether or not it already
+			// exists. Anything pending and future outside this set belongs to a
+			// dose time that has since been edited away.
+			expectedIds.add(logId);
+
 			if (known.has(logId)) continue;
 
 			const scheduledAt = manilaInstant(dateKey, time.hour, time.minute);
+
+			// A dose cannot predate the schedule that defines it.
+			//
+			// Adding a medicine at 11am with an 8am dose time used to create
+			// that morning's 8am dose, which the sweep then marked missed half
+			// an hour later. Nobody could have taken it: the medicine did not
+			// exist, no reminder fired, and the patient was blamed for it.
+			//
+			// GRACE_MS covers the realistic case of entering a dose a minute or
+			// two after its time and still wanting it counted today. Older
+			// schedules carry no created_at, so they fall back to start_date and
+			// behave exactly as before.
+			const createdAt = asDate(schedule.data.created_at);
+			if (createdAt && scheduledAt.getTime() + CREATION_GRACE_MS < createdAt.getTime()) {
+				continue;
+			}
 
 			writes.push({
 				collection: 'dose_logs',
@@ -202,6 +233,33 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 			});
 			known.add(logId);
 		}
+	}
+
+	// Retire future pending logs that no longer match any live schedule.
+	//
+	// Editing a dose time does not rewrite the logs already materialised for it:
+	// the id encodes the old time, so a new one is created and the old one is
+	// left behind. Nobody confirms it, the sweep marks it missed 30 minutes
+	// later, and the caregiver gets a false alert while adherence is skewed.
+	//
+	// Only future and only `pending` are touched — a dose already taken, missed
+	// or snoozed is history and must never be rewritten.
+	const stale: Array<{ collection: string; id: string }> = [];
+	for (const row of existing) {
+		if (row.data.status !== 'pending') continue;
+
+		const at = row.data.scheduled_at;
+		const when = at instanceof Date ? at : new Date(String(at));
+		if (Number.isNaN(when.getTime()) || when.getTime() <= now.getTime()) continue;
+
+		if (!expectedIds.has(row.id)) {
+			stale.push({ collection: 'dose_logs', id: row.id });
+		}
+	}
+
+	if (stale.length > 0) {
+		await db.deleteAll(stale);
+		console.log(`Materialise: retired ${stale.length} orphaned pending dose log(s).`);
 	}
 
 	if (writes.length === 0) return { created: 0 };

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/patient_medication_model.dart';
 import '../../models/schedule_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
@@ -52,7 +53,19 @@ class MedicineDetailScreen extends StatelessWidget {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => EditMedicineScreen(schedule: currentSchedule),
+                    builder: (_) => EditMedicineScreen(
+                      schedule: currentSchedule,
+                      // Pass the medicine too, so a solo user can correct its
+                      // name and dosage and not just the dose time.
+                      medication: currentSchedule == null
+                          ? null
+                          : patientProvider.medications
+                              .cast<PatientMedicationModel?>()
+                              .firstWhere(
+                                (m) => m?.patMedId == currentSchedule.patMedRef,
+                                orElse: () => null,
+                              ),
+                    ),
                   ),
                 );
               },

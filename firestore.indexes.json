@@ -95,16 +95,6 @@
           "order": "ASCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "schedules",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "pat_med_ref",
-          "order": "ASCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": []

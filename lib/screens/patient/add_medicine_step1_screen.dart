@@ -1,3 +1,4 @@
+import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
@@ -46,7 +47,10 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
     );
 
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AddMedicineStep2Screen()),
+      MaterialPageRoute(
+        builder: (_) => const AddMedicineStep2Screen(),
+        settings: const RouteSettings(name: addMedicineFlowRoute),
+      ),
     );
   }
 

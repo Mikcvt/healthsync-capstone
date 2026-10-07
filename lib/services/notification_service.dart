@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_model.dart';
+import 'dose_reminder_scheduler.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -24,6 +25,11 @@ class NotificationService {
       );
 
       debugPrint('FCM Authorization status: ${settings.authorizationStatus}');
+
+      // Android 13+ gates notifications behind a runtime grant, and 14+ gates
+      // exact alarms separately. Without both, reminders are scheduled and
+      // never fire — silently, which is the worst failure mode for this app.
+      await DoseReminderScheduler().requestPermissions();
 
       // 2. Initialize local notifications
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');

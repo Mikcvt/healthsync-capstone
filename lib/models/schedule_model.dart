@@ -15,7 +15,14 @@ class ScheduleModel {
   final bool ledActive;
   final bool isActive;
 
-  const ScheduleModel({
+  /// When this dose time was created.
+  ///
+  /// The materializer needs it: a medicine added at 11am must not produce an
+  /// 8am dose for the same day, because nobody could have taken a dose that
+  /// did not exist yet. start_date alone is midnight and cannot express that.
+  final DateTime createdAt;
+
+  ScheduleModel({
     required this.scheduleId,
     required this.patMedRef,
     this.patientRef = '',
@@ -29,7 +36,8 @@ class ScheduleModel {
     this.lowStockThreshold = 5,
     this.ledActive = false,
     this.isActive = true,
-  });
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   bool get isLowStock => pillsRemaining <= lowStockThreshold;
 
@@ -64,6 +72,9 @@ class ScheduleModel {
       lowStockThreshold: (map['low_stock_threshold'] as num?)?.toInt() ?? 5,
       ledActive: map['led_active'] as bool? ?? false,
       isActive: map['is_active'] as bool? ?? true,
+      createdAt: map['created_at'] is Timestamp
+          ? (map['created_at'] as Timestamp).toDate()
+          : DateTime.tryParse(map['created_at']?.toString() ?? ''),
     );
   }
 
@@ -82,6 +93,7 @@ class ScheduleModel {
       'low_stock_threshold': lowStockThreshold,
       'led_active': ledActive,
       'is_active': isActive,
+      'created_at': Timestamp.fromDate(createdAt),
     };
   }
 
@@ -99,6 +111,7 @@ class ScheduleModel {
     int? lowStockThreshold,
     bool? ledActive,
     bool? isActive,
+    DateTime? createdAt,
   }) {
     return ScheduleModel(
       scheduleId: scheduleId ?? this.scheduleId,
@@ -114,6 +127,7 @@ class ScheduleModel {
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       ledActive: ledActive ?? this.ledActive,
       isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

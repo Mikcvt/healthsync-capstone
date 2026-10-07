@@ -83,10 +83,19 @@ class CaregiverProvider extends ChangeNotifier {
     return sorted;
   }
 
+  /// Logs belonging to a schedule still in the regimen. Deleted and finished
+  /// medicines keep their history but stop appearing in day views.
+  bool _isLiveSchedule(DoseLogModel log) {
+    if (log.scheduleRef.isEmpty) return true;
+    return _selectedPatientSchedules
+        .any((s) => s.scheduleId == log.scheduleRef);
+  }
+
   /// The selected patient's logs for one calendar day.
   List<DoseLogModel> logsForDay(DateTime day) {
     final key = DateFormatter.toDateKey(day);
     return selectedPatientLogs.where((log) {
+      if (!_isLiveSchedule(log)) return false;
       if (log.scheduledDate.isNotEmpty) return log.scheduledDate == key;
       final at = log.scheduledAt;
       return at != null && DateFormatter.isSameDay(at, day);
@@ -290,6 +299,106 @@ class CaregiverProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return null;
+    }
+  }
+
+  /// Edits a patient's regimen on their behalf.
+  ///
+  /// The caregiver is the only account permitted to change a managed patient's
+  /// medicines, so these two methods are the authoring path for that whole
+  /// role — the patient-side provider is never initialised on this device.
+  Future<bool> updateSchedule(ScheduleModel schedule) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.updateSchedule(schedule);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Retires a medicine and every schedule attached to it. Dose history is
+  /// deliberately left intact — adherence records are evidence, not clutter.
+  /// Approves a patient's deletion request, or removes a patient directly.
+  Future<bool> removePatient(String patientUid) async {
+    if (_caregiverUid == null) return false;
+    _errorMessage = null;
+    try {
+      await _firestoreService.deactivatePatient(
+        patientUid: patientUid,
+        caregiverUid: _caregiverUid!,
+      );
+      if (_selectedPatientUid == patientUid) {
+        _selectedPatientUid = null;
+        _selectedPatientUser = null;
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Declines the request, leaving the account in place.
+  Future<bool> declineDeletionRequest(String patientUid) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.cancelAccountDeletionRequest(patientUid);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Archives a medicine. [wasMistake] decides whether it can later be erased
+  /// for good, or kept as a finished course with its history intact.
+  Future<bool> archiveMedication(
+    String patMedId,
+    String patientUid, {
+    required bool wasMistake,
+  }) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.archivePatientMedication(
+        patMedId,
+        patientUid: patientUid,
+        wasMistake: wasMistake,
+      );
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteMedication(String patMedId, String patientUid) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.deletePatientMedication(patMedId, patientUid: patientUid);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> updateMedication(PatientMedicationModel medication) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.updatePatientMedication(medication);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
     }
   }
 

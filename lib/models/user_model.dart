@@ -21,6 +21,10 @@ class UserModel {
   final DateTime createdAt;
   final bool isActive;
 
+  /// Set when the patient has asked to delete their account. Their caregiver
+  /// must approve before anything is removed.
+  final DateTime? deletionRequestedAt;
+
   const UserModel({
     required this.uid,
     required this.role,
@@ -32,6 +36,7 @@ class UserModel {
     required this.canEditMedications,
     required this.createdAt,
     this.isActive = true,
+    this.deletionRequestedAt,
   });
 
   String get fullName => '$firstName $lastName'.trim();
@@ -40,6 +45,9 @@ class UserModel {
   bool get isCaregiver => accountType == AccountType.caregiver;
   bool get isSolo => accountType == AccountType.solo;
   bool get isManaged => accountType == AccountType.managed;
+
+  /// Whether this patient is waiting on their caregiver to approve deletion.
+  bool get hasPendingDeletion => deletionRequestedAt != null;
 
   /// A managed patient has no real email address — their account was created by
   /// a caregiver and they sign in with an OTP-minted custom token. Used to skip
@@ -93,6 +101,9 @@ class UserModel {
               ? DateTime.tryParse(map['created_at'].toString()) ?? DateTime.now()
               : DateTime.now()),
       isActive: map['is_active'] as bool? ?? true,
+      deletionRequestedAt: map['deletion_requested_at'] is Timestamp
+          ? (map['deletion_requested_at'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -122,6 +133,7 @@ class UserModel {
     bool? canEditMedications,
     DateTime? createdAt,
     bool? isActive,
+    DateTime? deletionRequestedAt,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -134,6 +146,7 @@ class UserModel {
       canEditMedications: canEditMedications ?? this.canEditMedications,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
+      deletionRequestedAt: deletionRequestedAt ?? this.deletionRequestedAt,
     );
   }
 }

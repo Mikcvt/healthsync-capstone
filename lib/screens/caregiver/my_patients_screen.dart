@@ -1,3 +1,5 @@
+import '../../utils/snackbar_helper.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -45,11 +47,11 @@ class MyPatientsScreen extends StatelessWidget {
       body: SafeArea(
         child: links.isEmpty
             ? ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, FloatingNavBar.contentPadding),
                 children: [_EmptyPatients(onAdd: () => _addPatient(context))],
               )
             : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, FloatingNavBar.contentPadding),
                 children: [
                   ...links.map(
                     (link) => _PatientCard(
@@ -137,6 +139,9 @@ class _PatientCardState extends State<_PatientCard> {
 
         return InkWell(
           onTap: widget.onTap,
+          onLongPress: patient == null
+              ? null
+              : () => _confirmRemove(context, patient, displayName),
           borderRadius: BorderRadius.circular(16),
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -175,6 +180,13 @@ class _PatientCardState extends State<_PatientCard> {
                       ),
                       const SizedBox(height: 5),
                       if (patient != null) _StatusChip(patient: patient),
+                      if (patient?.hasPendingDeletion == true) ...[
+                        const SizedBox(height: 6),
+                        _DeletionRequestBanner(
+                          patientUid: widget.patientUid,
+                          name: displayName,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -308,6 +320,128 @@ class _EmptyPatients extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Removes a patient from the caregiver's care.
+///
+/// Deactivates rather than erases: the dose history is the record of care
+/// given, and a caregiver may need it long after the patient stops using the
+/// app. The Auth account is left intact so the uid can never be reused.
+Future<void> _confirmRemove(
+  BuildContext context,
+  UserModel patient,
+  String displayName,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Remove this patient?',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+      content: Text(
+        '$displayName will no longer appear in your list and their reminders '
+        'will stop. Their dose history is kept, and they can be added again '
+        'later with a new code.',
+        style: const TextStyle(height: 1.5, color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Keep'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Remove',
+              style: TextStyle(color: AppColors.missedRed)),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true || !context.mounted) return;
+
+  final caregiver = context.read<CaregiverProvider>();
+  final ok = await caregiver.removePatient(patient.uid);
+  if (!context.mounted) return;
+  ok
+      ? SnackbarHelper.showSuccess(context, '$displayName removed.')
+      : SnackbarHelper.showError(
+          context, caregiver.errorMessage ?? 'Could not remove this patient.');
+}
+
+/// Surfaces a patient's own request to be deleted, with both answers.
+///
+/// The patient cannot act on this themselves by design, so the caregiver has
+/// to see it somewhere they actually look — their patient list.
+class _DeletionRequestBanner extends StatelessWidget {
+  final String patientUid;
+  final String name;
+
+  const _DeletionRequestBanner({required this.patientUid, required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final caregiver = context.read<CaregiverProvider>();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: AppColors.pendingAmberBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$name asked to delete their account',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.pendingAmber,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () async {
+                  final ok = await caregiver.removePatient(patientUid);
+                  if (!context.mounted) return;
+                  ok
+                      ? SnackbarHelper.showSuccess(context, '$name removed.')
+                      : SnackbarHelper.showError(
+                          context, 'Could not remove $name.');
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 30),
+                ),
+                child: const Text('Approve',
+                    style: TextStyle(
+                        fontSize: 12.5, color: AppColors.missedRed)),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final ok =
+                      await caregiver.declineDeletionRequest(patientUid);
+                  if (!context.mounted) return;
+                  ok
+                      ? SnackbarHelper.showInfo(context, 'Request declined.')
+                      : SnackbarHelper.showError(
+                          context, 'Could not decline the request.');
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 30),
+                ),
+                child: const Text('Decline', style: TextStyle(fontSize: 12.5)),
+              ),
+            ],
           ),
         ],
       ),

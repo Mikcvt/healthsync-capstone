@@ -1,3 +1,4 @@
+import '../../utils/snackbar_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
@@ -161,6 +162,29 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       dangerous: true,
                       onTap: _handleSignOut,
                     ),
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        final pending = context
+                                .watch<AuthProvider>()
+                                .currentUserModel
+                                ?.hasPendingDeletion ??
+                            false;
+                        return _ProfileOption(
+                          label: pending
+                              ? 'Deletion requested'
+                              : 'Delete my account',
+                          subtitle: pending
+                              ? 'Waiting for your caregiver to approve'
+                              : 'Your caregiver must approve this',
+                          icon: pending
+                              ? Icons.hourglass_top_rounded
+                              : Icons.delete_outline,
+                          dangerous: true,
+                          onTap: () => _handleDeletionRequest(pending),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -170,6 +194,101 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         ),
       ),
     );
+  }
+
+  /// Asks the caregiver to delete this account, or withdraws that request.
+  ///
+  /// Deliberately not immediate. A managed patient's record belongs to the care
+  /// relationship, and a tap in a bad moment should not destroy the medication
+  /// history their caregiver depends on.
+  Future<void> _handleDeletionRequest(bool alreadyPending) async {
+    final patient = context.read<PatientProvider>();
+
+    if (alreadyPending) {
+      final cancel = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Withdraw your request?',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          content: const Text(
+            'Your account will stay exactly as it is.',
+            style: TextStyle(height: 1.5, color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep request'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Withdraw'),
+            ),
+          ],
+        ),
+      );
+      if (cancel != true || !mounted) return;
+      final ok = await patient.cancelAccountDeletionRequest();
+      if (!mounted) return;
+      ok
+          ? SnackbarHelper.showSuccess(context, 'Request withdrawn.')
+          : SnackbarHelper.showError(context, AppStrings.genericError);
+      return;
+    }
+
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Request account deletion?',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your caregiver will be asked to approve this. Nothing is '
+              'deleted until they do, and you can withdraw the request at any '
+              'time.',
+              style: TextStyle(height: 1.5, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Send request',
+                style: TextStyle(color: AppColors.missedRed)),
+          ),
+        ],
+      ),
+    );
+    final reason = controller.text;
+    controller.dispose();
+
+    if (confirmed != true || !mounted) return;
+    final ok = await patient.requestAccountDeletion(reason: reason);
+    if (!mounted) return;
+    ok
+        ? SnackbarHelper.showSuccess(
+            context, 'Your caregiver has been asked to approve this.')
+        : SnackbarHelper.showError(context, AppStrings.genericError);
   }
 
   Future<void> _handleSignOut() async {

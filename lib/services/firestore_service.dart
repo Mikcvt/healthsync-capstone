@@ -148,23 +148,244 @@ class FirestoreService {
   /// Deactivating only one side is what left medicines sitting in the list with
   /// their schedules gone, and schedules firing for medicines the patient had
   /// already removed.
-  Future<void> deletePatientMedication(String patMedId) async {
+  /// Retires a medicine and every schedule attached to it.
+  ///
+  /// [patientUid] is required because Firestore rules are not filters: a query
+  /// on `pat_med_ref` alone could in principle match another patient's
+  /// schedules, so the rules engine rejects it outright no matter what the data
+  /// actually holds. Constraining on `patient_ref` is what makes the query
+  /// provably safe — and it is the correct query regardless.
+  // ==========================================
+  // ACCOUNT DELETION (patient requests, caregiver approves)
+  //
+  // A managed patient cannot delete themselves outright: their account holds a
+  // medication record their caregiver is responsible for, and a tap in a
+  // moment of frustration should not destroy it. The request is recorded, the
+  // caregiver sees it, and only they can carry it out.
+  // ==========================================
+
+  /// Flags a patient account for deletion, pending caregiver approval.
+  Future<void> requestAccountDeletion({
+    required String patientUid,
+    String reason = '',
+  }) async {
+    await _db.collection('users').doc(patientUid).update({
+      'deletion_requested_at': Timestamp.now(),
+      'deletion_reason': reason.trim(),
+    });
+  }
+
+  /// Withdraws a pending deletion request.
+  Future<void> cancelAccountDeletionRequest(String patientUid) async {
+    await _db.collection('users').doc(patientUid).update({
+      'deletion_requested_at': null,
+      'deletion_reason': null,
+    });
+  }
+
+  /// Caregiver-side removal of a patient.
+  ///
+  /// Deactivates rather than erases: dose history is the record of care given,
+  /// and a caregiver may need it long after the patient stops using the app.
+  /// The Auth account is left alone so the uid can never be reused.
+  Future<void> deactivatePatient({
+    required String patientUid,
+    required String caregiverUid,
+  }) async {
     final batch = _db.batch();
 
-    batch.update(_db.collection('patient_medications').doc(patMedId), {
+    batch.update(_db.collection('users').doc(patientUid), {
       'is_active': false,
-      'updated_at': Timestamp.now(),
+      'deactivated_at': Timestamp.now(),
+      'deletion_requested_at': null,
     });
 
     final schedules = await _db
         .collection('schedules')
-        .where('pat_med_ref', isEqualTo: patMedId)
+        .where('patient_ref', isEqualTo: patientUid)
         .get();
     for (final doc in schedules.docs) {
       batch.update(doc.reference, {'is_active': false, 'led_active': false});
     }
 
+    final links = await _db
+        .collection('caregiver_patient_links')
+        .where('caregiver_ref', isEqualTo: caregiverUid)
+        .get();
+    for (final doc in links.docs) {
+      if (doc.data()['patient_ref'] == patientUid) {
+        batch.update(doc.reference, {'is_active': false, 'status': 'removed'});
+      }
+    }
+
     await batch.commit();
+  }
+
+  /// Marks a missed dose as seen by the patient, which removes it from the
+  /// dashboard. The log itself is untouched — adherence still counts it missed.
+  Future<void> acknowledgeDoseLog(String doseLogId) async {
+    await _db.collection('dose_logs').doc(doseLogId).update({
+      'acknowledged_at': Timestamp.now(),
+    });
+  }
+
+  /// Medicines removed from the active regimen, newest first.
+  Stream<List<PatientMedicationModel>> streamArchivedMedications(
+    String patientUid,
+  ) {
+    return _db
+        .collection('patient_medications')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: false)
+        .snapshots()
+        .map((snapshot) {
+          final items = snapshot.docs
+              .map((doc) => PatientMedicationModel.fromFirestore(doc))
+              .toList();
+          items.sort((a, b) => b.startDate.compareTo(a.startDate));
+          return items;
+        });
+  }
+
+  /// Puts an archived medicine back into the regimen.
+  Future<void> restoreMedication(
+    String patMedId, {
+    required String patientUid,
+  }) async {
+    final batch = _db.batch();
+    batch.update(_db.collection('patient_medications').doc(patMedId), {
+      'is_active': true,
+      'archived_at': null,
+      'archived_reason': null,
+      'updated_at': Timestamp.now(),
+    });
+
+    final schedules = await _db
+        .collection('schedules')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('pat_med_ref', isEqualTo: patMedId)
+        .get();
+    for (final doc in schedules.docs) {
+      batch.update(doc.reference, {'is_active': true});
+    }
+    await batch.commit();
+  }
+
+  /// Erases a medicine, its schedules and its dose logs for good.
+  ///
+  /// Only ever offered for an entry archived as a mistake. A finished course
+  /// keeps its logs, because deleting them would silently rewrite the
+  /// patient's adherence history — the one record this app exists to produce.
+  Future<void> permanentlyDeleteMedication(
+    String patMedId, {
+    required String patientUid,
+  }) async {
+    final schedules = await _db
+        .collection('schedules')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('pat_med_ref', isEqualTo: patMedId)
+        .get();
+    final scheduleIds = schedules.docs.map((d) => d.id).toSet();
+
+    final logs = await _db
+        .collection('dose_logs')
+        .where('patient_ref', isEqualTo: patientUid)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in logs.docs) {
+      if (scheduleIds.contains(doc.data()['schedule_ref'])) {
+        batch.delete(doc.reference);
+      }
+    }
+    for (final doc in schedules.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(_db.collection('patient_medications').doc(patMedId));
+    await batch.commit();
+  }
+
+  /// Removes still-pending doses scheduled from now on for [scheduleIds].
+  Future<void> _purgeFutureDoseLogs({
+    required String patientUid,
+    required List<String> scheduleIds,
+  }) async {
+    if (scheduleIds.isEmpty) return;
+    final now = Timestamp.now();
+
+    // Queried by patient_ref so the security rules can authorise it — rules
+    // are not filters, and a query on schedule_ref alone is rejected outright.
+    final snapshot = await _db
+        .collection('dose_logs')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    final batch = _db.batch();
+    var count = 0;
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if (!scheduleIds.contains(data['schedule_ref'])) continue;
+      final at = data['scheduled_at'];
+      if (at is Timestamp && at.compareTo(now) <= 0) continue;
+      batch.delete(doc.reference);
+      count++;
+    }
+    if (count > 0) await batch.commit();
+  }
+
+  /// Why a medicine left the active regimen.
+  ///
+  /// The distinction matters for honesty of the record: a finished course is
+  /// part of the patient's history and its missed doses are real, while a
+  /// mistyped entry never happened and its logs are noise.
+  Future<void> archivePatientMedication(
+    String patMedId, {
+    required String patientUid,
+    required bool wasMistake,
+  }) =>
+      deletePatientMedication(
+        patMedId,
+        patientUid: patientUid,
+        wasMistake: wasMistake,
+      );
+
+  Future<void> deletePatientMedication(
+    String patMedId, {
+    required String patientUid,
+    bool wasMistake = true,
+  }) async {
+    final batch = _db.batch();
+
+    batch.update(_db.collection('patient_medications').doc(patMedId), {
+      'is_active': false,
+      // Both are archived; only one is a mistake. The archive screen reads
+      // this to offer "restore" versus "delete permanently".
+      'archived_at': Timestamp.now(),
+      'archived_reason': wasMistake ? 'mistake' : 'completed',
+      'updated_at': Timestamp.now(),
+    });
+
+    final schedules = await _db
+        .collection('schedules')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('pat_med_ref', isEqualTo: patMedId)
+        .get();
+    final scheduleIds = <String>[];
+    for (final doc in schedules.docs) {
+      scheduleIds.add(doc.id);
+      batch.update(doc.reference, {'is_active': false, 'led_active': false});
+    }
+
+    await batch.commit();
+
+    // Drop doses that have not happened yet.
+    //
+    // The schedule is inactive now, so the Worker will not create more — but
+    // the ones already materialised would sit there until the sweep marked
+    // them missed, producing alerts for a medicine nobody is taking any more.
+    // Past doses are never touched: they are the adherence record.
+    await _purgeFutureDoseLogs(patientUid: patientUid, scheduleIds: scheduleIds);
   }
 
   Future<ScheduleModel?> getSchedule(String scheduleId) async {

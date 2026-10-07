@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../../constants/app_colors.dart';
+import '../../providers/caregiver_provider.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
+import 'caregiver_alerts_screen.dart';
 import 'caregiver_dashboard_screen.dart';
+import 'caregiver_settings_screen.dart';
 import 'my_patients_screen.dart';
 import 'reports_screen.dart';
-import 'caregiver_settings_screen.dart';
 
 class CaregiverMainScreen extends StatefulWidget {
   const CaregiverMainScreen({super.key});
@@ -15,52 +20,57 @@ class CaregiverMainScreen extends StatefulWidget {
 class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
   int _selectedIndex = 0;
 
-  static final List<Widget> _screens = [
-    const CaregiverDashboardScreen(),
-    const MyPatientsScreen(),
-    const ReportsScreen(),
-    const CaregiverSettingsScreen(),
+  // Five tabs, matching the spec. Alerts was missing entirely, so missed-dose
+  // notifications had nowhere to surface.
+  static const List<Widget> _screens = [
+    CaregiverDashboardScreen(),
+    MyPatientsScreen(),
+    CaregiverAlertsScreen(),
+    ReportsScreen(),
+    CaregiverSettingsScreen(),
   ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
+    final unread = context.watch<CaregiverProvider>().unreadNotificationCount;
+
     return Scaffold(
       backgroundColor: AppColors.background,
+      // extendBody lets the content scroll underneath the floating bar instead
+      // of stopping short of it.
+      extendBody: true,
       body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: FloatingNavBar(
         currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        backgroundColor: Colors.white,
-        selectedItemColor: AppColors.caregiverGreen,
-        unselectedItemColor: AppColors.textSecondary,
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home_rounded),
+        onTap: (i) => setState(() => _selectedIndex = i),
+        accent: AppColors.caregiverGreen,
+        destinations: [
+          const NavDestination(
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home_rounded,
             label: 'Home',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.group_outlined),
-            activeIcon: Icon(Icons.group),
+          const NavDestination(
+            icon: Icons.group_outlined,
+            activeIcon: Icons.group,
             label: 'Patients',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
+          NavDestination(
+            icon: Icons.notifications_none_rounded,
+            activeIcon: Icons.notifications_rounded,
+            label: 'Alerts',
+            badgeCount: unread,
+          ),
+          const NavDestination(
+            icon: Icons.bar_chart_outlined,
+            activeIcon: Icons.bar_chart,
             label: 'Reports',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
+          const NavDestination(
+            icon: Icons.person_outline,
+            activeIcon: Icons.person,
             label: 'Profile',
+            isAvatar: true,
           ),
         ],
       ),

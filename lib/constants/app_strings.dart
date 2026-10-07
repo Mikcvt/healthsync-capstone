@@ -73,3 +73,10 @@ class AppStrings {
   static const String otpRateLimited =
       'Too many attempts. Please wait a few minutes and try again.';
 }
+
+/// Route name shared by every screen in the add-medicine wizard.
+///
+/// The success screen pops until it leaves routes carrying this name, so
+/// finishing returns to whatever launched the flow — the caregiver's medicine
+/// list or the patient's dashboard — instead of an intermediate step.
+const String addMedicineFlowRoute = 'add_medicine_flow';

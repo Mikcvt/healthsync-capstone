@@ -10,6 +10,7 @@ import '../models/notification_model.dart';
 import '../models/caregiver_patient_link_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/dose_reminder_scheduler.dart';
 import '../services/firestore_service.dart';
 import '../utils/date_formatter.dart';
 
@@ -101,10 +102,77 @@ class PatientProvider extends ChangeNotifier {
   /// so an app left open past midnight showed yesterday's doses forever.
   /// Deriving it means the list is correct whenever it is read, and costs one
   /// stream instead of two.
+  /// Logs for a schedule that is still part of the regimen.
+  ///
+  /// `_schedules` only ever holds active ones, so a medicine that was deleted
+  /// or finished drops out of here while its past doses stay in [allLogs] for
+  /// history and reports. Without this, removing a medicine left its missed
+  /// doses on the dashboard forever.
+  bool _isLiveSchedule(DoseLogModel log) {
+    if (log.scheduleRef.isEmpty) return true;
+    return _schedules.any((s) => s.scheduleId == log.scheduleRef);
+  }
+
+  /// What the dashboard should still be showing.
+  ///
+  /// A dose the patient has dealt with — taken, or a miss they have seen —
+  /// leaves the list. Keeping everything made the dashboard longer as the day
+  /// went on, which is backwards: it should get shorter as things get done.
+  List<DoseLogModel> get outstandingTodayLogs => todayLogs
+      .where((log) => !log.isTaken && log.acknowledgedAt == null)
+      .toList();
+
+  /// Asks the caregiver to delete this account.
+  Future<bool> requestAccountDeletion({String reason = ''}) async {
+    final uid = _patientUid;
+    if (uid == null) return false;
+    _errorMessage = null;
+    try {
+      await _firestoreService.requestAccountDeletion(
+        patientUid: uid,
+        reason: reason,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('requestAccountDeletion failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Withdraws the request.
+  Future<bool> cancelAccountDeletionRequest() async {
+    final uid = _patientUid;
+    if (uid == null) return false;
+    try {
+      await _firestoreService.cancelAccountDeletionRequest(uid);
+      return true;
+    } catch (e) {
+      debugPrint('cancelAccountDeletionRequest failed: $e');
+      return false;
+    }
+  }
+
+  /// Dismisses a missed dose from the dashboard.
+  Future<bool> acknowledgeMissedDose(String doseLogId) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.acknowledgeDoseLog(doseLogId);
+      return true;
+    } catch (e) {
+      debugPrint('acknowledgeMissedDose failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
   List<DoseLogModel> get todayLogs {
     final today = DateTime.now();
     final key = DateFormatter.toDateKey(today);
     return _allLogs.where((log) {
+      if (!_isLiveSchedule(log)) return false;
       if (log.scheduledDate.isNotEmpty) return log.scheduledDate == key;
       final at = log.scheduledAt;
       return at != null && DateFormatter.isSameDay(at, today);
@@ -221,6 +289,10 @@ class PatientProvider extends ChangeNotifier {
     _schedulesSub = _firestoreService.streamPatientSchedules(uid).listen((schs) {
       _schedules = schs;
       _schedulesLoaded = true;
+      // Re-arm the on-device reminders whenever the regimen changes. The
+      // caregiver edits from their own phone, so this stream is the only
+      // signal the patient's device gets that a dose time moved.
+      DoseReminderScheduler().syncReminders(schs);
       notifyListeners();
     }, onError: (Object e) {
       _schedulesLoaded = true;
@@ -401,6 +473,21 @@ class PatientProvider extends ChangeNotifier {
         status: 'snoozed',
         snoozeCount: currentSnoozeCount + 1,
       );
+
+      // Re-fire locally in ten minutes. Without this the snooze only changes a
+      // database field and the patient is never prompted again — the dose then
+      // goes missed with no second chance, which is the opposite of snoozing.
+      if (scheduleId != null && scheduleId.isNotEmpty) {
+        final schedule = _schedules
+            .where((s) => s.scheduleId == scheduleId)
+            .cast<ScheduleModel?>()
+            .firstWhere((s) => s != null, orElse: () => null);
+        await DoseReminderScheduler().scheduleSnooze(
+          scheduleId: scheduleId,
+          matBoxColumn: schedule?.matBoxColumn ?? 1,
+        );
+      }
+
       notifyListeners();
       return DoseActionResult.success;
     } catch (e) {
@@ -465,6 +552,23 @@ class PatientProvider extends ChangeNotifier {
   // MEDICATIONS (solo users only — gated on can_edit_medications)
   // ==========================================
 
+  /// Updates the medicine itself — name, dosage, instructions, doctor.
+  ///
+  /// These live on `patient_medications`, not on the schedule, which is why
+  /// editing a dose time never reached them.
+  Future<bool> updateMedication(PatientMedicationModel medication) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.updatePatientMedication(medication);
+      return true;
+    } catch (e) {
+      debugPrint('updateMedication failed: $e');
+      _errorMessage = AppStrings.genericError;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> updateSchedule(ScheduleModel schedule) async {
     _errorMessage = null;
     try {
@@ -482,7 +586,9 @@ class PatientProvider extends ChangeNotifier {
   Future<bool> deleteMedication(String patMedId) async {
     _errorMessage = null;
     try {
-      await _firestoreService.deletePatientMedication(patMedId);
+      final uid = _patientUid;
+      if (uid == null) return false;
+      await _firestoreService.deletePatientMedication(patMedId, patientUid: uid);
       return true;
     } catch (e) {
       debugPrint('deleteMedication failed: $e');

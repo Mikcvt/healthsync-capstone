@@ -16,6 +16,9 @@ class PatientMedicationModel {
   final DateTime? endDate;
   final bool isActive;
 
+  /// Why it left the regimen: 'completed' or 'mistake'. Empty while active.
+  final String archivedReason;
+
   const PatientMedicationModel({
     required this.patMedId,
     required this.patientRef,
@@ -31,6 +34,7 @@ class PatientMedicationModel {
     required this.startDate,
     this.endDate,
     this.isActive = true,
+    this.archivedReason = '',
   });
 
   factory PatientMedicationModel.fromFirestore(DocumentSnapshot doc) {
@@ -66,6 +70,7 @@ class PatientMedicationModel {
               ? DateTime.tryParse(map['end_date'].toString())
               : null),
       isActive: map['is_active'] as bool? ?? true,
+      archivedReason: map['archived_reason'] as String? ?? '',
     );
   }
 
@@ -85,6 +90,7 @@ class PatientMedicationModel {
       'start_date': Timestamp.fromDate(startDate),
       'end_date': endDate != null ? Timestamp.fromDate(endDate!) : null,
       'is_active': isActive,
+      'archived_reason': archivedReason,
     };
   }
 
@@ -103,6 +109,7 @@ class PatientMedicationModel {
     DateTime? startDate,
     DateTime? endDate,
     bool? isActive,
+    String? archivedReason,
   }) {
     return PatientMedicationModel(
       patMedId: patMedId ?? this.patMedId,
@@ -119,6 +126,7 @@ class PatientMedicationModel {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       isActive: isActive ?? this.isActive,
+      archivedReason: archivedReason ?? this.archivedReason,
     );
   }
 }

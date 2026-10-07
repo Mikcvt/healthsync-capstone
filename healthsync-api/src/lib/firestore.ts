@@ -181,6 +181,27 @@ export class Firestore {
 			}));
 	}
 
+	/** Deletes many documents in one request. */
+	async deleteAll(targets: Array<{ collection: string; id: string }>): Promise<void> {
+		if (targets.length === 0) return;
+
+		for (let i = 0; i < targets.length; i += 400) {
+			const chunk = targets.slice(i, i + 400);
+			const response = await fetch(`${BASE}/projects/${this.projectId}/databases/(default)/documents:commit`, {
+				method: 'POST',
+				headers: this.headers(),
+				body: JSON.stringify({
+					writes: chunk.map((t) => ({
+						delete: `projects/${this.projectId}/databases/(default)/documents/${t.collection}/${t.id}`,
+					})),
+				}),
+			});
+			if (!response.ok) {
+				throw new Error(`Firestore delete failed (${response.status}): ${await response.text()}`);
+			}
+		}
+	}
+
 	/**
 	 * Applies many writes as one request. Each write merges the fields given,
 	 * leaving the rest of the document untouched.
