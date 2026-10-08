@@ -393,11 +393,8 @@ class _ProfileCard extends StatelessWidget {
     return parts.isEmpty ? 'Managed by your caregiver' : parts.join(' · ');
   }
 
-  static String _roleLabel(UserModel? user) {
-    if (user == null) return 'Patient';
-    if (user.isManaged) return 'Patient · managed by caregiver';
-    return 'Patient';
-  }
+  static String _roleLabel(UserModel? user) =>
+      user == null ? 'Patient' : 'Patient · managed by caregiver';
 
   static String _initials(String name) {
     final parts = name.split(' ').where((p) => p.isNotEmpty).take(2);

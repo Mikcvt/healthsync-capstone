@@ -170,6 +170,12 @@ Neither `solo_dashboard_screen.dart` nor `solo_analytics_screen.dart` was ever
 created. The purple accent stays in `app_colors.dart` as `streakPurple`, which
 is what actually uses it — the streak notification type.
 
+A follow-up sweep removed what the role left behind: patient-side Add / Edit /
+Delete medicine buttons (the add, edit and delete screens remain, reached only
+from the caregiver's `setup_medications_screen`), the now-unreachable
+`patient_profile_setup_screen.dart`, the patient branch of email verification,
+and the `isOwner` path in the `mayAuthorFor()` Firestore rule.
+
 The four days this phase held are now slack, which the schedule previously had
 none of. Spend them on Phase 7 (ESP32), historically the phase most likely to
 overrun.

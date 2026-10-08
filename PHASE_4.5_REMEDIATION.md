@@ -491,7 +491,7 @@ reaches Firestore. `errors` = failure path shows a message.
 | `change_password_screen` | yes | yes | yes | OK |
 | `patient_profile_screen` | yes | yes | yes | OK |
 | `edit_profile_screen` | **no** | **no** | **no** | **BROKEN** — discards input, leaks a teammate's data (1.1) |
-| `patient_profile_setup_screen` | **no** | **no** | **no** | **BROKEN** — saves nothing; was marked DONE (1.2) |
+| `patient_profile_setup_screen` | **no** | **no** | **no** | **BROKEN** — saves nothing; was marked DONE (1.2). *Later deleted: unreachable after the solo role was removed.* |
 | `device_pairing_screen` | **no** | **no** | **no** | **BROKEN** — dead end; was marked DONE (1.3) |
 | `scan_qr_screen` | **no** | **no** | **no** | **BROKEN** — button is `() {}` (1.3) |
 | `medicine_box_status_screen` | **no** | n/a | **no** | **BROKEN** — hardcoded, needs 1.3 (Task 4) |

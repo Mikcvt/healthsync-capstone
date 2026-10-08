@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../caregiver/caregiver_welcome_screen.dart';
-import '../patient/patient_profile_setup_screen.dart';
 import '../../utils/snackbar_helper.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
@@ -77,15 +76,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     _showMessage('Verification email sent. Check your inbox and spam folder.');
   }
 
+  // Only caregivers self-register, so only caregivers ever verify an email.
   void _continueToOnboarding() {
-    final authProvider = context.read<AuthProvider>();
-    final role = ModalRoute.of(context)?.settings.arguments as String? ??
-        authProvider.currentUserModel?.role ?? 'patient';
-    final destination = role == 'caregiver'
-        ? const CaregiverWelcomeScreen()
-        : const PatientProfileSetupScreen();
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => destination),
+      MaterialPageRoute(builder: (_) => const CaregiverWelcomeScreen()),
     );
   }
 

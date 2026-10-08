@@ -111,13 +111,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final email = context.select<AuthProvider, String>(
-      (auth) => auth.currentUserModel?.email ?? '',
-    );
-    final isManaged = context.select<AuthProvider, bool>(
-      (auth) => auth.isManaged,
-    );
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -165,22 +158,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   validator: (v) => Validators.name(v, label: 'last name'),
                 ),
                 const SizedBox(height: 14),
-
-                // A managed patient's account carries no real email — it was
-                // created by their caregiver — so there is nothing to show or
-                // change here for them.
-                if (!isManaged) ...[
-                  TextFormField(
-                    initialValue: email,
-                    readOnly: true,
-                    decoration: AppStyles.inputDecoration(
-                      'Email address',
-                      hint: 'Contact support to change this',
-                    ),
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 14),
-                ],
 
                 TextFormField(
                   controller: _phone,

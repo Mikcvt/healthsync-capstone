@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/preferences_service.dart';
 import 'notifications_screen.dart';
 
@@ -43,8 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isManaged = context.select<AuthProvider, bool>((a) => a.isManaged);
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -110,37 +106,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // A managed patient's caregiver controls their alerts, so
+                    // The caregiver controls which alerts they receive, so
                     // say so rather than offering a switch that does nothing.
-                    if (isManaged) ...[
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.blueLight,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.info_outline,
-                                size: 20, color: AppColors.blueDark),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Your caregiver manages which alerts they '
-                                'receive about your doses.',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  height: 1.5,
-                                  color: AppColors.blueDark,
-                                  fontFamily: AppStyles.fontFamily,
-                                ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.blueLight,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 20, color: AppColors.blueDark),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Your caregiver manages which alerts they '
+                              'receive about your doses.',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                height: 1.5,
+                                color: AppColors.blueDark,
+                                fontFamily: AppStyles.fontFamily,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 20),
-                    ],
+                    ),
+                    const SizedBox(height: 20),
 
                     const _SectionHeader(label: 'ABOUT'),
                     const SizedBox(height: 12),

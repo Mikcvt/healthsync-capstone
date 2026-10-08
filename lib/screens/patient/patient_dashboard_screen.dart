@@ -1,7 +1,6 @@
 import '../../widgets/shared/floating_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../constants/app_strings.dart';
 import '../../models/dose_log_model.dart';
 import '../../models/schedule_model.dart';
 import '../../utils/snackbar_helper.dart';
@@ -10,7 +9,6 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
-import 'add_medicine_step1_screen.dart';
 import 'analytics_screen.dart';
 import 'medicine_box_status_screen.dart';
 import 'notifications_screen.dart';
@@ -25,7 +23,6 @@ class PatientDashboardScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final user = authProvider.currentUserModel;
     final firstName = user?.firstName.isNotEmpty == true ? user!.firstName : 'Patient';
-    final canEdit = authProvider.canEditMedications;
 
     final schedules = patientProvider.schedules;
     final todayLogs = patientProvider.todayLogs;
@@ -184,10 +181,10 @@ class PatientDashboardScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // No "Link" action: a patient can no longer attach a
-                      // caregiver themselves. Managed patients are created by
-                      // their caregiver already linked, and editors manage
-                      // their own medicines by design.
+                      // No "Link" action: a patient cannot attach a caregiver
+                      // themselves. Every patient is created by their caregiver
+                      // already linked, so this only shows if that link was
+                      // removed.
                     ],
                   ),
                 ),
@@ -241,26 +238,6 @@ class PatientDashboardScreen extends StatelessWidget {
                       fontFamily: 'PlusJakartaSans',
                     ),
                   ),
-                  if (canEdit)
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => const AddMedicineStep1Screen(),
-                            settings: const RouteSettings(name: addMedicineFlowRoute),
-                          ),
-                      );
-                    },
-                    icon: const Icon(Icons.add, size: 18, color: AppColors.patientBlue),
-                    label: const Text(
-                      'Add Medicine',
-                      style: TextStyle(
-                        color: AppColors.patientBlue,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -280,28 +257,9 @@ class PatientDashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Add your first prescription to start tracking doses and smart box LEDs.',
+                        'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 16),
-                      if (canEdit)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                            builder: (_) => const AddMedicineStep1Screen(),
-                            settings: const RouteSettings(name: addMedicineFlowRoute),
-                          ),
-                          );
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add Medication Now'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.patientBlue,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
                       ),
                     ],
                   ),

@@ -434,13 +434,13 @@ how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 [x] patient_main_screen.dart          bottom nav wrapper
 [x] patient_dashboard_screen.dart
 [x] schedule_screen.dart
-[x] add_medicine_step1_screen.dart
-[x] add_medicine_step2_screen.dart
+[x] add_medicine_step1_screen.dart    opened by the caregiver only
+[x] add_medicine_step2_screen.dart    (from setup_medications_screen)
 [x] add_medicine_step3_screen.dart
 [x] add_medicine_success_screen.dart
-[x] medicine_detail_screen.dart
-[x] edit_medicine_screen.dart         via PatientProvider
-[x] delete_medicine_screen.dart       retires the medication AND its schedules
+[x] medicine_detail_screen.dart       read-only: no edit / delete actions
+[x] edit_medicine_screen.dart         caregiver only, via PatientProvider
+[x] delete_medicine_screen.dart       caregiver only; retires the medication AND its schedules
 [x] medicine_box_status_screen.dart   live 8-column view off devices + schedules
 [x] dose_alert_screen.dart            Take / Snooze / Skip all write Firestore
 [x] dose_confirmed_screen.dart
@@ -452,11 +452,15 @@ how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 [x] change_password_screen.dart
 [x] settings_screen.dart              device-local prefs via PreferencesService
 [x] device_pairing_screen.dart        serial entry → creates a devices doc
-[x] patient_profile_setup_screen.dart saves before continuing
 
 DELETED — a static duplicate of a working screen:
   intake_history_screen.dart   → use analytics_screen.dart
   scan_qr_screen.dart          → QR scanning belongs with Phase 7 hardware
+
+DELETED — unreachable once the solo role was removed:
+  patient_profile_setup_screen.dart → only a self-registering patient reached
+                                      it; the caregiver now enters medical
+                                      details in add_patient_screen
 ```
 
 ### CAREGIVER screens
@@ -639,6 +643,11 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    account. Self-registration is now caregiver-only and rejects any other role
    rather than defaulting. A users document still carrying account_type 'solo'
    resolves to 'managed' — read-only, the safe direction.
+   Follow-up sweep: patient screens no longer show Add / Edit / Delete medicine
+   controls (canEditMedications is always false for a patient), the orphaned
+   patient_profile_setup_screen was deleted, email verification always routes
+   to the caregiver welcome screen, and firestore.rules mayAuthorFor() no longer
+   lets a user author medications for their own record — caregiver only.
 
 ⚠️ STILL OPEN: applicationId is "com.example.healthsync". Google Play REJECTS
    com.example.* and the id cannot be changed after the first upload. Changing

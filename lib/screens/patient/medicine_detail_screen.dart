@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
-import '../../models/patient_medication_model.dart';
 import '../../models/schedule_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
-import 'edit_medicine_screen.dart';
-import 'delete_medicine_screen.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../constants/app_strings.dart';
 
@@ -26,7 +22,6 @@ class MedicineDetailScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final currentSchedule = schedule ?? (patientProvider.schedules.isNotEmpty ? patientProvider.schedules.first : null);
     final medName = fallbackName ?? 'Medication Details';
-    final canEdit = context.watch<AuthProvider>().canEditMedications;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -45,43 +40,6 @@ class MedicineDetailScreen extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-        actions: [
-          // Hidden for managed patients: their caregiver owns the regimen.
-          if (canEdit) ...[
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, color: AppColors.textPrimary),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => EditMedicineScreen(
-                      schedule: currentSchedule,
-                      // Pass the medicine too, so an editor can correct its
-                      // name and dosage and not just the dose time.
-                      medication: currentSchedule == null
-                          ? null
-                          : patientProvider.medications
-                              .cast<PatientMedicationModel?>()
-                              .firstWhere(
-                                (m) => m?.patMedId == currentSchedule.patMedRef,
-                                orElse: () => null,
-                              ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DeleteMedicineScreen(schedule: currentSchedule),
-                  ),
-                );
-              },
-            ),
-          ],
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

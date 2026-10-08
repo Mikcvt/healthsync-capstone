@@ -37,11 +37,10 @@ service cloud.firestore {
       return isAuthenticated() && callerDoc().account_type == 'caregiver';
     }
 
-    // A user may write medications for a patient if they own that patient
-    // record or are that patient's caregiver — and may edit at all.
+    // Only a patient's own caregiver may author their regimen. A patient never
+    // authors their own, even if their user document claims edit rights.
     function mayAuthorFor(patientId) {
-      return canEditMedications()
-        && (isOwner(patientId) || isCaregiverOf(patientId));
+      return canEditMedications() && isCaregiverOf(patientId);
     }
 
     // Users collection

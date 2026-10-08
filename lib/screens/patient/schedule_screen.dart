@@ -1,12 +1,9 @@
 import '../../widgets/shared/floating_nav_bar.dart';
-import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
-import 'add_medicine_step1_screen.dart';
 import 'medicine_detail_screen.dart';
 
 class ScheduleScreen extends StatelessWidget {
@@ -17,7 +14,6 @@ class ScheduleScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final schedules = patientProvider.schedules;
     final medications = patientProvider.medications;
-    final canEdit = context.watch<AuthProvider>().canEditMedications;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -33,23 +29,6 @@ class ScheduleScreen extends StatelessWidget {
             fontSize: 22,
           ),
         ),
-        actions: [
-          // Only caregivers may author medicines. A managed patient is
-          // read-only by design, so the control is absent rather than
-          // present-and-failing.
-          if (canEdit)
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                            builder: (_) => const AddMedicineStep1Screen(),
-                            settings: const RouteSettings(name: addMedicineFlowRoute),
-                          ),
-                );
-              },
-            ),
-        ],
       ),
       body: SafeArea(
         child: schedules.isEmpty
@@ -79,32 +58,10 @@ class ScheduleScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        canEdit
-                            ? 'Set up your medication reminders and assign them to your smart box compartments.'
-                            : 'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
+                      const Text(
+                        'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
-                      ),
-                      const SizedBox(height: 24),
-                      if (canEdit)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                            builder: (_) => const AddMedicineStep1Screen(),
-                            settings: const RouteSettings(name: addMedicineFlowRoute),
-                          ),
-                          );
-                        },
-                        icon: const Icon(Icons.add, size: 20),
-                        label: const Text('Add Medication'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.patientBlue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
+                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
                       ),
                     ],
                   ),
@@ -190,22 +147,6 @@ class ScheduleScreen extends StatelessWidget {
                 },
               ),
       ),
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                            builder: (_) => const AddMedicineStep1Screen(),
-                            settings: const RouteSettings(name: addMedicineFlowRoute),
-                          ),
-                );
-              },
-              backgroundColor: AppColors.patientBlue,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Medicine', style: TextStyle(fontWeight: FontWeight.w700)),
-            )
-          : null,
     );
   }
 }
