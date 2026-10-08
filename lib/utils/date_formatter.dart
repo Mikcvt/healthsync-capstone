@@ -33,6 +33,29 @@ class DateFormatter {
     return '${hour.toString().padLeft(2, '0')}:$minute $period';
   }
 
+  /// `"8:05 PM"` — no leading zero, for dose cards and messages.
+  static String toClockLabel(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '$hour:$minute ${dt.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  /// The date and time on a dose card: `"Today · 8:00 AM"`,
+  /// `"Tomorrow · 8:00 AM"`, `"Yesterday · 8:00 AM"`, otherwise
+  /// `"Thu, Oct 10 · 8:00 AM"`.
+  static String doseDayTime(DateTime scheduledAt, {DateTime? now}) {
+    final today = startOfDay(now ?? DateTime.now());
+    final diff = startOfDay(scheduledAt).difference(today).inDays;
+    final day = switch (diff) {
+      0 => 'Today',
+      1 => 'Tomorrow',
+      -1 => 'Yesterday',
+      _ => '${weekdayShort(scheduledAt.weekday)}, '
+          '${_monthsShort[scheduledAt.month - 1]} ${scheduledAt.day}',
+    };
+    return '$day · ${toClockLabel(scheduledAt)}';
+  }
+
   /// `"Oct 6"`, or `"Oct 6, 2025"` when the year is not the current one.
   static String toShortDate(DateTime dt) {
     final label = '${_monthsShort[dt.month - 1]} ${dt.day}';

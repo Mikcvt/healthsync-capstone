@@ -11,7 +11,6 @@ import '../../services/firestore_service.dart';
 import '../../utils/date_formatter.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
 import 'add_patient_screen.dart';
-import 'caregiver_alerts_screen.dart';
 import 'patient_detail_screen.dart';
 
 /// What the caregiver sees first: every patient, and what each of them still
@@ -78,17 +77,6 @@ class CaregiverDashboardScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                // The bell the rewrite dropped. It stays here as well as in the
-                // nav bar: this is where a caregiver looks when something on
-                // this screen looks wrong.
-                _NotificationBell(
-                  unread: provider.unreadNotificationCount,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const CaregiverAlertsScreen(),
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 18),
@@ -145,9 +133,11 @@ class _PatientTodayCard extends StatelessWidget {
           builder: (context, logSnapshot) {
             final logs = logSnapshot.data ?? const <DoseLogModel>[];
             final taken = logs.where((l) => l.isTaken).length;
-            final missed = logs.where((l) => l.isMissed).length;
+            // Missed and skipped together: doses not taken today.
+            final missed =
+                logs.where((l) => l.isMissed || l.isSkipped).length;
             final outstanding =
-                logs.where((l) => l.isPending || l.isSnoozed).toList()
+                logs.where((l) => l.isOpen).toList()
                   ..sort((a, b) {
                     final x = a.scheduledAt, y = b.scheduledAt;
                     if (x == null || y == null) return 0;
@@ -211,7 +201,7 @@ class _PatientTodayCard extends StatelessWidget {
                         ),
                         if (missed > 0)
                           _Pill(
-                            label: '$missed missed',
+                            label: '$missed not taken',
                             fg: AppColors.missedRed,
                             bg: AppColors.missedRedBg,
                           ),
@@ -461,8 +451,8 @@ class _AggregateCounts extends StatelessWidget {
             .expand((e) => e)
             .toList();
         final taken = all.where((l) => l.isTaken).length;
-        final missed = all.where((l) => l.isMissed).length;
-        final due = all.where((l) => l.isPending || l.isSnoozed).length;
+        final missed = all.where((l) => l.isMissed || l.isSkipped).length;
+        final due = all.where((l) => l.isOpen).length;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,7 +475,7 @@ class _AggregateCounts extends StatelessWidget {
                 const SizedBox(width: 10),
                 _Stat(label: 'Due', value: due),
                 const SizedBox(width: 10),
-                _Stat(label: 'Missed', value: missed),
+                _Stat(label: 'Not taken', value: missed),
               ],
             ),
           ],
@@ -501,10 +491,10 @@ class _AggregateCounts extends StatelessWidget {
   }) {
     if (total == 0) return 'No doses scheduled today';
     if (missed > 0 && due > 0) {
-      return '$missed missed · $due still due';
+      return '$missed not taken · $due still due';
     }
     if (missed > 0) {
-      return '$missed dose${missed == 1 ? '' : 's'} missed today';
+      return '$missed dose${missed == 1 ? '' : 's'} not taken today';
     }
     if (due > 0) return '$due still to take';
     return 'Everyone is on track';
@@ -562,48 +552,4 @@ class _Stat extends StatelessWidget {
           ),
         ),
       );
-}
-
-class _NotificationBell extends StatelessWidget {
-  final int unread;
-  final VoidCallback onTap;
-
-  const _NotificationBell({required this.unread, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          color: AppColors.cardWhite,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.borderGray),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            const Icon(Icons.notifications_none_rounded,
-                color: AppColors.caregiverGreen, size: 23),
-            if (unread > 0)
-              Positioned(
-                top: 10,
-                right: 11,
-                child: Container(
-                  width: 9,
-                  height: 9,
-                  decoration: const BoxDecoration(
-                    color: AppColors.missedRed,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

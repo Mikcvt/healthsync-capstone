@@ -6,6 +6,7 @@ import '../../constants/app_styles.dart';
 import '../../models/notification_model.dart';
 import '../../providers/patient_provider.dart';
 import '../../utils/date_formatter.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
 
 /// Every alert this patient has received, newest first.
 ///
@@ -55,9 +56,11 @@ class NotificationsScreen extends StatelessWidget {
             : notifications.isEmpty
                 ? const _EmptyNotifications()
                 : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
+                    padding: const EdgeInsets.fromLTRB(
+                      20,
+                      16,
+                      20,
+                      FloatingNavBar.contentPadding,
                     ),
                     itemCount: notifications.length + 1,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -158,6 +161,24 @@ class _NotificationTile extends StatelessWidget {
           Icons.check_circle_outline_rounded,
           AppColors.takenGreen,
           AppColors.takenGreenBg
+        );
+      case 'late':
+        return (
+          Icons.schedule_rounded,
+          AppColors.pendingAmber,
+          AppColors.pendingAmberBg
+        );
+      case 'skipped':
+        return (
+          Icons.do_not_disturb_on_outlined,
+          AppColors.textSecondary,
+          AppColors.background
+        );
+      case 'correction':
+        return (
+          Icons.edit_note_rounded,
+          AppColors.upcomingBlue,
+          AppColors.upcomingBlueBg
         );
       case 'low_stock':
         return (

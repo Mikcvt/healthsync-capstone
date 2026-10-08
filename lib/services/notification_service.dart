@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_model.dart';
+import 'dose_launch_router.dart';
 import 'dose_reminder_scheduler.dart';
 
 class NotificationService {
@@ -37,10 +38,19 @@ class NotificationService {
 
       await _localNotifs.initialize(
         settings: initSettings,
+        // A tapped dose reminder opens the alarm screen for that dose. The
+        // payload is the schedule id (see DoseReminderScheduler).
         onDidReceiveNotificationResponse: (response) {
-          debugPrint('Notification clicked: ${response.payload}');
+          DoseLaunchRouter.instance.open(response.payload);
         },
       );
+
+      // Cold start: the app was closed and the patient opened it by tapping a
+      // reminder. The tap above never fires in that case.
+      final launch = await _localNotifs.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        DoseLaunchRouter.instance.open(launch!.notificationResponse?.payload);
+      }
 
       // 3. Listen to foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -122,8 +132,9 @@ class NotificationService {
     await docRef.set(notif.copyWith(notifId: docRef.id).toMap());
   }
 
-  // Trigger low-stock alert
-  Future<void> sendLowStockAlert({
+  /// Writes a low-stock notification for [userUid] and returns its id, so
+  /// an undone dose can hide it again.
+  Future<String> sendLowStockAlert({
     required String userUid,
     required String medicationName,
     required int remainingCount,
@@ -141,5 +152,6 @@ class NotificationService {
 
     final docRef = _firestore.collection('notifications').doc();
     await docRef.set(notif.copyWith(notifId: docRef.id).toMap());
+    return docRef.id;
   }
 }

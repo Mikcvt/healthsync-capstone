@@ -46,7 +46,13 @@ class _DevicePairingScreenState extends State<DevicePairingScreen> {
 
     if (paired) {
       _serial.clear();
-      SnackbarHelper.showSuccess(context, AppStrings.devicePaired);
+      // Compartments are the caregiver's to set: the security rules let a
+      // patient change only the LED flag and stock count on a schedule.
+      SnackbarHelper.showSuccess(
+        context,
+        '${AppStrings.devicePaired} Your caregiver will choose a compartment '
+        'for each medicine.',
+      );
     } else {
       SnackbarHelper.showError(
         context,
@@ -92,7 +98,8 @@ class _DevicePairingScreenState extends State<DevicePairingScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Connect your HealthSync smart medicine box so it can light '
-                  'the right compartment at each dose time.',
+                  'the right compartment at each dose time. It is optional: '
+                  'without one, every dose is reminded on this phone.',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 15,

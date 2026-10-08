@@ -6,14 +6,15 @@ import '../../constants/app_styles.dart';
 import '../../models/notification_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
 
 /// The caregiver's alert feed.
 ///
 /// Reads the `notifications` collection, which the Cloudflare Worker writes
-/// whenever it sends a push — a missed dose from the cron sweep, or a
-/// confirmation from `/dose-events`. The previous version listed five invented
-/// alerts, two of which reported heart rates from a sensor this build does not
-/// have.
+/// for every caregiver alert: running late and missed doses from the cron
+/// sweep; confirmations, skips, corrections and low stock from `/dose-events`.
+/// The previous version listed five invented alerts, two of which reported
+/// heart rates from a sensor this build does not have.
 class CaregiverAlertsScreen extends StatelessWidget {
   const CaregiverAlertsScreen({super.key});
 
@@ -56,8 +57,14 @@ class CaregiverAlertsScreen extends StatelessWidget {
         child: alerts.isEmpty
             ? const _EmptyAlerts()
             : ListView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                // Clears the floating nav bar, which otherwise hides the
+                // oldest alert.
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  16,
+                  20,
+                  FloatingNavBar.contentPadding,
+                ),
                 children: [
                   Text(
                     unread > 0 ? '$unread unread' : 'All caught up',
@@ -185,6 +192,24 @@ class _AlertCard extends StatelessWidget {
           Icons.check_circle_outline_rounded,
           AppColors.takenGreen,
           AppColors.takenGreenBg
+        );
+      case 'late':
+        return (
+          Icons.schedule_rounded,
+          AppColors.pendingAmber,
+          AppColors.pendingAmberBg
+        );
+      case 'skipped':
+        return (
+          Icons.do_not_disturb_on_outlined,
+          AppColors.textSecondary,
+          AppColors.background
+        );
+      case 'correction':
+        return (
+          Icons.edit_note_rounded,
+          AppColors.upcomingBlue,
+          AppColors.upcomingBlueBg
         );
       case 'low_stock':
         return (

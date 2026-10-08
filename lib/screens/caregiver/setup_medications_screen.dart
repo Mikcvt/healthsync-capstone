@@ -15,6 +15,9 @@ import '../patient/add_medicine_step1_screen.dart';
 import '../patient/edit_medicine_screen.dart';
 import 'archived_medicines_screen.dart';
 import 'generate_otp_screen.dart';
+import 'patient_box_screen.dart';
+import '../../models/device_model.dart';
+import '../../services/device_service.dart';
 
 /// The caregiver's view of one patient's regimen, and where they add to it.
 ///
@@ -46,6 +49,17 @@ class _SetupMedicationsScreenState extends State<SetupMedicationsScreen> {
       _firestore.streamPatientMedications(widget.patientUid);
   late final Stream<List<ScheduleModel>> _schedules =
       _firestore.streamPatientSchedules(widget.patientUid);
+  late final Stream<DeviceModel?> _device =
+      DeviceService().streamDeviceForPatient(widget.patientUid);
+
+  void _openBox(BuildContext context) => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PatientBoxScreen(
+            patientUid: widget.patientUid,
+            patientName: widget.patientName,
+          ),
+        ),
+      );
 
   void _addMedicine(BuildContext context) {
     final schedule = context.read<ScheduleProvider>();
@@ -138,6 +152,19 @@ class _SetupMedicationsScreenState extends State<SetupMedicationsScreen> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, FloatingNavBar.contentPadding),
                   children: [
+                    StreamBuilder<DeviceModel?>(
+                      stream: _device,
+                      builder: (context, deviceSnapshot) => _BoxStatusTile(
+                        hasBox: deviceSnapshot.data != null,
+                        loading: deviceSnapshot.connectionState ==
+                            ConnectionState.waiting,
+                        notInBox: meds.where((m) => schedules
+                            .where((s) => s.patMedRef == m.patMedId)
+                            .every((s) => s.matBoxColumn == null)).length,
+                        onTap: () => _openBox(context),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     if (meds.isEmpty)
                       _EmptyState(
                         patientName: firstName,
@@ -237,7 +264,9 @@ class _MedicineCard extends StatelessWidget {
                   leading: const Icon(Icons.access_time_rounded,
                       color: AppColors.caregiverGreen),
                   title: Text(s.scheduledTime),
-                  subtitle: Text('Compartment ${s.matBoxColumn}'),
+                  subtitle: Text(s.matBoxColumn == null
+                      ? 'Not in the box'
+                      : 'Compartment ${s.matBoxColumn}'),
                   onTap: () => Navigator.pop(sheetContext, s),
                 ),
               ),
@@ -318,7 +347,7 @@ class _MedicineCard extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: const Text(
-                'Moves it to the archive, where it can be deleted for good.',
+                'Moves it to the archive. Its doses are kept but not counted.',
               ),
               onTap: () => Navigator.pop(sheetContext, 'mistake'),
             ),
@@ -349,7 +378,7 @@ class _MedicineCard extends StatelessWidget {
           '$name and its ${schedules.length} dose '
           '${schedules.length == 1 ? 'time' : 'times'} will stop appearing and '
           'no more reminders will be sent. Past doses stay in the history, and '
-          '${wasMistake ? 'you can delete it for good from the archive.' : 'the finished course stays on record.'}',
+          '${wasMistake ? 'its doses are kept on record but not counted in adherence.' : 'the finished course stays on record.'}',
           style: const TextStyle(height: 1.5, color: AppColors.textSecondary),
         ),
         actions: [
@@ -397,7 +426,12 @@ class _MedicineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final columns = schedules.map((s) => s.matBoxColumn).toSet().toList()..sort();
+    final columns = schedules
+        .map((s) => s.matBoxColumn)
+        .whereType<int>()
+        .toSet()
+        .toList()
+      ..sort();
 
     return InkWell(
       onTap: () => _edit(context),
@@ -433,8 +467,8 @@ class _MedicineCard extends StatelessWidget {
                   ),
                   child: Text(
                     columns.length == 1
-                        ? 'Column ${columns.first}'
-                        : 'Columns ${columns.join(', ')}',
+                        ? 'Compartment ${columns.first}'
+                        : 'Compartments ${columns.join(', ')}',
                     style: const TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
@@ -531,7 +565,8 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Add $patientName\'s medicines, dose times and box compartments. '
+            'Add $patientName\'s medicines and dose times. A medicine box is '
+            'optional — without one, reminders come on the phone. '
             'They will see the schedule as soon as they enter their code.',
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -567,6 +602,96 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The box at a glance, above the medicine list: paired or not, and how many
+/// medicines are still on phone-only reminders.
+class _BoxStatusTile extends StatelessWidget {
+  final bool hasBox;
+  final bool loading;
+  final int notInBox;
+  final VoidCallback onTap;
+
+  const _BoxStatusTile({
+    required this.hasBox,
+    required this.loading,
+    required this.notInBox,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const SizedBox(height: 64);
+
+    final title = hasBox ? 'Smart box paired' : 'No medicine box';
+    final subtitle = !hasBox
+        ? 'Reminders come on the phone. Pair a box any time.'
+        : notInBox == 0
+            ? 'Every medicine has a compartment.'
+            : '$notInBox medicine${notInBox == 1 ? ' is' : 's are'} not in '
+                'the box — tap to place ${notInBox == 1 ? 'it' : 'them'}.';
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: hasBox ? AppColors.greenLight : AppColors.blueLight,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                hasBox ? Icons.inventory_2_rounded : Icons.phone_android_rounded,
+                color: hasBox ? AppColors.caregiverGreen : AppColors.patientBlue,
+                size: 21,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                      fontFamily: 'PlusJakartaSans',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.textSecondary,
+                      fontFamily: 'PlusJakartaSans',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              hasBox ? 'Manage' : 'Set up',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.caregiverGreen,
+                fontFamily: 'PlusJakartaSans',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

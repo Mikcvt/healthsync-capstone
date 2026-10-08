@@ -23,8 +23,8 @@ class ScheduleProvider extends ChangeNotifier {
   DateTime? _endDate;
   String _instructions = 'Take after meals';
 
-  // Wizard Step 3: Smart Box Compartment & Stock
-  int _matBoxColumn = 1;
+  // Wizard Step 3: Storage & Stock. Null = not in the box (phone reminders).
+  int? _matBoxColumn;
   int _pillsRemaining = 30;
   int _lowStockThreshold = 5;
 
@@ -76,7 +76,7 @@ class ScheduleProvider extends ChangeNotifier {
   DateTime? get endDate => _endDate;
   String get instructions => _instructions;
 
-  int get matBoxColumn => _matBoxColumn;
+  int? get matBoxColumn => _matBoxColumn;
   int get pillsRemaining => _pillsRemaining;
   int get lowStockThreshold => _lowStockThreshold;
   bool get isSaving => _isSaving;
@@ -122,7 +122,7 @@ class ScheduleProvider extends ChangeNotifier {
 
   // Setters for Step 3
   void updateStep3({
-    required int matBoxColumn,
+    required int? matBoxColumn,
     int pillsRemaining = 30,
     int lowStockThreshold = 5,
   }) {
@@ -147,6 +147,7 @@ class ScheduleProvider extends ChangeNotifier {
         medicationName: _medicationName.trim(),
         prescribedDosage: _prescribedDosage.trim(),
         quantityPerDose: _quantityPerDose,
+        dosageForm: _dosageForm,
         instructions: _instructions.trim(),
         prescribingDoctor: _prescribingDoctor.trim(),
         purpose: _purpose.trim(),
@@ -205,7 +206,7 @@ class ScheduleProvider extends ChangeNotifier {
     _startDate = DateTime.now();
     _endDate = null;
     _instructions = 'Take after meals';
-    _matBoxColumn = 1;
+    _matBoxColumn = null;
     _pillsRemaining = 30;
     _lowStockThreshold = 5;
     _isSaving = false;

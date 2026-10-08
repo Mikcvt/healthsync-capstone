@@ -12,8 +12,11 @@ class AnalyticsScreen extends StatelessWidget {
     final patientProvider = context.watch<PatientProvider>();
     final adherence = patientProvider.overallAdherencePercentage;
     final todayAdherence = patientProvider.todayAdherencePercentage;
-    final totalTaken = patientProvider.allLogs.where((l) => l.isTaken).length;
-    final totalMissed = patientProvider.allLogs.where((l) => l.isMissed).length;
+    // Shared adherence rules: skipped counts as not taken; cancelled doses and
+    // medicines entered by mistake are left out.
+    final stats = patientProvider.overallStats;
+    final totalTaken = stats.taken;
+    final totalMissed = stats.notTaken;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -127,7 +130,7 @@ class AnalyticsScreen extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _MetricCard(
-                      label: 'Doses Missed',
+                      label: 'Missed or skipped',
                       value: '$totalMissed',
                       color: Colors.redAccent,
                       icon: Icons.cancel_outlined,

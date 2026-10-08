@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../constants/app_strings.dart';
 import '../models/caregiver_profile_model.dart';
 import '../models/caregiver_patient_link_model.dart';
 import '../models/patient_profile_model.dart';
@@ -10,7 +11,9 @@ import '../models/notification_model.dart';
 import '../models/patient_medication_model.dart';
 import '../models/otp_code_model.dart';
 import '../services/api_service.dart';
+import '../services/device_service.dart';
 import '../services/firestore_service.dart';
+import '../utils/adherence.dart';
 import '../utils/date_formatter.dart';
 
 /// How far back the selected patient's dose history reaches. Bounded because
@@ -142,9 +145,17 @@ class CaregiverProvider extends ChangeNotifier {
       final at = log.scheduledAt;
       return at == null || at.isAfter(cutoff);
     });
-    final resolved = window.where((l) => l.isTaken || l.isMissed).length;
-    if (resolved == 0) return 1.0;
-    return window.where((l) => l.isTaken).length / resolved;
+    return AdherenceStats.of(window).adherence;
+  }
+
+  /// Full adherence breakdown over [days] — on-time rate, logged-late count,
+  /// reasons — for the reports screen.
+  AdherenceStats statsOver(int days) {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return AdherenceStats.of(_selectedPatientLogs.where((log) {
+      final at = log.scheduledAt;
+      return at == null || at.isAfter(cutoff);
+    }));
   }
 
   /// Schedules of the selected patient whose stock has hit the threshold.
@@ -152,13 +163,8 @@ class CaregiverProvider extends ChangeNotifier {
       _selectedPatientSchedules.where((s) => s.isLowStock).toList();
 
   // Adherence calculation for selected patient
-  double get patientAdherencePercentage {
-    if (_selectedPatientLogs.isEmpty) return 100.0;
-    final takenCount = _selectedPatientLogs.where((l) => l.isTaken).length;
-    final total = _selectedPatientLogs.where((l) => l.isTaken || l.isMissed).length;
-    if (total == 0) return 100.0;
-    return (takenCount / total) * 100.0;
-  }
+  double get patientAdherencePercentage =>
+      AdherenceStats.of(_selectedPatientLogs).adherence * 100.0;
 
   void initForCaregiver(String uid) {
     if (_caregiverUid == uid) return;
@@ -314,6 +320,52 @@ class CaregiverProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ==========================================
+  // SMART BOX (optional hardware)
+  // ==========================================
+
+  /// Pairs a box to [patientUid] on their behalf. The security rules let a
+  /// caregiver create a device for their own patient.
+  Future<bool> pairSmartBox({
+    required String patientUid,
+    required String serialNumber,
+  }) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.pairDevice(
+        patientUid: patientUid,
+        serialNumber: serialNumber,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('pairSmartBox failed: $e');
+      _errorMessage = AppStrings.devicePairFailed;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Moves every dose time of one medicine into [column], or out of the box
+  /// when [column] is null.
+  Future<bool> assignCompartment({
+    required List<String> scheduleIds,
+    required int? column,
+  }) async {
+    _errorMessage = null;
+    try {
+      await DeviceService().assignCompartment(
+        scheduleIds: scheduleIds,
+        column: column,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('assignCompartment failed: $e');
+      _errorMessage = AppStrings.genericError;
       notifyListeners();
       return false;
     }

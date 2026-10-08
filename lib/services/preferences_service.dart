@@ -20,6 +20,7 @@ class PreferencesService {
   static const String _keyDoseReminders = 'pref_dose_reminders';
   static const String _keyReminderSound = 'pref_reminder_sound';
   static const String _keyFullScreenAlert = 'pref_fullscreen_alert';
+  static const String _keyBackgroundHintShown = 'pref_background_hint_shown';
 
   SharedPreferences? _prefs;
 
@@ -49,6 +50,23 @@ class PreferencesService {
   Future<void> setReminderSound(bool value) => _setBool(_keyReminderSound, value);
   Future<void> setFullScreenAlert(bool value) =>
       _setBool(_keyFullScreenAlert, value);
+
+  /// Whether the one-time "let HealthSync run in the background" hint has
+  /// been shown on this phone.
+  Future<bool> backgroundHintShown() async {
+    try {
+      final store = await _store;
+      return store.getBool(_keyBackgroundHintShown) ?? false;
+    } catch (e) {
+      debugPrint('PreferencesService.backgroundHintShown failed: $e');
+      // Treat as shown: a hint that cannot remember it was shown would
+      // appear on every launch.
+      return true;
+    }
+  }
+
+  Future<void> setBackgroundHintShown() =>
+      _setBool(_keyBackgroundHintShown, true);
 
   Future<void> _setBool(String key, bool value) async {
     try {

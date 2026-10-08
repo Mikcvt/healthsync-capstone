@@ -238,6 +238,9 @@ patient_ref         string (→ users)
 medication_ref      string (→ medications)
 prescribed_dosage   string
 quantity_per_dose   number
+dosage_form         string ("Tablet" | "Capsule" | "Liquid" | "Drops" |
+                            "Inhaler" | "Injection"). Only Tablet and Capsule
+                            default into a box compartment.
 instructions        string
 prescribing_doctor  string
 date_prescribed     date
@@ -255,7 +258,10 @@ pat_med_ref     string (→ patient_medications)
 patient_ref     string (→ users)
 scheduled_time  string ("08:00 PM")
 days_of_week    array  (["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])
-mat_box_column  number (1–8)
+mat_box_column  number (1–8) or null
+                null = not in the box: no box paired yet, or a liquid,
+                inhaler or ninth medicine. Every dose time of one medicine
+                shares one compartment. Never display null as a compartment.
 start_date      date
 end_date        date
 is_active       bool
@@ -271,19 +277,38 @@ patient_ref         string   (→ users)
 scheduled_date      date     ("YYYY-MM-DD", for same-day lookups)
 scheduled_time      string   ("08:00 PM", display form)
 scheduled_at        timestamp  ← date + time as one instant.
-                               REQUIRED: the Worker's missed-dose sweep queries
-                               `scheduled_at < now - 30min`, and a range query
+                               REQUIRED: the Worker's sweep queries
+                               `scheduled_at < cutoff`, and a range query
                                cannot be built from two strings. Sorting history
                                by the "08:00 AM" string also puts 10 AM first.
-status              string ("taken" | "missed" | "snoozed" | "pending")
-taken_at            timestamp
+status              string ("pending" | "snoozed" | "taken" | "skipped" |
+                            "missed" | "cancelled")
+                    taken/skipped/missed/cancelled are final. skipped = the
+                    patient chose not to take it (with a reason); cancelled =
+                    medicine archived or dose time moved before it came due —
+                    kept, never shown, never counted.
+timing              string ("early" | "on_time" | "late" | "logged_late"),
+                    set when taken. logged_late = was missed, then corrected
+                    with "I took it but forgot to log it".
+taken_at            timestamp  (for logged_late: when the patient says)
+logged_at           timestamp  (when the patient last acted; the rules allow
+                               Undo for 2 minutes after it)
 snooze_count        number
-confirmed_via       string ("app" | "button")
-caregiver_notified  bool
-skipped_reason      string
+snoozed_until       timestamp  (when the current snooze ends; another snooze
+                               is refused before then)
+confirmed_via       string ("app" | "button" | "" while pending)
+caregiver_notified  bool       (the caregiver has the alert, pushed or in-app)
+late_notified       bool       (the 30-minute running-late alert went out)
+skipped_reason      string     (reason for a skipped or missed dose)
+acknowledged_at     timestamp  (a reason was given)
+cancelled_reason    string ("archived" | "rescheduled")
+excluded_from_adherence bool   (medicine archived as "entered by mistake")
 recorded_by         string
 created_at          timestamp
 is_active           bool
+
+NEVER DELETED. firestore.rules has `allow delete: if false` on dose_logs.
+Archiving cancels future pending doses; restoring revives them.
 ```
 
 ### notifications
@@ -291,7 +316,8 @@ is_active           bool
 notif_id            string
 user_ref            string (→ users)
 dose_log_ref        string (→ dose_logs)
-notification_type   string ("reminder" | "missed" | "confirmed" | "low_stock" | "streak")
+notification_type   string ("reminder" | "confirmed" | "late" | "missed" |
+                            "skipped" | "correction" | "low_stock" | "streak")
 title               string
 message             string
 sent_at             timestamp
@@ -355,25 +381,70 @@ Dose time reached
   Earlier drafts of this file said both "ESP32 sets led_active" and "ESP32
   polls led_active" — it is the second. The ESP32 never decides a dose is due.
 
-Patient confirms via app OR push button on box
-    → dose_logs status: "taken"
-    → led_active: false → LED turns off
-    → caregiver_notified: true → FCM to caregiver
+Dose timeline (DOSE_LOGIC_PROPOSAL.md; one implementation in
+lib/utils/dose_timing.dart, unit-tested in test/dose_timing_test.dart)
 
-No confirmation after 30 minutes
-    → dose_logs status: "missed"
-    → FCM alert to caregiver
-    → led_active: false
+         −30 min           0          +30 min        +60 min
+  ───────────┼─────────────┼──────────────┼──────────────┼────────►
+   Upcoming  │  Upcoming   │   Due now    │    Late      │  Missed
+   (locked)  │  (unlocked) │  (on time)   │              │
 
-Snooze
-    → Re-trigger after 10 minutes
-    → Max 3 snoozes before marking MISSED
+    → Done/Skip unlock 30 min before. Before that they look locked but a tap
+      asks "Logging early?" — allowed up to 3 hrs before, never more than half
+      the gap to the previous dose of the same medicine.
+    → +30 min, nothing recorded: caregiver gets "Running late" (once, Worker)
+    → +60 min, nothing recorded: status "missed", caregiver alerted (Worker)
 
-Low stock (pills remaining < threshold)
-    → FCM to patient and caregiver
+Patient taps Done or Skip (dashboard, alarm screen, medicine detail)
+    → written to Firestore at once; Skip asks for a reason first
+    → 5-second Undo toast; the caregiver push (POST /dose-events) waits until
+      it closes, so an undone tap never notifies anyone
+    → led_active: false; Done counts one pill off
+    → the Worker backstops a skip whose call never arrived (2–30 min later)
+
+Missed dose → tap → reason (missed_dose_screen.dart)
+    → "I took it but forgot to log it" (until the end of the next day): asks
+      the time, status "taken", timing "logged_late", one pill off, caregiver
+      gets a correction notice
+    → any other reason: stays "missed" with the reason
+
+Snooze — on the alarm screen only (opened by tapping a reminder)
+    → Re-trigger after 10 minutes, while the dose is due or late
+    → One snooze at a time: refused until snoozed_until has passed
+    → After 3 snoozes the next Snooze tap marks it MISSED
+    → Snoozed and then ignored: the sweep marks it MISSED once it is 60 min
+      past scheduled_at AND 10 min past snoozed_until
+
+Low stock (a confirmed dose brings pills_remaining to the threshold, or to 0)
+    → in-app notification for the patient (written by the app)
+    → FCM + notification for the caregiver (Worker, POST /dose-events),
+      unless caregiver_profile.alert_pref_low_stock is false
+    → at 0 pills, "Mark as taken" is disabled until the caregiver refills
 ```
 
 ---
+
+## The box is optional (phone-only mode)
+
+```
+A patient may have no medicine box yet. Everything works without one:
+reminders, confirming doses, snooze, missed-dose alerts, stock, reports.
+
+Box mode is not a setting. It is derived:
+  hasBox                = a devices doc exists for the patient (is_active)
+  showsCompartment(s)   = hasBox AND s.mat_box_column != null
+Only when showsCompartment is true may a screen or notification name a
+compartment or an LED. An unpaired box keeps its compartment numbers.
+
+Add medicine, step 3 ("Storage & stock"):
+  no box  → no grid; banner says reminders are phone-only
+  box     → grid of 8, taken compartments locked, plus "Not in the box";
+            defaults to the first free compartment, or none for a non-pill
+Compartments are moved per medicine on the caregiver's Smart box screen
+(patient_box_screen.dart), never per dose time. Edit-medicine shows the
+compartment read-only. Patients can pair a box but cannot assign
+compartments: the rules let them write only led_active and pills_remaining.
+```
 
 ## Medicine box integration
 
@@ -442,9 +513,10 @@ how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 [x] edit_medicine_screen.dart         caregiver only, via PatientProvider
 [x] delete_medicine_screen.dart       caregiver only; retires the medication AND its schedules
 [x] medicine_box_status_screen.dart   live 8-column view off devices + schedules
-[x] dose_alert_screen.dart            Take / Snooze / Skip all write Firestore
+[x] dose_alert_screen.dart            alarm screen, opened by tapping a reminder
+                                      (also from a closed app); the only Snooze
 [x] dose_confirmed_screen.dart
-[x] missed_dose_screen.dart           writes skipped_reason
+[x] missed_dose_screen.dart           reason, or "took it but forgot" → logged late
 [x] analytics_screen.dart
 [x] notifications_screen.dart         reads the notifications collection
 [x] patient_profile_screen.dart
@@ -477,6 +549,7 @@ DELETED — unreachable once the solo role was removed:
 [x] patient_history_screen.dart       real dose_logs, grouped by day
 [x] caregiver_alerts_screen.dart      reads the notifications collection
 [x] reports_screen.dart               live adherence from dose logs
+[x] patient_box_screen.dart           pair a box, assign compartments per medicine
 [x] caregiver_profile_screen.dart
 [x] caregiver_settings_screen.dart
 
@@ -572,7 +645,7 @@ Flutter config: lib/firebase_options.dart (auto-generated by FlutterFire CLI)
 Why:     Cloud Functions cannot deploy on the Spark plan. The Worker holds the
          Firebase service account key and does the four things a client cannot:
          mint custom tokens, create Auth accounts, send FCM to another user,
-         and run the 30-minute missed-dose sweep on a cron.
+         and run the late (30 min) and missed (60 min) sweep on a cron.
 
 Secrets: FIREBASE_SA_KEY via `wrangler secret put` — NEVER in the repo or the APK
 Cache:   KV namespace TOKEN_CACHE holds the OAuth access token for 55 min
@@ -582,7 +655,7 @@ Endpoints:
   POST /patients              caregiver creates a managed patient account
   POST /otp/redeem            code in → Firebase custom token out (rate-limited)
   POST /dose-events           dose confirmed/missed → caregiver FCM
-  cron */5 * * * *            missed-dose sweep + low-stock check
+  cron */5 * * * *            materialise doses, running-late alerts, missed sweep, skip backstop
   GET  /device/{serial}/schedule   ESP32 polls this instead of Firestore
   POST /device/{serial}/dose       ESP32 button press
 
@@ -648,6 +721,15 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    patient_profile_setup_screen was deleted, email verification always routes
    to the caregiver welcome screen, and firestore.rules mayAuthorFor() no longer
    lets a user author medications for their own record — caregiver only.
+
+✅ Dose logic (Oct 2026, DOSE_LOGIC_PROPOSAL.md): status timeline with Late at
+   30 and Missed at 60 min, skipped and cancelled statuses, timing tags,
+   early-logging prompt with a cap, Undo with a delayed caregiver push, Snooze
+   only on the alarm screen, tap-to-open reminders, missed-dose reasons with
+   retro logging, and no dose-log deletes anywhere ("Delete for good" removed;
+   archive cancels future doses, restore revives them). The app also now
+   creates a missing dose log under the Worker's own deterministic id, which
+   stopped a duplicate pending copy from being swept as missed.
 
 ⚠️ STILL OPEN: applicationId is "com.example.healthsync". Google Play REJECTS
    com.example.* and the id cannot be changed after the first upload. Changing

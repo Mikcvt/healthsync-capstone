@@ -3,11 +3,38 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/patient_medication_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/schedule_provider.dart';
+import '../../services/device_service.dart';
+import '../../widgets/shared/compartment_picker.dart';
 import 'add_medicine_success_screen.dart';
 import '../../utils/snackbar_helper.dart';
 
+/// What step 3 needs to know about the patient's box before it can offer
+/// compartments.
+class _BoxContext {
+  final bool hasBox;
+  final Map<int, String> occupied;
+
+  const _BoxContext({required this.hasBox, required this.occupied});
+
+  /// The lookup failed, so nothing is offered that depends on it.
+  static const unknown = _BoxContext(hasBox: false, occupied: {});
+
+  int? get firstFree {
+    for (var column = 1; column <= 8; column++) {
+      if (!occupied.containsKey(column)) return column;
+    }
+    return null;
+  }
+}
+
+/// Step 3: where the medicine is kept, and how much of it there is.
+///
+/// The box is optional. With no box paired the compartment grid is not shown
+/// at all and reminders are phone-only; with one paired the caregiver picks a
+/// free compartment, or "Not in the box" for things that do not fit.
 class AddMedicineStep3Screen extends StatefulWidget {
   const AddMedicineStep3Screen({super.key});
 
@@ -16,10 +43,45 @@ class AddMedicineStep3Screen extends StatefulWidget {
 }
 
 class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
-  int _selectedColumn = 1;
   final _pillsCountController = TextEditingController(text: '30');
   final _thresholdController = TextEditingController(text: '5');
   bool _isSaving = false;
+
+  late final Future<_BoxContext> _box;
+
+  /// Set once the caregiver makes a choice. Until then the default applies:
+  /// the first free compartment if the medicine fits, otherwise none.
+  bool _picked = false;
+  int? _pickedColumn;
+
+  @override
+  void initState() {
+    super.initState();
+    _box = _loadBox();
+  }
+
+  Future<_BoxContext> _loadBox() async {
+    final uid = context.read<AuthProvider>().currentUid;
+    if (uid == null) return _BoxContext.unknown;
+    final patientUid = context.read<ScheduleProvider>().resolveSaveUid(uid);
+    final devices = DeviceService();
+    final hasBox = await devices.hasPairedBox(patientUid);
+    if (!hasBox) return const _BoxContext(hasBox: false, occupied: {});
+    return _BoxContext(
+      hasBox: true,
+      occupied: await devices.occupiedCompartments(patientUid),
+    );
+  }
+
+  bool get _fitsInBox => PatientMedicationModel.fitsInBoxForm(
+        context.read<ScheduleProvider>().dosageForm,
+      );
+
+  int? _columnFor(_BoxContext box) {
+    if (!box.hasBox) return null;
+    if (_picked) return _pickedColumn;
+    return _fitsInBox ? box.firstFree : null;
+  }
 
   @override
   void dispose() {
@@ -38,14 +100,37 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
       return;
     }
 
-    final pills = int.tryParse(_pillsCountController.text) ?? 30;
-    final threshold = int.tryParse(_thresholdController.text) ?? 5;
+    final pills = int.tryParse(_pillsCountController.text.trim());
+    final threshold = int.tryParse(_thresholdController.text.trim());
+    if (pills == null || pills < 0 || threshold == null || threshold < 0) {
+      SnackbarHelper.showWarning(
+        context,
+        'Enter the amount on hand and the low-stock alert as whole numbers.',
+      );
+      return;
+    }
+
+    // The lookup has finished by the time Save can be tapped. A failed one
+    // means phone reminders, never a guessed compartment.
+    _BoxContext box;
+    try {
+      box = await _box;
+    } catch (_) {
+      box = _BoxContext.unknown;
+    }
+    if (!mounted) return;
+    final column = _columnFor(box);
 
     scheduleProvider.updateStep3(
-      matBoxColumn: _selectedColumn,
+      matBoxColumn: column,
       pillsRemaining: pills,
       lowStockThreshold: threshold,
     );
+
+    // saveNewMedication() resets the form on success, so capture what the
+    // success screen shows before it does.
+    final savedName = scheduleProvider.medicationName.trim();
+    final savedTimes = List<String>.from(scheduleProvider.scheduledTimes);
 
     setState(() => _isSaving = true);
     // A caregiver authoring for a patient saves to that patient's uid, not
@@ -53,20 +138,22 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
     final success = await scheduleProvider.saveNewMedication(
       scheduleProvider.resolveSaveUid(uid),
     );
+    if (!mounted) return;
     setState(() => _isSaving = false);
 
-    if (success && mounted) {
+    if (success) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => AddMedicineSuccessScreen(
-            medicineName: scheduleProvider.medicationName,
-            columnNumber: _selectedColumn,
-            scheduledTimes: scheduleProvider.scheduledTimes,
+            medicineName: savedName,
+            columnNumber: column,
+            scheduledTimes: savedTimes,
+            hasBox: box.hasBox,
           ),
           settings: const RouteSettings(name: addMedicineFlowRoute),
         ),
       );
-    } else if (mounted) {
+    } else {
       SnackbarHelper.showError(
         context,
         scheduleProvider.errorMessage ?? 'Could not save this medication.',
@@ -76,6 +163,10 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
 
   @override
   Widget build(BuildContext context) {
+    final patientName =
+        context.read<ScheduleProvider>().targetPatientName?.split(' ').first;
+    final whose = patientName ?? 'This patient';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -114,7 +205,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
               const SizedBox(height: 24),
 
               const Text(
-                'Box Compartment & Stock',
+                'Storage & Stock',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
@@ -122,19 +213,38 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                   fontFamily: 'PlusJakartaSans',
                 ),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Assign this medicine to a Smart Medicine Box compartment (1 to 8) to enable automatic LED indicators.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  fontFamily: 'PlusJakartaSans',
-                ),
+              const SizedBox(height: 18),
+
+              FutureBuilder<_BoxContext>(
+                future: _box,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      ),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const BoxInfoBanner(
+                      icon: Icons.cloud_off_rounded,
+                      color: AppColors.pendingAmber,
+                      background: AppColors.pendingAmberBg,
+                      message: 'Could not check for a medicine box. This '
+                          'medicine will use phone reminders; you can place it '
+                          'in a compartment later from the Smart box screen.',
+                    );
+                  }
+                  return _storageSection(snapshot.data!, whose);
+                },
               ),
               const SizedBox(height: 24),
 
+              // Kept with or without a box: stock tracking, low-stock alerts
+              // and the out-of-stock guard need no hardware.
               const Text(
-                'SELECT COMPARTMENT (1 - 8)',
+                'STOCK',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -144,73 +254,11 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // 8-Compartment Grid
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.1,
-                ),
-                itemCount: 8,
-                itemBuilder: (ctx, index) {
-                  final col = index + 1;
-                  final isSelected = _selectedColumn == col;
-
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedColumn = col),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.patientBlue : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected ? AppColors.patientBlue : AppColors.borderGray,
-                          width: isSelected ? 2 : 1,
-                        ),
-                        boxShadow: [
-                          if (isSelected)
-                            BoxShadow(
-                              color: AppColors.patientBlue.withValues(alpha: 0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.lightbulb_outline_rounded,
-                            color: isSelected ? Colors.white : AppColors.textSecondary,
-                            size: 22,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Col $col',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: isSelected ? Colors.white : AppColors.textPrimary,
-                              fontFamily: 'PlusJakartaSans',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 28),
-
-              // Inventory inputs
               TextFormField(
                 controller: _pillsCountController,
                 keyboardType: TextInputType.number,
                 decoration: AppStyles.inputDecoration(
-                  'Initial Pills Count',
+                  _fitsInBox ? 'Pills on hand' : 'Doses on hand',
                   hint: '30',
                 ),
               ),
@@ -220,7 +268,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                 controller: _thresholdController,
                 keyboardType: TextInputType.number,
                 decoration: AppStyles.inputDecoration(
-                  'Low-Stock Alert Threshold',
+                  'Alert me when this many are left',
                   hint: '5',
                 ),
               ),
@@ -249,6 +297,72 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _storageSection(_BoxContext box, String whose) {
+    if (!box.hasBox) {
+      return BoxInfoBanner(
+        icon: Icons.phone_android_rounded,
+        message: '$whose has no medicine box paired yet, so reminders will '
+            'come on the phone only. Once a box is paired you can place this '
+            'medicine in a compartment from the Smart box screen.',
+      );
+    }
+
+    if (!_fitsInBox && !_picked) {
+      final form = context.read<ScheduleProvider>().dosageForm.toLowerCase();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          BoxInfoBanner(
+            message: 'A $form does not fit a pill compartment, so this '
+                'medicine stays outside the box and is reminded on the phone.',
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() {
+                _picked = true;
+                _pickedColumn = box.firstFree;
+              }),
+              child: const Text('Put it in a compartment anyway'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final allFull = box.firstFree == null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Choose the compartment it goes in. It lights up at each dose time.',
+          style: TextStyle(
+            fontSize: 14,
+            color: AppColors.textSecondary,
+            height: 1.5,
+            fontFamily: 'PlusJakartaSans',
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (allFull) ...[
+          const BoxInfoBanner(
+            message: 'All 8 compartments are in use. This medicine will be '
+                'reminded on the phone.',
+          ),
+          const SizedBox(height: 12),
+        ],
+        CompartmentPicker(
+          selected: _columnFor(box),
+          occupied: box.occupied,
+          onChanged: (column) => setState(() {
+            _picked = true;
+            _pickedColumn = column;
+          }),
+        ),
+      ],
     );
   }
 }

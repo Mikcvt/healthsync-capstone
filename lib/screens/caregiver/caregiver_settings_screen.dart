@@ -17,69 +17,14 @@ class CaregiverSettingsScreen extends StatefulWidget {
 
 class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
   Future<void> _editProfile() async {
-    final auth = context.read<AuthProvider>();
-    final user = auth.currentUserModel;
-    if (user == null) return;
-    final first = TextEditingController(text: user.firstName);
-    final last = TextEditingController(text: user.lastName);
-    final phone = TextEditingController(text: user.phone);
-    final formKey = GlobalKey<FormState>();
+    if (context.read<AuthProvider>().currentUserModel == null) return;
+    // The dialog saves and reports its own errors, so only success comes back.
     final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit profile'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: first,
-                decoration: AppStyles.inputDecoration('First name'),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: last,
-                decoration: AppStyles.inputDecoration('Last name'),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: phone,
-                decoration: AppStyles.inputDecoration('Phone number'),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              final success = await auth.updateProfile(
-                firstName: first.text,
-                lastName: last.text,
-                phone: phone.text,
-              );
-              if (dialogContext.mounted) Navigator.pop(dialogContext, success);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => const _EditProfileDialog(),
     );
-    first.dispose();
-    last.dispose();
-    phone.dispose();
-    if (saved == false && mounted) {
-      _showMessage(auth.errorMessage ?? 'Profile update failed.');
+    if (saved == true && mounted) {
+      SnackbarHelper.showSuccess(context, 'Profile updated.');
     }
   }
 
@@ -213,7 +158,7 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
               children: [
                 _ToggleRow(
                   label: 'Missed dose alerts',
-                  subtitle: 'Notify me when a patient misses a dose',
+                  subtitle: 'Running late, missed and skipped doses, and doses logged late',
                   value: caregiver.profile?.alertPrefMissed ?? true,
                   onChanged: (value) =>
                       caregiver.updateAlertPreferences(alertPrefMissed: value),
@@ -226,14 +171,8 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
                   onChanged: (value) =>
                       caregiver.updateAlertPreferences(alertPrefLowStock: value),
                 ),
-                const Divider(height: 1, color: AppColors.borderGray),
-                _ToggleRow(
-                  label: 'Daily summary',
-                  subtitle: 'Receive an end-of-day adherence recap',
-                  value: caregiver.profile?.alertPrefDaily ?? true,
-                  onChanged: (value) =>
-                      caregiver.updateAlertPreferences(alertPrefDaily: value),
-                ),
+                // No "Daily summary" switch: nothing sends one, so it could
+                // only ever look like it worked. Reports covers the recap.
               ],
             ),
             const SizedBox(height: 24),
@@ -293,6 +232,136 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
   String _initials(String first, String last) =>
       '${first.isNotEmpty ? first[0] : ''}${last.isNotEmpty ? last[0] : ''}'
           .toUpperCase();
+}
+
+/// Owns its controllers so they outlive the dialog's closing animation.
+/// Disposing them right after `showDialog` returns crashed with
+/// `_dependents.isEmpty` while the fields were still mounted.
+class _EditProfileDialog extends StatefulWidget {
+  const _EditProfileDialog();
+
+  @override
+  State<_EditProfileDialog> createState() => _EditProfileDialogState();
+}
+
+class _EditProfileDialogState extends State<_EditProfileDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _first;
+  late final TextEditingController _last;
+  late final TextEditingController _phone;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = context.read<AuthProvider>().currentUserModel;
+    _first = TextEditingController(text: user?.firstName ?? '');
+    _last = TextEditingController(text: user?.lastName ?? '');
+    _phone = TextEditingController(text: user?.phone ?? '');
+  }
+
+  @override
+  void dispose() {
+    _first.dispose();
+    _last.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final auth = context.read<AuthProvider>();
+    final success = await auth.updateProfile(
+      firstName: _first.text.trim(),
+      lastName: _last.text.trim(),
+      phone: _phone.text.trim(),
+    );
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() {
+        _saving = false;
+        _error = auth.errorMessage ?? 'Profile update failed. Try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit profile'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _first,
+              enabled: !_saving,
+              textCapitalization: TextCapitalization.words,
+              decoration: AppStyles.inputDecoration('First name'),
+              validator: (value) =>
+                  value == null || value.trim().isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _last,
+              enabled: !_saving,
+              textCapitalization: TextCapitalization.words,
+              decoration: AppStyles.inputDecoration('Last name'),
+              validator: (value) =>
+                  value == null || value.trim().isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _phone,
+              enabled: !_saving,
+              decoration: AppStyles.inputDecoration('Phone number'),
+              keyboardType: TextInputType.phone,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppColors.missedRed,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.caregiverGreen,
+          ),
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class _SectionLabel extends StatelessWidget {

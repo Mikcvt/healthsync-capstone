@@ -91,7 +91,14 @@ class DoseReminderScheduler {
   /// Cancel-then-reschedule rather than diffing: a dose time the caregiver
   /// deleted must not keep firing, and the ids are deterministic so the cost of
   /// rewriting them is a few hundred microseconds.
-  Future<void> syncReminders(List<ScheduleModel> schedules) async {
+  ///
+  /// [bodyFor] words each reminder. It is supplied by the provider, which
+  /// knows the medicine and whether a box is paired: a phone-only medicine
+  /// must not be told to come out of a compartment.
+  Future<void> syncReminders(
+    List<ScheduleModel> schedules, {
+    String Function(ScheduleModel schedule)? bodyFor,
+  }) async {
     await initialize();
 
     try {
@@ -109,7 +116,11 @@ class DoseReminderScheduler {
           if (instant == null) continue;
           if (!instant.isAfter(now)) continue;
 
-          await _scheduleOne(schedule, instant);
+          await _scheduleOne(
+            schedule,
+            instant,
+            bodyFor?.call(schedule) ?? schedule.scheduledTime,
+          );
           scheduled++;
         }
       }
@@ -153,7 +164,11 @@ class DoseReminderScheduler {
   tz.TZDateTime _dateOnly(DateTime value) =>
       tz.TZDateTime(tz.local, value.year, value.month, value.day);
 
-  Future<void> _scheduleOne(ScheduleModel schedule, tz.TZDateTime at) async {
+  Future<void> _scheduleOne(
+    ScheduleModel schedule,
+    tz.TZDateTime at,
+    String body,
+  ) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'healthsync_dose_channel',
@@ -173,7 +188,7 @@ class DoseReminderScheduler {
     await _plugin.zonedSchedule(
       id: notificationId(schedule.scheduleId, at),
       title: 'Time for your medicine',
-      body: 'Compartment ${schedule.matBoxColumn} · ${schedule.scheduledTime}',
+      body: body,
       scheduledDate: at,
       notificationDetails: details,
       // exactAllowWhileIdle is the only mode that fires in Doze. inexact
@@ -197,7 +212,7 @@ class DoseReminderScheduler {
   /// Used by the snooze action: re-fire this dose in [delay].
   Future<void> scheduleSnooze({
     required String scheduleId,
-    required int matBoxColumn,
+    required String body,
     Duration delay = const Duration(minutes: 10),
   }) async {
     await initialize();
@@ -206,7 +221,7 @@ class DoseReminderScheduler {
     await _plugin.zonedSchedule(
       id: notificationId(scheduleId, at),
       title: 'Snoozed dose',
-      body: 'Compartment $matBoxColumn — please take it now.',
+      body: body,
       scheduledDate: at,
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(

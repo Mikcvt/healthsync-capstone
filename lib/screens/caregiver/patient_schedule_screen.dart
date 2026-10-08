@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
+import '../../utils/dose_status_display.dart';
 import '../../models/dose_log_model.dart';
 import '../../models/schedule_model.dart';
 import '../../providers/caregiver_provider.dart';
@@ -261,16 +262,16 @@ class _DoseRow extends StatelessWidget {
           ? ('Scheduled', AppColors.textSecondary, AppColors.ledEmpty)
           : ('Not logged', AppColors.textMuted, AppColors.ledEmpty);
     }
-    switch (log!.status) {
-      case 'taken':
-        return ('Taken', AppColors.takenGreen, AppColors.takenGreenBg);
-      case 'missed':
-        return ('Missed', AppColors.missedRed, AppColors.missedRedBg);
-      case 'snoozed':
-        return ('Snoozed', AppColors.pendingAmber, AppColors.pendingAmberBg);
-      default:
-        return ('Pending', AppColors.upcomingBlue, AppColors.upcomingBlueBg);
-    }
+    // Same labels and colours as the patient sees: Upcoming / Due now / Late /
+    // Missed / Taken early / Taken late / Logged late / Skipped.
+    final now = DateTime.now();
+    final badge =
+        DoseStatusDisplay.badgeFor(log, log!.scheduledAt ?? now, now);
+    return (
+      badge.label,
+      badge.foreground,
+      badge.outlined ? AppColors.missedRedBg : badge.background,
+    );
   }
 
   @override
@@ -310,7 +311,7 @@ class _DoseRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Compartment ${schedule.matBoxColumn} · '
+                  '${schedule.isInBox ? 'Compartment ${schedule.matBoxColumn}' : 'Not in the box'} · '
                   '${schedule.pillsRemaining} left',
                   style: TextStyle(
                     fontSize: 12,

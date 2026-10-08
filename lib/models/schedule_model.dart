@@ -6,7 +6,10 @@ class ScheduleModel {
   final String patientRef;
   final String scheduledTime; // e.g. "08:00 AM" or "08:00"
   final List<int> daysOfWeek; // 1 = Monday, 7 = Sunday
-  final int matBoxColumn; // 1–8
+  /// The box compartment, 1–8, or null when the medicine is not in the box:
+  /// the patient has no box yet, or it is a liquid, inhaler or a ninth
+  /// medicine. Null must never be shown as a compartment.
+  final int? matBoxColumn;
   final String caregiverDoctor;
   final DateTime startDate;
   final DateTime? endDate;
@@ -28,7 +31,7 @@ class ScheduleModel {
     this.patientRef = '',
     required this.scheduledTime,
     this.daysOfWeek = const [1, 2, 3, 4, 5, 6, 7],
-    this.matBoxColumn = 1,
+    this.matBoxColumn,
     this.caregiverDoctor = '',
     required this.startDate,
     this.endDate,
@@ -40,6 +43,16 @@ class ScheduleModel {
   }) : createdAt = createdAt ?? DateTime.now();
 
   bool get isLowStock => pillsRemaining <= lowStockThreshold;
+
+  bool get isInBox => matBoxColumn != null;
+
+  /// Anything outside 1–8 is treated as "not in the box" rather than trusted:
+  /// a stray 0 or 9 would otherwise light a compartment that does not exist.
+  static int? parseColumn(Object? raw) {
+    final value = (raw as num?)?.toInt();
+    if (value == null || value < 1 || value > 8) return null;
+    return value;
+  }
 
   factory ScheduleModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
@@ -56,7 +69,7 @@ class ScheduleModel {
               ?.map((e) => (e as num).toInt())
               .toList() ??
           [1, 2, 3, 4, 5, 6, 7],
-      matBoxColumn: (map['mat_box_column'] as num?)?.toInt() ?? 1,
+      matBoxColumn: parseColumn(map['mat_box_column']),
       caregiverDoctor: map['caregiver_doctor'] as String? ?? '',
       startDate: map['start_date'] is Timestamp
           ? (map['start_date'] as Timestamp).toDate()
@@ -104,6 +117,7 @@ class ScheduleModel {
     String? scheduledTime,
     List<int>? daysOfWeek,
     int? matBoxColumn,
+    bool clearMatBoxColumn = false,
     String? caregiverDoctor,
     DateTime? startDate,
     DateTime? endDate,
@@ -119,7 +133,8 @@ class ScheduleModel {
       patientRef: patientRef ?? this.patientRef,
       scheduledTime: scheduledTime ?? this.scheduledTime,
       daysOfWeek: daysOfWeek ?? this.daysOfWeek,
-      matBoxColumn: matBoxColumn ?? this.matBoxColumn,
+      matBoxColumn:
+          clearMatBoxColumn ? null : (matBoxColumn ?? this.matBoxColumn),
       caregiverDoctor: caregiverDoctor ?? this.caregiverDoctor,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,

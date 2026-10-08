@@ -186,18 +186,26 @@ class _ScheduleRow extends StatelessWidget {
             height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.ledActiveBg,
+              color: schedule.isInBox
+                  ? AppColors.ledActiveBg
+                  : AppColors.blueLight,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              '${schedule.matBoxColumn}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.ledActive,
-                fontFamily: 'PlusJakartaSans',
-              ),
-            ),
+            child: schedule.isInBox
+                ? Text(
+                    '${schedule.matBoxColumn}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ledActive,
+                      fontFamily: 'PlusJakartaSans',
+                    ),
+                  )
+                : const Icon(
+                    Icons.phone_android_rounded,
+                    color: AppColors.patientBlue,
+                    size: 20,
+                  ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -215,7 +223,9 @@ class _ScheduleRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Compartment ${schedule.matBoxColumn}',
+                  schedule.isInBox
+                      ? 'Compartment ${schedule.matBoxColumn}'
+                      : 'Reminder on this phone',
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,

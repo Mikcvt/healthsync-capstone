@@ -46,6 +46,74 @@ class DeviceService {
     });
   }
 
+  /// Whether [patientUid] has a box paired. A one-time read for the add- and
+  /// edit-medicine screens, which decide once whether to offer compartments.
+  Future<bool> hasPairedBox(String patientUid) async {
+    final snapshot = await _firestore
+        .collection('devices')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .limit(1)
+        .get();
+    return snapshot.docs.isNotEmpty;
+  }
+
+  /// Compartments already holding a medicine, mapped to that medicine's name.
+  ///
+  /// [exceptPatMedId] leaves out the medicine being edited, so its own
+  /// compartment stays selectable. Two medicines in one compartment was
+  /// possible before this existed; the box view then showed only one of them.
+  Future<Map<int, String>> occupiedCompartments(
+    String patientUid, {
+    String? exceptPatMedId,
+  }) async {
+    final results = await Future.wait([
+      _firestore
+          .collection('schedules')
+          .where('patient_ref', isEqualTo: patientUid)
+          .where('is_active', isEqualTo: true)
+          .get(),
+      _firestore
+          .collection('patient_medications')
+          .where('patient_ref', isEqualTo: patientUid)
+          .where('is_active', isEqualTo: true)
+          .get(),
+    ]);
+
+    final names = {
+      for (final doc in results[1].docs)
+        doc.id: (doc.data()['medication_name'] as String? ?? '').trim(),
+    };
+
+    final occupied = <int, String>{};
+    for (final doc in results[0].docs) {
+      final schedule = ScheduleModel.fromFirestore(doc);
+      final column = schedule.matBoxColumn;
+      if (column == null || schedule.patMedRef == exceptPatMedId) continue;
+      final name = names[schedule.patMedRef] ?? '';
+      occupied[column] = name.isEmpty ? 'Another medicine' : name;
+    }
+    return occupied;
+  }
+
+  /// Puts every dose time of one medicine into [column], or takes it out of
+  /// the box when [column] is null. Caregiver-only under the security rules.
+  Future<void> assignCompartment({
+    required List<String> scheduleIds,
+    required int? column,
+  }) async {
+    if (scheduleIds.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final id in scheduleIds) {
+      batch.update(_firestore.collection('schedules').doc(id), {
+        'mat_box_column': column,
+        // A medicine leaving the box must not leave its LED lit.
+        if (column == null) 'led_active': false,
+      });
+    }
+    await batch.commit();
+  }
+
   /// The physical box has exactly eight compartments, so the grid is always
   /// eight entries — an unassigned column is shown as empty rather than
   /// omitted, because the patient is looking at real hardware.

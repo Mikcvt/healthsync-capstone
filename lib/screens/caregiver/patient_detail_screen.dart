@@ -6,6 +6,7 @@ import '../../constants/app_styles.dart';
 import '../../models/dose_log_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/dose_status_display.dart';
 import 'patient_history_screen.dart';
 import 'patient_schedule_screen.dart';
 import 'reports_screen.dart';
@@ -33,9 +34,9 @@ class PatientDetailScreen extends StatelessWidget {
 
     final todayLogs = caregiver.logsForDay(DateTime.now());
     final taken = todayLogs.where((l) => l.isTaken).length;
-    final pending =
-        todayLogs.where((l) => l.isPending || l.isSnoozed).length;
-    final missed = todayLogs.where((l) => l.isMissed).length;
+    final pending = todayLogs.where((l) => l.isOpen).length;
+    // Skipped counts with missed here: both are doses not taken.
+    final missed = todayLogs.where((l) => l.isMissed || l.isSkipped).length;
     final weekly = caregiver.adherenceOver(7);
 
     if (caregiver.selectedPatientUid == null) {
@@ -99,7 +100,7 @@ class PatientDetailScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     _StatPill(label: '$pending', value: 'Pending'),
                     const SizedBox(width: 12),
-                    _StatPill(label: '$missed', value: 'Missed'),
+                    _StatPill(label: '$missed', value: 'Not taken'),
                   ],
                 ),
               ),
@@ -435,22 +436,16 @@ class _MedicationCard extends StatelessWidget {
     this.column,
   });
 
-  (String, Color, Color) get _status {
-    switch (log.status) {
-      case 'taken':
-        return ('Taken', AppColors.takenGreen, AppColors.takenGreenBg);
-      case 'missed':
-        return ('Missed', AppColors.missedRed, AppColors.missedRedBg);
-      case 'snoozed':
-        return ('Snoozed', AppColors.pendingAmber, AppColors.pendingAmberBg);
-      default:
-        return ('Pending', AppColors.upcomingBlue, AppColors.upcomingBlueBg);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final (label, accent, background) = _status;
+    // Same labels and colours as the patient sees (DOSE_LOGIC_PROPOSAL.md,
+    // section 11): Upcoming / Due now / Late / Missed / Taken early / Taken
+    // late / Logged late / Skipped.
+    final now = DateTime.now();
+    final badge = DoseStatusDisplay.badgeFor(log, log.scheduledAt ?? now, now);
+    final label = badge.label;
+    final accent = badge.foreground;
+    final background = badge.outlined ? AppColors.missedRedBg : badge.background;
 
     return Container(
       decoration: AppStyles.cardDecoration,
@@ -486,6 +481,7 @@ class _MedicationCard extends StatelessWidget {
                     [
                       log.scheduledTime,
                       if (column != null) 'Compartment $column',
+                      if (log.isResolved) DoseStatusDisplay.detailFor(log),
                     ].join(' · '),
                     style: const TextStyle(
                       fontSize: 12,

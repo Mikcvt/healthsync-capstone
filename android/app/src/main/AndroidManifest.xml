@@ -73,5 +73,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Vendor "run in background" screens opened by the reminder setup
+             hint (MainActivity.openBackgroundSettings). Without these,
+             Android 11+ hides them and the hint can only open app settings. -->
+        <package android:name="com.miui.securitycenter"/>
+        <package android:name="com.coloros.safecenter"/>
+        <package android:name="com.oplus.safecenter"/>
+        <package android:name="com.vivo.permissionmanager"/>
+        <package android:name="com.iqoo.secure"/>
     </queries>
 </manifest>

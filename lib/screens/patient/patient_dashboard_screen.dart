@@ -1,21 +1,58 @@
+import 'dart:async';
 import '../../widgets/shared/floating_nav_bar.dart';
+import '../../widgets/shared/medicine_badge.dart';
+import '../../widgets/patient/dose_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/dose_log_model.dart';
-import '../../models/schedule_model.dart';
-import '../../utils/snackbar_helper.dart';
+import '../../constants/app_strings.dart';
+import '../../models/dose_slot.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/dose_status_display.dart';
+import '../../utils/dose_timing.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import 'analytics_screen.dart';
 import 'medicine_box_status_screen.dart';
-import 'notifications_screen.dart';
-import 'dose_alert_screen.dart';
+import 'medicine_detail_screen.dart';
 
-class PatientDashboardScreen extends StatelessWidget {
+/// The patient's home screen: today's doses only, grouped so what needs doing
+/// sits at the top (DOSE_LOGIC_PROPOSAL.md, section 6).
+///
+/// ```
+/// NEEDS ACTION      Late, then Due now — Done / Skip
+/// UPCOMING          by time — Done / Skip, locked until 30 min before
+/// ▸ DONE TODAY (3)  taken, skipped, missed — collapsed
+/// ▸ VIEW TOMORROW   read-only, except within the early-logging window
+/// ```
+///
+/// Snooze is not offered here; it lives on the alarm screen only.
+class PatientDashboardScreen extends StatefulWidget {
   const PatientDashboardScreen({super.key});
+
+  @override
+  State<PatientDashboardScreen> createState() => _PatientDashboardScreenState();
+}
+
+class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
+  // Groups, badges and countdowns depend on the clock as well as on data, so
+  // the screen rebuilds on its own as doses come due.
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,12 +61,32 @@ class PatientDashboardScreen extends StatelessWidget {
     final user = authProvider.currentUserModel;
     final firstName = user?.firstName.isNotEmpty == true ? user!.firstName : 'Patient';
 
-    final schedules = patientProvider.schedules;
-    final todayLogs = patientProvider.todayLogs;
-    final takenCount = todayLogs.where((l) => l.isTaken).length;
-    final totalDoses = schedules.length;
+    final now = DateTime.now();
+    final today = patientProvider.slotsForDay(now);
+    final tomorrow =
+        patientProvider.slotsForDay(now.add(const Duration(days: 1)));
+
+    bool past(DoseSlot s) =>
+        DoseTiming.phaseOf(s.scheduledAt, now) == DosePhase.missed;
+    final needsAction = today.where((s) {
+      if (!s.isOpen) return false;
+      final phase = DoseTiming.phaseOf(s.scheduledAt, now);
+      return phase == DosePhase.dueNow || phase == DosePhase.late;
+    }).toList();
+    final upcoming = today.where((s) {
+      if (!s.isOpen) return false;
+      final phase = DoseTiming.phaseOf(s.scheduledAt, now);
+      return phase == DosePhase.upcomingLocked ||
+          phase == DosePhase.upcomingUnlocked;
+    }).toList();
+    final done = today.where((s) => !s.isOpen || past(s)).toList()
+      ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
+
+    final takenCount = today.where((s) => s.log?.isTaken ?? false).length;
+    final remaining = needsAction.length + upcoming.length;
     final isLinked = patientProvider.isLinkedToCaregiver;
     final caregiver = patientProvider.caregiverUser;
+    final hasSchedules = patientProvider.schedules.isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -45,19 +102,8 @@ class PatientDashboardScreen extends StatelessWidget {
             fontSize: 24,
           ),
         ),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              );
-            },
-            icon: const Icon(
-              Icons.notifications_none_rounded,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
+        // No bell here: the Alerts tab, with its unread badge, is the one
+        // way to notifications.
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -92,7 +138,7 @@ class PatientDashboardScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            '$takenCount/$totalDoses Taken',
+                            '$takenCount/${today.length} Taken',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -104,11 +150,11 @@ class PatientDashboardScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      totalDoses == 0
-                          ? 'No medications scheduled'
-                          : (takenCount >= totalDoses
-                              ? 'All doses completed today!'
-                              : '${totalDoses - takenCount} dose(s) pending today'),
+                      today.isEmpty
+                          ? 'No doses scheduled today'
+                          : remaining == 0
+                              ? 'All done for today!'
+                              : '$remaining dose${remaining == 1 ? '' : 's'} still to take today',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -119,7 +165,10 @@ class PatientDashboardScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        _Pill(label: '$totalDoses daily doses', color: Colors.white.withValues(alpha: 0.18)),
+                        _Pill(
+                          label: '${today.length} dose${today.length == 1 ? '' : 's'} today',
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
                         const SizedBox(width: 10),
                         _Pill(
                           label: '${patientProvider.todayAdherencePercentage.toStringAsFixed(0)}% adherence',
@@ -192,124 +241,91 @@ class PatientDashboardScreen extends StatelessWidget {
               ] else ...[
                 // Informational only — there is nothing for the patient to
                 // change about their caregiver link.
-                Builder(
-                  builder: (context) => Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.ledDoneBg,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.caregiverGreen.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle_rounded, color: AppColors.caregiverGreen, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Caregiver ${caregiver != null ? caregiver.firstName : "Connected"} is monitoring',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.caregiverGreen,
-                              fontFamily: 'PlusJakartaSans',
-                            ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.ledDoneBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.caregiverGreen.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: AppColors.caregiverGreen, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Caregiver ${caregiver != null ? caregiver.firstName : "Connected"} is monitoring',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.caregiverGreen,
+                            fontFamily: 'PlusJakartaSans',
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 18),
               ],
 
               // ==========================================
-              // TODAY'S DOSES LIST
+              // TODAY'S DOSES
               // ==========================================
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Today\'s Schedule',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      fontFamily: 'PlusJakartaSans',
-                    ),
-                  ),
-                ],
+              Text(
+                'Today · ${DateFormatter.weekdayShort(now.weekday)}, ${DateFormatter.toShortDate(now)}',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                  fontFamily: 'PlusJakartaSans',
+                ),
               ),
               const SizedBox(height: 10),
 
-              if (schedules.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: AppStyles.cardDecoration,
-                  child: Column(
+              if (!hasSchedules)
+                const _EmptyCard(
+                  icon: Icons.medication_outlined,
+                  title: 'No medications scheduled yet',
+                  message: 'Your caregiver has not added any medicines yet. '
+                      'They will appear here as soon as they do.',
+                )
+              else if (today.isEmpty)
+                const _EmptyCard(
+                  icon: Icons.event_available_rounded,
+                  title: AppStrings.noSchedulesToday,
+                  message: 'Check "View tomorrow" below for what is next.',
+                )
+              else ...[
+                if (needsAction.isEmpty && upcoming.isEmpty) const _AllDone(),
+                if (needsAction.isNotEmpty) ...[
+                  _GroupLabel('NEEDS ACTION', color: AppColors.missedRed),
+                  for (final slot in needsAction) _DoseCard(slot: slot, now: now),
+                ],
+                if (upcoming.isNotEmpty) ...[
+                  _GroupLabel('UPCOMING'),
+                  for (final slot in upcoming) _DoseCard(slot: slot, now: now),
+                ],
+                if (done.isNotEmpty)
+                  _CollapsibleGroup(
+                    title: 'DONE TODAY',
+                    count: done.length,
+                    flag: _needingReason(done, now),
                     children: [
-                      const Icon(Icons.medication_outlined, size: 48, color: AppColors.textSecondary),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'No medications scheduled yet',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                      ),
+                      for (final slot in done) _DoseCard(slot: slot, now: now),
                     ],
                   ),
-                )
-              else
-                // Only what still needs attention. Doses taken, and misses the
-                // patient has already acknowledged, drop off — the list should
-                // shrink as the day progresses, not grow.
-                ...() {
-                  // Driven by the schedule, not the dose log.
-                  //
-                  // Logs are materialised by a cron that can be up to five
-                  // minutes behind, so keying the list on them hid a dose the
-                  // patient could already see on the caregiver's screen. The
-                  // schedule is the intent and always exists; the log only
-                  // supplies status.
-                  final today = DateTime.now();
-
-                  final due = schedules.where((s) {
-                    if (s.daysOfWeek.isNotEmpty &&
-                        !s.daysOfWeek.contains(today.weekday)) {
-                      return false;
-                    }
-                    final log =
-                        patientProvider.todayLogForSchedule(s.scheduleId);
-                    // Nothing logged yet means it has not happened yet, so it
-                    // belongs on the list.
-                    if (log == null) return true;
-                    return !log.isTaken && log.acknowledgedAt == null;
-                  }).toList()
-                    ..sort((a, b) {
-                      final x = DateFormatter.parseScheduleTime(a.scheduledTime);
-                      final y = DateFormatter.parseScheduleTime(b.scheduledTime);
-                      if (x == null || y == null) return 0;
-                      return x.compareTo(y);
-                    });
-
-                  if (due.isEmpty) return <Widget>[const _AllDone()];
-
-                  return due.asMap().entries.map<Widget>((entry) {
-                    return _buildDoseRow(
-                      context,
-                      patientProvider,
-                      entry.value,
-                      // Only the nearest dose gets full prominence; the ones
-                      // after it step down so the eye lands on what is next.
-                      compact: entry.key > 0,
-                    );
-                  }).toList();
-                }(),
+              ],
+              if (tomorrow.isNotEmpty)
+                _CollapsibleGroup(
+                  title: 'VIEW TOMORROW',
+                  count: tomorrow.length,
+                  children: [
+                    for (final slot in tomorrow)
+                      _DoseCard(slot: slot, now: now, tomorrow: true),
+                  ],
+                ),
 
               const SizedBox(height: 20),
 
@@ -362,6 +378,466 @@ class PatientDashboardScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Missed doses still waiting for a reason, so the collapsed group can say
+  /// so rather than hide them at the bottom.
+  static int _needingReason(List<DoseSlot> slots, DateTime now) =>
+      slots.where((s) => _needsReason(s, now)).length;
+}
+
+/// A missed dose without a reason: either the Worker marked it missed and
+/// nobody has explained it, or it is past its missed window and not swept yet.
+bool _needsReason(DoseSlot slot, DateTime now) {
+  final log = slot.log;
+  if (log != null && log.isMissed) return log.skippedReason.trim().isEmpty;
+  return slot.isOpen &&
+      DoseTiming.phaseOf(slot.scheduledAt, now) == DosePhase.missed;
+}
+
+class _GroupLabel extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _GroupLabel(this.label, {this.color = AppColors.textSecondary});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 8),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w800,
+          color: color,
+          fontFamily: AppStyles.fontFamily,
+        ),
+      ),
+    );
+  }
+}
+
+/// A group that starts collapsed, with its count in the header.
+class _CollapsibleGroup extends StatefulWidget {
+  final String title;
+  final int count;
+
+  /// Missed doses still needing a reason; shown on the header when > 0.
+  final int flag;
+  final List<Widget> children;
+
+  const _CollapsibleGroup({
+    required this.title,
+    required this.count,
+    required this.children,
+    this.flag = 0,
+  });
+
+  @override
+  State<_CollapsibleGroup> createState() => _CollapsibleGroupState();
+}
+
+class _CollapsibleGroupState extends State<_CollapsibleGroup> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  _open
+                      ? Icons.expand_more_rounded
+                      : Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.title} (${widget.count})',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textSecondary,
+                    fontFamily: AppStyles.fontFamily,
+                  ),
+                ),
+                if (widget.flag > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.missedRedBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${widget.flag} need${widget.flag == 1 ? 's' : ''} a reason',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.missedRed,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_open) ...widget.children,
+      ],
+    );
+  }
+}
+
+/// One dose: name, date and time, status, and — while it is still open — the
+/// Done and Skip buttons.
+class _DoseCard extends StatelessWidget {
+  final DoseSlot slot;
+  final DateTime now;
+
+  /// Tomorrow's doses are read-only except inside the early-logging window.
+  final bool tomorrow;
+
+  const _DoseCard({
+    required this.slot,
+    required this.now,
+    this.tomorrow = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.read<PatientProvider>();
+    final schedule = slot.schedule;
+    final med = provider.medicationFor(schedule.patMedRef);
+    final medName = med?.medicationName.isNotEmpty == true
+        ? med!.medicationName
+        : 'Scheduled medication';
+    final phase = DoseTiming.phaseOf(slot.scheduledAt, now);
+    final badge = DoseStatusDisplay.badgeFor(slot.log, slot.scheduledAt, now);
+    final open = slot.isOpen && phase != DosePhase.missed;
+    final missed = (slot.log?.isMissed ?? false) ||
+        (slot.isOpen && phase == DosePhase.missed);
+    final needsReason = _needsReason(slot, now);
+    final showsCol = provider.showsCompartment(schedule);
+
+    final detail = [
+      DateFormatter.doseDayTime(slot.scheduledAt, now: now),
+      provider.doseInstructionFor(schedule),
+      if (open) '${schedule.pillsRemaining} left',
+    ].join(' · ');
+
+    // Tomorrow: Done only, and only once the early window has opened.
+    final earlyCheck = DoseTiming.checkEarly(
+      slot.scheduledAt,
+      now,
+      previousDoseAt: tomorrow ? provider.previousDoseAt(slot) : null,
+    );
+    final showActions = open && (!tomorrow || earlyCheck.allowed);
+
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MedicineDetailScreen(
+            schedule: schedule,
+            fallbackName: medName,
+          ),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: AppStyles.cardDecoration.copyWith(
+          border: Border.all(
+            color: missed
+                ? AppColors.missedRed.withValues(alpha: 0.3)
+                : AppColors.borderGray,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                MedicineBadge(
+                  column: showsCol ? schedule.matBoxColumn : null,
+                  dosageForm: med?.dosageForm ?? 'Tablet',
+                  size: 46,
+                  foreground: missed ? AppColors.missedRed : AppColors.patientBlue,
+                  background: missed ? AppColors.missedRedBg : AppColors.blueLight,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        medName,
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        detail,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _BadgeChip(badge),
+                          if (slot.isOpen && phase != DosePhase.missed)
+                            Text(
+                              DoseTiming.countdown(slot.scheduledAt, now),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (!open && slot.log != null && slot.log!.isResolved) ...[
+              const SizedBox(height: 10),
+              Text(
+                DoseStatusDisplay.detailFor(slot.log!),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            if (needsReason) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => DoseActions.openMissed(context, slot),
+                  icon: const Icon(Icons.edit_note_rounded, size: 18),
+                  label: const Text(
+                    'Add reason',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.missedRed,
+                    side: const BorderSide(color: AppColors.missedRed),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (showActions) ...[
+              const SizedBox(height: 12),
+              _DoseButtons(
+                slot: slot,
+                locked: phase == DosePhase.upcomingLocked,
+                doneOnly: tomorrow,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BadgeChip extends StatelessWidget {
+  final DoseBadge badge;
+
+  const _BadgeChip(this.badge);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: badge.background,
+        borderRadius: BorderRadius.circular(7),
+        border: badge.outlined ? Border.all(color: badge.foreground) : null,
+      ),
+      child: Text(
+        badge.label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: badge.foreground,
+        ),
+      ),
+    );
+  }
+}
+
+/// Done and Skip. Before the 30-minute window they look disabled with a lock
+/// and "Actions unlock at …", but stay tappable: a tap asks whether the
+/// patient is logging early (DOSE_LOGIC_PROPOSAL.md, 3.1).
+class _DoseButtons extends StatelessWidget {
+  final DoseSlot slot;
+  final bool locked;
+  final bool doneOnly;
+
+  const _DoseButtons({
+    required this.slot,
+    required this.locked,
+    this.doneOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final doneColor = locked ? AppColors.textMuted : AppColors.caregiverGreen;
+    final skipColor = locked ? AppColors.textMuted : AppColors.missedRed;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => DoseActions.take(context, slot),
+                icon: Icon(
+                  locked ? Icons.lock_outline_rounded : Icons.check_rounded,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Done',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      locked ? AppColors.background : AppColors.caregiverGreen,
+                  foregroundColor: locked ? doneColor : Colors.white,
+                  elevation: 0,
+                  minimumSize: const Size(0, 44),
+                  side: locked
+                      ? const BorderSide(color: AppColors.borderGray)
+                      : null,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            if (!doneOnly) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => DoseActions.skip(context, slot),
+                  icon: Icon(
+                    locked ? Icons.lock_outline_rounded : Icons.close_rounded,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    'Skip',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: skipColor,
+                    minimumSize: const Size(0, 44),
+                    side: BorderSide(
+                      color: locked ? AppColors.borderGray : AppColors.missedRed,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (locked) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline_rounded,
+                  size: 14, color: AppColors.textMuted),
+              const SizedBox(width: 4),
+              Text(
+                AppStrings.actionsUnlockAt(DateFormatter.toClockLabel(
+                  DoseTiming.unlockAt(slot.scheduledAt),
+                )),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+
+  const _EmptyCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(28),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        children: [
+          Icon(icon, size: 48, color: AppColors.textSecondary),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+        ],
       ),
     );
   }
@@ -451,195 +927,6 @@ class _QuickCard extends StatelessWidget {
   }
 }
 
-/// Says plainly what happened to one dose today.
-///
-/// Without this the dashboard showed every dose with the same outline tick, so
-/// "not taken yet", "taken" and "missed" were visually identical — the caregiver
-/// screen said 4 missed while this one said 4/4 taken.
-class _DoseStatusChip extends StatelessWidget {
-  final DoseLogModel? log;
-
-  const _DoseStatusChip({required this.log});
-
-  @override
-  Widget build(BuildContext context) {
-    late final String label;
-    late final Color fg;
-    late final Color bg;
-
-    if (log == null) {
-      // No log yet: the Worker materialises these a little ahead of time, so a
-      // gap means "not due yet", not "missed".
-      label = 'Upcoming';
-      fg = AppColors.upcomingBlue;
-      bg = AppColors.upcomingBlueBg;
-    } else if (log!.isTaken) {
-      final at = log!.takenAt;
-      label = at == null ? 'Taken' : 'Taken ${DateFormatter.toTimeLabel(at)}';
-      fg = AppColors.takenGreen;
-      bg = AppColors.takenGreenBg;
-    } else if (log!.isMissed) {
-      label = 'Missed';
-      fg = AppColors.missedRed;
-      bg = AppColors.missedRedBg;
-    } else if (log!.isSnoozed) {
-      label = 'Snoozed (${log!.snoozeCount}/3)';
-      fg = AppColors.pendingAmber;
-      bg = AppColors.pendingAmberBg;
-    } else {
-      label = 'Due now';
-      fg = AppColors.pendingAmber;
-      bg = AppColors.pendingAmberBg;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w700,
-          color: fg,
-        ),
-      ),
-    );
-  }
-}
-
-/// One outstanding dose.
-///
-/// [compact] shrinks every dose after the nearest one, so the next thing to
-/// take reads as the primary item rather than one of a uniform stack.
-Widget _buildDoseRow(
-  BuildContext context,
-  PatientProvider provider,
-  ScheduleModel sch, {
-  required bool compact,
-}) {
-  final med = provider.medications
-      .where((m) => m.patMedId == sch.patMedRef)
-      .firstOrNull;
-  final medName = med?.medicationName.isNotEmpty == true
-      ? med!.medicationName
-      : 'Scheduled medication';
-  final log = provider.todayLogForSchedule(sch.scheduleId);
-  final missed = log?.isMissed == true;
-
-  return Container(
-    margin: EdgeInsets.only(bottom: compact ? 8 : 12),
-    padding: EdgeInsets.symmetric(
-      horizontal: 16,
-      vertical: compact ? 12 : 18,
-    ),
-    decoration: AppStyles.cardDecoration.copyWith(
-      border: Border.all(
-        color: missed ? AppColors.missedRed.withValues(alpha: 0.3)
-                      : AppColors.borderGray,
-      ),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: compact ? 40 : 48,
-          height: compact ? 40 : 48,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: missed ? AppColors.missedRedBg : AppColors.blueLight,
-            borderRadius: BorderRadius.circular(compact ? 11 : 13),
-          ),
-          child: Text(
-            'Col ${sch.matBoxColumn}',
-            style: TextStyle(
-              fontSize: compact ? 9.5 : 10.5,
-              fontWeight: FontWeight.w800,
-              color: missed ? AppColors.missedRed : AppColors.patientBlue,
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                medName,
-                style: TextStyle(
-                  fontSize: compact ? 14.5 : 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              SizedBox(height: compact ? 2 : 4),
-              Text(
-                '${sch.scheduledTime} · ${sch.pillsRemaining} pills left',
-                style: TextStyle(
-                  fontSize: compact ? 12 : 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              if (!compact) ...[
-                const SizedBox(height: 6),
-                _DoseStatusChip(log: log),
-              ],
-            ],
-          ),
-        ),
-
-        // A missed dose offers the honest pair of actions: record it late, or
-        // acknowledge it and clear it from the list.
-        if (missed)
-          IconButton(
-            tooltip: 'Dismiss this missed dose',
-            icon: Icon(Icons.close_rounded,
-                color: AppColors.missedRed, size: compact ? 22 : 26),
-            onPressed: () async {
-              final id = log?.doseLogId;
-              if (id == null || id.isEmpty) return;
-              final ok = await provider.acknowledgeMissedDose(id);
-              if (!context.mounted) return;
-              if (ok) {
-                SnackbarHelper.showInfo(
-                  context,
-                  'Moved to history. It still counts as missed.',
-                );
-              } else {
-                SnackbarHelper.showError(
-                  context,
-                  provider.errorMessage ?? 'Could not dismiss this dose.',
-                );
-              }
-            },
-          )
-        else
-          IconButton(
-            tooltip: 'Confirm this dose',
-            // Blue, not a tick: an unticked checkbox reads as "done" at a
-            // glance, which is the opposite of what a pending dose means.
-            icon: Icon(
-              Icons.radio_button_unchecked_rounded,
-              color: AppColors.patientBlue,
-              size: compact ? 24 : 28,
-            ),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => DoseAlertScreen(
-                  schedule: sch,
-                  medicineName: medName,
-                  doseTime: sch.scheduledTime,
-                  columnNumber: sch.matBoxColumn,
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
 /// Shown once everything today has been dealt with.
 class _AllDone extends StatelessWidget {
   const _AllDone();
@@ -648,10 +935,11 @@ class _AllDone extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(24),
       decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: const [
+      child: const Column(
+        children: [
           Icon(Icons.task_alt_rounded, size: 38, color: AppColors.takenGreen),
           SizedBox(height: 12),
           Text(
@@ -664,7 +952,7 @@ class _AllDone extends StatelessWidget {
           ),
           SizedBox(height: 6),
           Text(
-            'Every dose has been dealt with. See History for the full record.',
+            'Every dose has been dealt with. "Done today" below has the details.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

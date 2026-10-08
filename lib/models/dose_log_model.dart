@@ -1,5 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Dose log statuses. `taken`, `skipped`, `missed` and `cancelled` are final;
+/// `pending` and `snoozed` still need a decision.
+class DoseStatus {
+  static const String pending = 'pending';
+  static const String snoozed = 'snoozed';
+  static const String taken = 'taken';
+
+  /// The patient chose not to take it, and said why.
+  static const String skipped = 'skipped';
+
+  /// Nothing was recorded within the missed window.
+  static const String missed = 'missed';
+
+  /// The medicine was archived, or the dose time moved, before this dose came
+  /// due. Kept for the record, never counted, never shown as a dose.
+  static const String cancelled = 'cancelled';
+}
+
+/// When a taken dose was taken, relative to its dose time.
+class DoseTimingTag {
+  /// Confirmed through the early-logging prompt.
+  static const String early = 'early';
+  static const String onTime = 'on_time';
+  static const String late = 'late';
+
+  /// Was missed, then corrected with "I took it but forgot to log it".
+  static const String loggedLate = 'logged_late';
+}
+
 class DoseLogModel {
   final String doseLogId;
   final String scheduleRef;
@@ -9,30 +38,50 @@ class DoseLogModel {
 
   /// [scheduledDate] and [scheduledTime] together as a single instant.
   ///
-  /// The Worker's 5-minute sweep needs `where scheduled_at < now - 30min`, and
-  /// a range query cannot be built from two separate strings. This is also what
+  /// The Worker's 5-minute sweep needs `where scheduled_at < cutoff`, and a
+  /// range query cannot be built from two separate strings. This is also what
   /// history screens should sort on — sorting by the "08:00 AM" string puts
   /// 10:00 AM before 8:00 AM.
   final DateTime? scheduledAt;
 
-  final String status; // 'taken', 'missed', 'snoozed', 'pending'
+  /// One of [DoseStatus].
+  final String status;
   final DateTime? takenAt;
   final int snoozeCount;
-  final String confirmedVia; // 'app', 'box', 'caregiver'
+
+  /// When the current snooze expires. Until then the dose cannot be snoozed
+  /// again — without it three taps in a row used up every snooze and marked
+  /// the dose missed in under a second.
+  final DateTime? snoozedUntil;
+
+  final String confirmedVia; // 'app', 'button', or '' while pending
   final bool caregiverNotified;
   final int doseCount;
-  /// When the patient acknowledged a missed dose.
-  ///
-  /// A missed dose stays on the dashboard until they have seen it — that is the
-  /// whole point of flagging it. Once acknowledged it drops off the dashboard
-  /// and lives only in history, so the list shows what still needs attention
-  /// rather than growing all day.
+
+  /// When the patient gave a reason for a missed dose.
   final DateTime? acknowledgedAt;
 
+  /// The reason given for a skipped or missed dose.
   final String skippedReason;
   final String recordedBy;
   final DateTime createdAt;
   final bool isActive;
+
+  /// One of [DoseTimingTag], set when the dose is taken. Null otherwise, and
+  /// on logs written before timing existed.
+  final String? timing;
+
+  /// When the patient last acted on this dose. Differs from [takenAt] for a
+  /// dose logged after the fact. The security rules also use it to allow Undo
+  /// for a short time after an action.
+  final DateTime? loggedAt;
+
+  /// Why a dose was cancelled: 'archived' or 'rescheduled'.
+  final String? cancelledReason;
+
+  /// Set on every dose of a medicine archived as "entered by mistake", so it
+  /// is kept but never counted in adherence.
+  final bool excludedFromAdherence;
 
   const DoseLogModel({
     required this.doseLogId,
@@ -41,9 +90,10 @@ class DoseLogModel {
     required this.scheduledDate,
     required this.scheduledTime,
     this.scheduledAt,
-    this.status = 'pending',
+    this.status = DoseStatus.pending,
     this.takenAt,
     this.snoozeCount = 0,
+    this.snoozedUntil,
     this.confirmedVia = 'app',
     this.caregiverNotified = false,
     this.doseCount = 1,
@@ -52,16 +102,54 @@ class DoseLogModel {
     this.recordedBy = 'patient',
     required this.createdAt,
     this.isActive = true,
+    this.timing,
+    this.loggedAt,
+    this.cancelledReason,
+    this.excludedFromAdherence = false,
   });
 
-  bool get isTaken => status == 'taken';
-  bool get isMissed => status == 'missed';
-  bool get isSnoozed => status == 'snoozed';
-  bool get isPending => status == 'pending';
+  bool get isTaken => status == DoseStatus.taken;
+  bool get isMissed => status == DoseStatus.missed;
+  bool get isSkipped => status == DoseStatus.skipped;
+  bool get isSnoozed => status == DoseStatus.snoozed;
+  bool get isPending => status == DoseStatus.pending;
+  bool get isCancelled => status == DoseStatus.cancelled;
+
+  /// Still waiting for the patient: nothing final has been recorded.
+  bool get isOpen => isPending || isSnoozed;
+
+  /// A decision has been recorded (taken, skipped or missed). Cancelled doses
+  /// are neither open nor resolved — they never happened.
+  bool get isResolved => isTaken || isSkipped || isMissed;
+
+  /// A snooze is still running. A log written before [snoozedUntil] existed
+  /// has none, and is treated as expired rather than locked forever.
+  bool get isSnoozeActive =>
+      isSnoozed &&
+      snoozedUntil != null &&
+      DateTime.now().isBefore(snoozedUntil!);
+
+  /// The deterministic id the Worker's materialiser gives this dose:
+  /// `{scheduleId}_{YYYY-MM-DD}_{HH:mm}`, local (Manila) date and 24-hour
+  /// time. The app uses the same id when it has to create a log itself, so the
+  /// materialiser recognises it instead of creating a duplicate.
+  static String idFor(String scheduleId, DateTime scheduledAt) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final date =
+        '${scheduledAt.year}-${two(scheduledAt.month)}-${two(scheduledAt.day)}';
+    final time = '${two(scheduledAt.hour)}:${two(scheduledAt.minute)}';
+    return '${scheduleId}_${date}_$time';
+  }
 
   factory DoseLogModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
     return DoseLogModel.fromMap(data, doc.id);
+  }
+
+  static DateTime? _date(Object? raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
   }
 
   factory DoseLogModel.fromMap(Map<String, dynamic> map, [String? id]) {
@@ -71,18 +159,13 @@ class DoseLogModel {
       patientRef: map['patient_ref'] as String? ?? '',
       scheduledDate: map['scheduled_date'] as String? ?? '',
       scheduledTime: map['scheduled_time'] as String? ?? '',
-      scheduledAt: map['scheduled_at'] is Timestamp
-          ? (map['scheduled_at'] as Timestamp).toDate()
-          : (map['scheduled_at'] != null
-              ? DateTime.tryParse(map['scheduled_at'].toString())
-              : null),
-      status: map['status'] as String? ?? 'pending',
-      takenAt: map['taken_at'] is Timestamp
-          ? (map['taken_at'] as Timestamp).toDate()
-          : (map['taken_at'] != null
-              ? DateTime.tryParse(map['taken_at'].toString())
-              : null),
+      scheduledAt: _date(map['scheduled_at']),
+      status: map['status'] as String? ?? DoseStatus.pending,
+      takenAt: _date(map['taken_at']),
       snoozeCount: (map['snooze_count'] as num?)?.toInt() ?? 0,
+      snoozedUntil: map['snoozed_until'] is Timestamp
+          ? (map['snoozed_until'] as Timestamp).toDate()
+          : null,
       confirmedVia: map['confirmed_via'] as String? ?? 'app',
       caregiverNotified: map['caregiver_notified'] as bool? ?? false,
       doseCount: (map['dose_count'] as num?)?.toInt() ?? 1,
@@ -91,12 +174,14 @@ class DoseLogModel {
           : null,
       skippedReason: map['skipped_reason'] as String? ?? '',
       recordedBy: map['recorded_by'] as String? ?? 'patient',
-      createdAt: map['created_at'] is Timestamp
-          ? (map['created_at'] as Timestamp).toDate()
-          : (map['created_at'] != null
-              ? DateTime.tryParse(map['created_at'].toString()) ?? DateTime.now()
-              : DateTime.now()),
+      createdAt: _date(map['created_at']) ?? DateTime.now(),
       isActive: map['is_active'] as bool? ?? true,
+      timing: map['timing'] as String?,
+      loggedAt: map['logged_at'] is Timestamp
+          ? (map['logged_at'] as Timestamp).toDate()
+          : null,
+      cancelledReason: map['cancelled_reason'] as String?,
+      excludedFromAdherence: map['excluded_from_adherence'] as bool? ?? false,
     );
   }
 
@@ -112,6 +197,8 @@ class DoseLogModel {
       'status': status,
       'taken_at': takenAt != null ? Timestamp.fromDate(takenAt!) : null,
       'snooze_count': snoozeCount,
+      'snoozed_until':
+          snoozedUntil != null ? Timestamp.fromDate(snoozedUntil!) : null,
       'confirmed_via': confirmedVia,
       'caregiver_notified': caregiverNotified,
       'dose_count': doseCount,
@@ -121,6 +208,10 @@ class DoseLogModel {
       'recorded_by': recordedBy,
       'created_at': Timestamp.fromDate(createdAt),
       'is_active': isActive,
+      'timing': timing,
+      'logged_at': loggedAt != null ? Timestamp.fromDate(loggedAt!) : null,
+      'cancelled_reason': cancelledReason,
+      'excluded_from_adherence': excludedFromAdherence,
     };
   }
 
@@ -134,6 +225,7 @@ class DoseLogModel {
     String? status,
     DateTime? takenAt,
     int? snoozeCount,
+    DateTime? snoozedUntil,
     String? confirmedVia,
     bool? caregiverNotified,
     int? doseCount,
@@ -142,6 +234,10 @@ class DoseLogModel {
     String? recordedBy,
     DateTime? createdAt,
     bool? isActive,
+    String? timing,
+    DateTime? loggedAt,
+    String? cancelledReason,
+    bool? excludedFromAdherence,
   }) {
     return DoseLogModel(
       doseLogId: doseLogId ?? this.doseLogId,
@@ -153,6 +249,7 @@ class DoseLogModel {
       status: status ?? this.status,
       takenAt: takenAt ?? this.takenAt,
       snoozeCount: snoozeCount ?? this.snoozeCount,
+      snoozedUntil: snoozedUntil ?? this.snoozedUntil,
       confirmedVia: confirmedVia ?? this.confirmedVia,
       caregiverNotified: caregiverNotified ?? this.caregiverNotified,
       doseCount: doseCount ?? this.doseCount,
@@ -161,6 +258,11 @@ class DoseLogModel {
       recordedBy: recordedBy ?? this.recordedBy,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
+      timing: timing ?? this.timing,
+      loggedAt: loggedAt ?? this.loggedAt,
+      cancelledReason: cancelledReason ?? this.cancelledReason,
+      excludedFromAdherence:
+          excludedFromAdherence ?? this.excludedFromAdherence,
     );
   }
 }

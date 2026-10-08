@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/schedule_provider.dart';
 import 'add_medicine_step3_screen.dart';
+import '../../utils/date_formatter.dart';
 import '../../utils/snackbar_helper.dart';
 
 class AddMedicineStep2Screen extends StatefulWidget {
@@ -42,7 +43,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
       if (!_times.contains(formatted)) {
         setState(() {
           _times.add(formatted);
-          _times.sort();
+          _sortByTimeOfDay(_times);
         });
       }
     }
@@ -256,9 +257,13 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
       minutes += intervalHours * 60;
     }
 
-    final unique = times.toSet().toList()..sort();
-    return unique;
+    return _sortByTimeOfDay(times.toSet().toList());
   }
+
+  /// "06:00 PM" sorts before "12:00 PM" as text, so order by the clock.
+  static List<String> _sortByTimeOfDay(List<String> times) => times
+    ..sort((a, b) =>
+        DateFormatter.minutesOfDay(a).compareTo(DateFormatter.minutesOfDay(b)));
 
   void _onNext() {
     if (_times.isEmpty) {
@@ -277,7 +282,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
     }
 
     context.read<ScheduleProvider>().updateStep2(
-      scheduledTimes: _times,
+      scheduledTimes: List<String>.from(_times),
       daysOfWeek: _selectedDays,
       startDate: _startDate,
       instructions: _instructionController.text.trim(),

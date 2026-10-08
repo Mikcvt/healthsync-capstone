@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
+import '../../utils/dose_status_display.dart';
+import '../../utils/adherence.dart';
 import '../../models/dose_log_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
@@ -136,8 +138,11 @@ class _DayGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final taken = logs.where((l) => l.isTaken).length;
-    final resolved = logs.where((l) => l.isTaken || l.isMissed).length;
+    // The shared adherence rules: skipped counts as not taken, and doses of a
+    // medicine entered by mistake are not counted.
+    final stats = AdherenceStats.of(logs);
+    final taken = stats.taken;
+    final resolved = stats.resolved;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,41 +199,31 @@ class _HistoryRow extends StatelessWidget {
 
   const _HistoryRow({required this.log, required this.medicineName});
 
-  /// Status drives the whole row's appearance, and the detail line explains
-  /// *why* — including how late a dose was, which is the one derived figure the
-  /// caregiver actually has data for.
+  /// Status drives the row's appearance, with the same labels the patient
+  /// sees. The detail line explains why: how early or late, the reason for a
+  /// skip or miss, and for a correction both when it was logged and when the
+  /// patient says it was taken (DOSE_LOGIC_PROPOSAL.md, section 11).
   (String, Color, Color, IconData) get _status {
-    switch (log.status) {
-      case 'taken':
-        return ('Taken', AppColors.takenGreen, AppColors.takenGreenBg,
-            Icons.check_circle_outline_rounded);
-      case 'missed':
-        return ('Missed', AppColors.missedRed, AppColors.missedRedBg,
-            Icons.error_outline_rounded);
-      case 'snoozed':
-        return ('Snoozed', AppColors.pendingAmber, AppColors.pendingAmberBg,
-            Icons.snooze_rounded);
-      default:
-        return ('Pending', AppColors.upcomingBlue, AppColors.upcomingBlueBg,
-            Icons.schedule_rounded);
-    }
+    final now = DateTime.now();
+    final badge = DoseStatusDisplay.badgeFor(log, log.scheduledAt ?? now, now);
+    final icon = switch (log.status) {
+      'taken' => Icons.check_circle_outline_rounded,
+      'missed' => Icons.error_outline_rounded,
+      'skipped' => Icons.do_not_disturb_on_outlined,
+      'snoozed' => Icons.snooze_rounded,
+      _ => Icons.schedule_rounded,
+    };
+    return (
+      badge.label,
+      badge.foreground,
+      badge.outlined ? AppColors.missedRedBg : badge.background,
+      icon,
+    );
   }
 
   String get _detail {
-    if (log.isTaken && log.takenAt != null && log.scheduledAt != null) {
-      final lateMinutes =
-          log.takenAt!.difference(log.scheduledAt!).inMinutes;
-      if (lateMinutes > 5) return 'Taken $lateMinutes min late';
-      if (lateMinutes < -5) return 'Taken ${-lateMinutes} min early';
-      return 'Taken on time';
-    }
-    if (log.isMissed && log.skippedReason.isNotEmpty) return log.skippedReason;
-    if (log.isSnoozed) {
-      return 'Snoozed ${log.snoozeCount} '
-          '${log.snoozeCount == 1 ? 'time' : 'times'}';
-    }
-    if (log.isPending) return 'Scheduled ${log.scheduledTime}';
-    return log.scheduledTime;
+    final text = DoseStatusDisplay.detailFor(log);
+    return log.excludedFromAdherence ? '$text · not counted' : text;
   }
 
   @override

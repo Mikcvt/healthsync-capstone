@@ -248,6 +248,11 @@ class FirestoreService {
   }
 
   /// Puts an archived medicine back into the regimen.
+  ///
+  /// Dose-log ids are fixed (`{schedule}_{date}_{time}`) and the Worker's
+  /// materialiser skips any id that already exists, so the future doses that
+  /// archiving cancelled must be turned back into pending ones here — or
+  /// today's and tomorrow's doses would silently never come back.
   Future<void> restoreMedication(
     String patMedId, {
     required String patientUid,
@@ -265,48 +270,30 @@ class FirestoreService {
         .where('patient_ref', isEqualTo: patientUid)
         .where('pat_med_ref', isEqualTo: patMedId)
         .get();
+    final scheduleIds = <String>{};
     for (final doc in schedules.docs) {
+      scheduleIds.add(doc.id);
       batch.update(doc.reference, {'is_active': true});
     }
     await batch.commit();
+
+    await _reviveCancelledDoseLogs(
+      patientUid: patientUid,
+      scheduleIds: scheduleIds,
+    );
+    await _setAdherenceExclusion(
+      patientUid: patientUid,
+      scheduleIds: scheduleIds,
+      excluded: false,
+    );
   }
 
-  /// Erases a medicine, its schedules and its dose logs for good.
+  /// Cancels still-pending doses scheduled from now on for [scheduleIds].
   ///
-  /// Only ever offered for an entry archived as a mistake. A finished course
-  /// keeps its logs, because deleting them would silently rewrite the
-  /// patient's adherence history — the one record this app exists to produce.
-  Future<void> permanentlyDeleteMedication(
-    String patMedId, {
-    required String patientUid,
-  }) async {
-    final schedules = await _db
-        .collection('schedules')
-        .where('patient_ref', isEqualTo: patientUid)
-        .where('pat_med_ref', isEqualTo: patMedId)
-        .get();
-    final scheduleIds = schedules.docs.map((d) => d.id).toSet();
-
-    final logs = await _db
-        .collection('dose_logs')
-        .where('patient_ref', isEqualTo: patientUid)
-        .get();
-
-    final batch = _db.batch();
-    for (final doc in logs.docs) {
-      if (scheduleIds.contains(doc.data()['schedule_ref'])) {
-        batch.delete(doc.reference);
-      }
-    }
-    for (final doc in schedules.docs) {
-      batch.delete(doc.reference);
-    }
-    batch.delete(_db.collection('patient_medications').doc(patMedId));
-    await batch.commit();
-  }
-
-  /// Removes still-pending doses scheduled from now on for [scheduleIds].
-  Future<void> _purgeFutureDoseLogs({
+  /// Never deletes: a dose log is part of the medical record. Cancelled doses
+  /// are kept, excluded from every list and from adherence, and can be revived
+  /// by [restoreMedication].
+  Future<void> _cancelFutureDoseLogs({
     required String patientUid,
     required List<String> scheduleIds,
   }) async {
@@ -321,17 +308,82 @@ class FirestoreService {
         .where('status', isEqualTo: 'pending')
         .get();
 
-    final batch = _db.batch();
-    var count = 0;
-    for (final doc in snapshot.docs) {
+    final targets = snapshot.docs.where((doc) {
       final data = doc.data();
-      if (!scheduleIds.contains(data['schedule_ref'])) continue;
+      if (!scheduleIds.contains(data['schedule_ref'])) return false;
       final at = data['scheduled_at'];
-      if (at is Timestamp && at.compareTo(now) <= 0) continue;
-      batch.delete(doc.reference);
-      count++;
+      return at is Timestamp && at.compareTo(now) > 0;
+    });
+    await _batchUpdate(targets.map((d) => d.reference), {
+      'status': 'cancelled',
+      'cancelled_reason': 'archived',
+    });
+  }
+
+  /// Turns future doses cancelled by archiving back into pending ones.
+  Future<void> _reviveCancelledDoseLogs({
+    required String patientUid,
+    required Set<String> scheduleIds,
+  }) async {
+    if (scheduleIds.isEmpty) return;
+    final now = Timestamp.now();
+    final snapshot = await _db
+        .collection('dose_logs')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('status', isEqualTo: 'cancelled')
+        .get();
+
+    final targets = snapshot.docs.where((doc) {
+      final data = doc.data();
+      if (!scheduleIds.contains(data['schedule_ref'])) return false;
+      if (data['cancelled_reason'] != 'archived') return false;
+      final at = data['scheduled_at'];
+      return at is Timestamp && at.compareTo(now) > 0;
+    });
+    await _batchUpdate(targets.map((d) => d.reference), {
+      'status': 'pending',
+      'cancelled_reason': null,
+    });
+  }
+
+  /// Marks every dose of [scheduleIds] as counted or not counted in adherence.
+  /// Used for a medicine archived as "entered by mistake": its doses stay
+  /// stored, but describe something that never happened.
+  Future<void> _setAdherenceExclusion({
+    required String patientUid,
+    required Set<String> scheduleIds,
+    required bool excluded,
+  }) async {
+    if (scheduleIds.isEmpty) return;
+    final snapshot = await _db
+        .collection('dose_logs')
+        .where('patient_ref', isEqualTo: patientUid)
+        .get();
+
+    final targets = snapshot.docs.where((doc) {
+      final data = doc.data();
+      if (!scheduleIds.contains(data['schedule_ref'])) return false;
+      return (data['excluded_from_adherence'] == true) != excluded;
+    });
+    await _batchUpdate(targets.map((d) => d.reference), {
+      'excluded_from_adherence': excluded,
+    });
+  }
+
+  /// Applies the same update to many documents, in batches under Firestore's
+  /// 500-write limit.
+  Future<void> _batchUpdate(
+    Iterable<DocumentReference> refs,
+    Map<String, dynamic> data,
+  ) async {
+    final list = refs.toList();
+    for (var i = 0; i < list.length; i += 450) {
+      final batch = _db.batch();
+      for (final ref in list.skip(i).take(450)) {
+        batch.update(ref, data);
+      }
+      await batch.commit();
     }
-    if (count > 0) await batch.commit();
   }
 
   /// Why a medicine left the active regimen.
@@ -353,7 +405,9 @@ class FirestoreService {
   Future<void> deletePatientMedication(
     String patMedId, {
     required String patientUid,
-    bool wasMistake = true,
+    // Only an explicit "entered by mistake" choice stops a medicine's doses
+    // counting; every other removal keeps its history counted.
+    bool wasMistake = false,
   }) async {
     final batch = _db.batch();
 
@@ -379,13 +433,23 @@ class FirestoreService {
 
     await batch.commit();
 
-    // Drop doses that have not happened yet.
+    // Cancel doses that have not happened yet.
     //
     // The schedule is inactive now, so the Worker will not create more — but
     // the ones already materialised would sit there until the sweep marked
     // them missed, producing alerts for a medicine nobody is taking any more.
     // Past doses are never touched: they are the adherence record.
-    await _purgeFutureDoseLogs(patientUid: patientUid, scheduleIds: scheduleIds);
+    await _cancelFutureDoseLogs(patientUid: patientUid, scheduleIds: scheduleIds);
+
+    // A mistaken entry describes doses that never happened: keep them, but
+    // stop counting them.
+    if (wasMistake) {
+      await _setAdherenceExclusion(
+        patientUid: patientUid,
+        scheduleIds: scheduleIds.toSet(),
+        excluded: true,
+      );
+    }
   }
 
   Future<ScheduleModel?> getSchedule(String scheduleId) async {
@@ -447,6 +511,13 @@ class FirestoreService {
     });
   }
 
+  /// Gives back stock taken by a dose that was undone.
+  Future<void> incrementPillsRemaining(String scheduleId, int amount) async {
+    await _db.collection('schedules').doc(scheduleId).update({
+      'pills_remaining': FieldValue.increment(amount),
+    });
+  }
+
   // ==========================================
   // DOSE LOGS
   // ==========================================
@@ -475,9 +546,14 @@ class FirestoreService {
           .orderBy('scheduled_at', descending: true);
     }
 
+    // Cancelled doses (archived medicine, moved dose time) are kept in
+    // Firestore for the record but never shown or counted anywhere, so they
+    // are dropped here once rather than on every screen.
     return query.limit(limit).snapshots().map(
-      (snapshot) =>
-          snapshot.docs.map((doc) => DoseLogModel.fromFirestore(doc)).toList(),
+      (snapshot) => snapshot.docs
+          .map((doc) => DoseLogModel.fromFirestore(doc))
+          .where((log) => !log.isCancelled)
+          .toList(),
     );
   }
 
@@ -496,16 +572,40 @@ class FirestoreService {
     return docRef.id;
   }
 
+  /// Creates or replaces a dose log under its own [DoseLogModel.doseLogId].
+  /// Used with the deterministic id, so a log the app creates before the
+  /// Worker's materialiser runs is the same document it would have created.
+  Future<void> setDoseLog(DoseLogModel log) async {
+    await _db.collection('dose_logs').doc(log.doseLogId).set(log.toMap());
+  }
+
+  /// Writes [fields] onto a dose log. [DateTime] values become Timestamps and
+  /// null values are written as null, which is how Undo clears a field.
+  Future<void> updateDoseLogFields(
+    String doseLogId,
+    Map<String, dynamic> fields,
+  ) async {
+    final converted = fields.map(
+      (key, value) =>
+          MapEntry(key, value is DateTime ? Timestamp.fromDate(value) : value),
+    );
+    await _db.collection('dose_logs').doc(doseLogId).update(converted);
+  }
+
   Future<void> updateDoseLogStatus({
     required String doseLogId,
     required String status,
     DateTime? takenAt,
     int? snoozeCount,
+    DateTime? snoozedUntil,
     String? skippedReason,
     bool? caregiverNotified,
     String? confirmedVia,
   }) async {
     final Map<String, dynamic> updates = {'status': status};
+    if (snoozedUntil != null) {
+      updates['snoozed_until'] = Timestamp.fromDate(snoozedUntil);
+    }
     if (takenAt != null) updates['taken_at'] = Timestamp.fromDate(takenAt);
     if (confirmedVia != null) updates['confirmed_via'] = confirmedVia;
     if (snoozeCount != null) updates['snooze_count'] = snoozeCount;
@@ -568,6 +668,14 @@ class FirestoreService {
     final docRef = _db.collection('notifications').doc();
     final newNotif = notif.copyWith(notifId: docRef.id);
     await docRef.set(newNotif.toMap());
+  }
+
+  /// Hides a notification without deleting it — used when the dose that
+  /// triggered it is undone.
+  Future<void> deactivateNotification(String notifId) async {
+    await _db.collection('notifications').doc(notifId).update({
+      'is_active': false,
+    });
   }
 
   Future<void> markNotificationAsRead(String notifId) async {

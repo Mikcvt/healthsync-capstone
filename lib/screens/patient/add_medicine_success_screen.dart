@@ -5,14 +5,21 @@ import '../../constants/app_styles.dart';
 
 class AddMedicineSuccessScreen extends StatelessWidget {
   final String medicineName;
-  final int columnNumber;
+
+  /// The compartment it was placed in, or null when it is not in the box.
+  final int? columnNumber;
   final List<String> scheduledTimes;
+
+  /// Whether the patient has a box at all, which changes what "not in a
+  /// compartment" means: no box yet, or deliberately kept outside it.
+  final bool hasBox;
 
   const AddMedicineSuccessScreen({
     super.key,
     required this.medicineName,
     required this.columnNumber,
     required this.scheduledTimes,
+    this.hasBox = true,
   });
 
   @override
@@ -51,7 +58,9 @@ class AddMedicineSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '$medicineName has been successfully configured and synced with your schedule.',
+                columnNumber != null
+                    ? '$medicineName is on the schedule. Compartment $columnNumber will light up at each dose time.'
+                    : '$medicineName is on the schedule. Reminders will come on the phone at each dose time.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 15,
@@ -69,8 +78,12 @@ class AddMedicineSuccessScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     _InfoRow(
-                      label: 'Assigned Compartment',
-                      value: 'Column $columnNumber',
+                      label: 'Kept in',
+                      value: columnNumber != null
+                          ? 'Compartment $columnNumber'
+                          : hasBox
+                              ? 'Outside the box'
+                              : 'Its own pack',
                       icon: Icons.view_column_rounded,
                     ),
                     const Divider(height: 24, color: AppColors.borderGray),
@@ -81,9 +94,13 @@ class AddMedicineSuccessScreen extends StatelessWidget {
                     ),
                     const Divider(height: 24, color: AppColors.borderGray),
                     _InfoRow(
-                      label: 'LED Reminder',
-                      value: 'Auto-activates on time',
-                      icon: Icons.lightbulb_outline_rounded,
+                      label: 'Reminder',
+                      value: columnNumber != null
+                          ? 'Phone + box light'
+                          : 'Phone notification',
+                      icon: columnNumber != null
+                          ? Icons.lightbulb_outline_rounded
+                          : Icons.phone_android_rounded,
                     ),
                   ],
                 ),
@@ -146,13 +163,18 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-            fontFamily: 'PlusJakartaSans',
+        const SizedBox(width: 12),
+        // Flexible so four or five dose times wrap instead of overflowing.
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+              fontFamily: 'PlusJakartaSans',
+            ),
           ),
         ),
       ],

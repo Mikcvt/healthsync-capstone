@@ -158,8 +158,10 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 		MAX_EXISTING_LOGS,
 	);
 	const known = new Set(existing.map((row) => row.id));
+	const existingById = new Map(existing.map((row) => [row.id, row]));
 
 	const writes: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
+	const revived: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
 	const expectedIds = new Set<string>();
 
 	for (let dayOffset = 0; dayOffset < HORIZON_DAYS; dayOffset++) {
@@ -188,7 +190,22 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 			// dose time that has since been edited away.
 			expectedIds.add(logId);
 
-			if (known.has(logId)) continue;
+			if (known.has(logId)) {
+				// A future dose cancelled earlier — its medicine archived, or its
+				// time moved away and back — whose schedule now justifies it
+				// again. The id is taken, so it must be revived rather than
+				// created, or the dose would silently never come back.
+				const row = existingById.get(logId);
+				const at = row ? asDate(row.data.scheduled_at) : null;
+				if (row?.data.status === 'cancelled' && at && at.getTime() > now.getTime()) {
+					revived.push({
+						collection: 'dose_logs',
+						id: logId,
+						data: { status: 'pending', cancelled_reason: null },
+					});
+				}
+				continue;
+			}
 
 			const scheduledAt = manilaInstant(dateKey, time.hour, time.minute);
 
@@ -220,6 +237,7 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 					scheduled_at: scheduledAt,
 					status: 'pending',
 					snooze_count: 0,
+					late_notified: false,
 					confirmed_via: '',
 					// False, always. Only a successful push sets this true, and
 					// hardcoding it the other way is what disarmed the sweep.
@@ -235,31 +253,41 @@ export async function runMaterialize(db: Firestore): Promise<{ created: number }
 		}
 	}
 
-	// Retire future pending logs that no longer match any live schedule.
+	// Cancel future pending logs that no longer match any live schedule.
 	//
 	// Editing a dose time does not rewrite the logs already materialised for it:
 	// the id encodes the old time, so a new one is created and the old one is
-	// left behind. Nobody confirms it, the sweep marks it missed 30 minutes
-	// later, and the caregiver gets a false alert while adherence is skewed.
+	// left behind. Nobody confirms it, the sweep marks it missed later, and the
+	// caregiver gets a false alert while adherence is skewed.
 	//
-	// Only future and only `pending` are touched — a dose already taken, missed
-	// or snoozed is history and must never be rewritten.
-	const stale: Array<{ collection: string; id: string }> = [];
+	// Cancelled, never deleted: a dose log is part of the record, and the
+	// security rules forbid deleting one. Only future and only `pending` are
+	// touched — a dose already taken, missed or snoozed is history and must
+	// never be rewritten.
+	const stale: Array<{ collection: string; id: string; data: Record<string, unknown> }> = [];
 	for (const row of existing) {
 		if (row.data.status !== 'pending') continue;
 
-		const at = row.data.scheduled_at;
-		const when = at instanceof Date ? at : new Date(String(at));
-		if (Number.isNaN(when.getTime()) || when.getTime() <= now.getTime()) continue;
+		const when = asDate(row.data.scheduled_at);
+		if (!when || when.getTime() <= now.getTime()) continue;
 
 		if (!expectedIds.has(row.id)) {
-			stale.push({ collection: 'dose_logs', id: row.id });
+			stale.push({
+				collection: 'dose_logs',
+				id: row.id,
+				data: { status: 'cancelled', cancelled_reason: 'rescheduled' },
+			});
 		}
 	}
 
 	if (stale.length > 0) {
-		await db.deleteAll(stale);
-		console.log(`Materialise: retired ${stale.length} orphaned pending dose log(s).`);
+		await db.commit(stale);
+		console.log(`Materialise: cancelled ${stale.length} orphaned pending dose log(s).`);
+	}
+
+	if (revived.length > 0) {
+		await db.commit(revived);
+		console.log(`Materialise: revived ${revived.length} cancelled dose log(s).`);
 	}
 
 	if (writes.length === 0) return { created: 0 };

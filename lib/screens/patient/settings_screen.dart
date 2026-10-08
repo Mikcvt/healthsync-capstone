@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../services/preferences_service.dart';
-import 'notifications_screen.dart';
 
 /// App preferences for a patient.
 ///
@@ -90,18 +89,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _preferences.setReminderSound(value);
                           },
                         ),
-                        const Divider(color: AppColors.borderGray, height: 24),
-                        _SettingsToggleRow(
-                          label: 'Full-screen alert',
-                          subtitle:
-                              'Open the dose screen, not just a notification',
-                          value: _prefs.fullScreenAlert,
-                          onChanged: (value) {
-                            setState(() => _prefs =
-                                _prefs.copyWith(fullScreenAlert: value));
-                            _preferences.setFullScreenAlert(value);
-                          },
-                        ),
+                        // No "Full-screen alert" switch: a reminder over the
+                        // lock screen is deferred until after Play Store
+                        // approval (DOSE_LOGIC_PROPOSAL.md, decision 4).
+                        // Tapping any reminder opens the dose screen.
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -134,29 +125,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-
-                    const _SectionHeader(label: 'ABOUT'),
-                    const SizedBox(height: 12),
-                    _SettingsCard(
-                      children: [
-                        _SettingsActionRow(
-                          label: 'Notification history',
-                          subtitle: 'Every alert you have received',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const NotificationsScreen(),
-                            ),
-                          ),
-                        ),
-                        const Divider(color: AppColors.borderGray, height: 24),
-                        _SettingsActionRow(
-                          label: 'About HealthSync',
-                          subtitle: 'Version 1.0.0',
-                          onTap: () => showAboutHealthSync(context),
-                        ),
-                      ],
-                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -164,39 +132,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
-
-/// Shared by the settings and profile screens so the two "About" entries cannot
-/// drift apart.
-void showAboutHealthSync(BuildContext context) {
-  showAboutDialog(
-    context: context,
-    applicationName: 'HealthSync',
-    applicationVersion: '1.0.0',
-    applicationIcon: const Icon(
-      Icons.medication_liquid_rounded,
-      color: AppColors.patientBlue,
-      size: 34,
-    ),
-    children: const [
-      SizedBox(height: 8),
-      Text(
-        'An IoT-based LED-guided smart medicine box with mobile integration '
-        'for medication adherence.',
-        style: TextStyle(fontSize: 13, height: 1.6),
-      ),
-      SizedBox(height: 12),
-      Text(
-        'BSIT Capstone Project 2025-2026\n'
-        'The National Teachers College, Quiapo, Manila',
-        style: TextStyle(
-          fontSize: 12,
-          color: AppColors.textSecondary,
-          height: 1.6,
-        ),
-      ),
-    ],
-  );
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -284,62 +219,6 @@ class _SettingsToggleRow extends StatelessWidget {
             onChanged: onChanged,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SettingsActionRow extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _SettingsActionRow({
-    required this.label,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      fontFamily: AppStyles.fontFamily,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontFamily: AppStyles.fontFamily,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -13,8 +13,8 @@ import '../../utils/date_formatter.dart';
 import 'change_password_screen.dart';
 import 'device_pairing_screen.dart';
 import 'edit_profile_screen.dart';
-import 'notifications_screen.dart';
 import 'settings_screen.dart';
+import '../../widgets/shared/about_healthsync_sheet.dart';
 
 class PatientProfileScreen extends StatefulWidget {
   const PatientProfileScreen({super.key});
@@ -59,7 +59,6 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     _ProfileCard(
                       doseReminders: _prefs.doseReminders,
                       reminderSound: _prefs.reminderSound,
-                      fullScreenAlert: _prefs.fullScreenAlert,
                       onToggleDoseReminders: (value) {
                         setState(() =>
                             _prefs = _prefs.copyWith(doseReminders: value));
@@ -70,54 +69,32 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                             _prefs = _prefs.copyWith(reminderSound: value));
                         _preferences.setReminderSound(value);
                       },
-                      onToggleFullScreenAlert: (value) {
-                        setState(() =>
-                            _prefs = _prefs.copyWith(fullScreenAlert: value));
-                        _preferences.setFullScreenAlert(value);
-                      },
                     ),
                     const SizedBox(height: 16),
                     _DeviceStatusCard(
                       device: context.watch<PatientProvider>().device,
                     ),
                     const SizedBox(height: 16),
-                    Text('Quick actions', style: AppStyles.heading3),
+                    Text('Medicine box', style: AppStyles.heading3),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ActionPill(
-                            icon: Icons.sync,
-                            label: 'Medicine box',
-                            color: AppColors.patientBlue,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const DevicePairingScreen(),
-                              ),
-                            ),
-                          ),
+                    // Notifications live on the Alerts tab only; a second
+                    // shortcut here was one of four ways to the same list.
+                    _ActionPill(
+                      icon: Icons.sync,
+                      label: 'Pair medicine box',
+                      color: AppColors.patientBlue,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DevicePairingScreen(),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _ActionPill(
-                            icon: Icons.history_rounded,
-                            label: 'Reminder log',
-                            color: AppColors.caregiverGreen,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const NotificationsScreen(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Text('Account', style: AppStyles.heading3),
                     const SizedBox(height: 12),
                     _ProfileOption(
                       label: 'Edit profile',
-                      subtitle: 'Name, email, phone',
+                      subtitle: 'Name, phone, medical details',
                       icon: Icons.person_outline,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
@@ -368,18 +345,14 @@ class _ProfileHeader extends StatelessWidget {
 class _ProfileCard extends StatelessWidget {
   final bool doseReminders;
   final bool reminderSound;
-  final bool fullScreenAlert;
   final ValueChanged<bool> onToggleDoseReminders;
   final ValueChanged<bool> onToggleReminderSound;
-  final ValueChanged<bool> onToggleFullScreenAlert;
 
   const _ProfileCard({
     required this.doseReminders,
     required this.reminderSound,
-    required this.fullScreenAlert,
     required this.onToggleDoseReminders,
     required this.onToggleReminderSound,
-    required this.onToggleFullScreenAlert,
   });
 
   /// A managed patient has no email of their own, so show whatever identifies
@@ -485,13 +458,6 @@ class _ProfileCard extends StatelessWidget {
             subtitle: 'Play a sound with each reminder',
             value: reminderSound,
             onChanged: onToggleReminderSound,
-          ),
-          const Divider(height: 24, thickness: 1, color: AppColors.borderGray),
-          _ToggleRow(
-            label: 'Full-screen alert',
-            subtitle: 'Open the dose screen, not just a notification',
-            value: fullScreenAlert,
-            onChanged: onToggleFullScreenAlert,
           ),
         ],
       ),

@@ -7,6 +7,10 @@ class PatientMedicationModel {
   final String medicationName; // Cached for UI display
   final String prescribedDosage; // e.g., "500mg"
   final int quantityPerDose; // e.g., 1 pill
+
+  /// 'Tablet', 'Capsule', 'Liquid', 'Drops', 'Inhaler' or 'Injection'. Only
+  /// tablets and capsules fit a box compartment.
+  final String dosageForm;
   final String instructions; // e.g., "Take after meal"
   final String prescribingDoctor;
   final String purpose;
@@ -26,6 +30,7 @@ class PatientMedicationModel {
     this.medicationName = '',
     this.prescribedDosage = '',
     this.quantityPerDose = 1,
+    this.dosageForm = 'Tablet',
     this.instructions = '',
     this.prescribingDoctor = '',
     this.purpose = '',
@@ -36,6 +41,25 @@ class PatientMedicationModel {
     this.isActive = true,
     this.archivedReason = '',
   });
+
+  /// Whether this can sit in a pill compartment of the box at all.
+  bool get fitsInBox => fitsInBoxForm(dosageForm);
+
+  static bool fitsInBoxForm(String form) {
+    final f = form.toLowerCase();
+    return f == 'tablet' || f == 'capsule';
+  }
+
+  /// "1 tablet", "2 capsules", "1 dose of liquid" — what to take, in words,
+  /// for a reminder that cannot point at a lit compartment.
+  String get doseDescription {
+    final f = dosageForm.toLowerCase();
+    final n = quantityPerDose < 1 ? 1 : quantityPerDose;
+    if (f == 'tablet' || f == 'capsule') return '$n $f${n == 1 ? '' : 's'}';
+    if (f == 'inhaler') return '$n puff${n == 1 ? '' : 's'}';
+    if (f == 'injection') return '$n injection${n == 1 ? '' : 's'}';
+    return '$n dose${n == 1 ? '' : 's'} ($f)';
+  }
 
   factory PatientMedicationModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
@@ -50,6 +74,7 @@ class PatientMedicationModel {
       medicationName: map['medication_name'] as String? ?? '',
       prescribedDosage: map['prescribed_dosage'] as String? ?? '',
       quantityPerDose: (map['quantity_per_dose'] as num?)?.toInt() ?? 1,
+      dosageForm: map['dosage_form'] as String? ?? 'Tablet',
       instructions: map['instructions'] as String? ?? '',
       prescribingDoctor: map['prescribing_doctor'] as String? ?? '',
       purpose: map['purpose'] as String? ?? '',
@@ -82,6 +107,7 @@ class PatientMedicationModel {
       'medication_name': medicationName,
       'prescribed_dosage': prescribedDosage,
       'quantity_per_dose': quantityPerDose,
+      'dosage_form': dosageForm,
       'instructions': instructions,
       'prescribing_doctor': prescribingDoctor,
       'purpose': purpose,
@@ -101,6 +127,7 @@ class PatientMedicationModel {
     String? medicationName,
     String? prescribedDosage,
     int? quantityPerDose,
+    String? dosageForm,
     String? instructions,
     String? prescribingDoctor,
     String? purpose,
@@ -118,6 +145,7 @@ class PatientMedicationModel {
       medicationName: medicationName ?? this.medicationName,
       prescribedDosage: prescribedDosage ?? this.prescribedDosage,
       quantityPerDose: quantityPerDose ?? this.quantityPerDose,
+      dosageForm: dosageForm ?? this.dosageForm,
       instructions: instructions ?? this.instructions,
       prescribingDoctor: prescribingDoctor ?? this.prescribingDoctor,
       purpose: purpose ?? this.purpose,

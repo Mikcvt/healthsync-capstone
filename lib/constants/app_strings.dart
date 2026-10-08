@@ -19,7 +19,9 @@ class AppStrings {
       'No dose history yet. Your record builds as you confirm doses.';
   static const String noNotifications = 'No alerts yet.';
   static const String noDevicePaired =
-      'No medicine box paired yet. Pair one to see its compartments here.';
+      'That is fine. HealthSync reminds you on this phone at every dose '
+      'time, and you confirm each dose here. When you get a HealthSync box, '
+      'pair it and your caregiver will choose a compartment for each medicine.';
   static const String noAnalyticsYet =
       'Adherence appears here once you have confirmed or missed a dose.';
 
@@ -42,6 +44,47 @@ class AppStrings {
   static const String doseAlreadyTaken = 'This dose is already confirmed.';
   static const String doseConfirmFailed =
       'Could not record this dose. Please try again.';
+  static const String doseOutOfStock =
+      'No pills remaining. Please refill the compartment.';
+  static const String outOfStockBadge = 'Out of stock · Refill required';
+  static String snoozeActiveUntil(String time) =>
+      'Snooze active — reminding at $time.';
+  static const String doseAlreadyResolved =
+      'This dose has already been recorded.';
+  static const String snoozeNotAvailable =
+      'Snooze is only available once the dose is due.';
+  static const String doseUndone = 'Undone.';
+  static const String undoFailed = 'Could not undo. Please try again.';
+  static String doseTakenUndo(String name) => '$name marked as taken.';
+  static String doseSkippedUndo(String name) => '$name skipped.';
+
+  // Early logging (DOSE_LOGIC_PROPOSAL.md, 3.2 and 3.3)
+  static const String loggingEarlyTitle = 'Logging early';
+  static String loggingEarlyBody(String time, String span) =>
+      'This dose is due at $time (in $span). Are you taking it now?';
+  static String skippingEarlyBody(String time, String span) =>
+      'This dose is due at $time (in $span). Are you skipping it now?';
+  static const String tooEarlyTitle = 'Too early';
+  static String tooEarlyBody(String time) =>
+      'Too early to log this dose. You can log it from $time.';
+  static String actionsUnlockAt(String time) => 'Actions unlock at $time';
+
+  // Missed-dose reasons (7.2). The first is only offered for a missed dose,
+  // and only until the end of the next day.
+  static const String reasonTookButForgot = 'I took it but forgot to log it';
+  static const String reasonOther = 'Other reason';
+  static const List<String> doseReasons = [
+    'Forgot to take',
+    'Felt sick / side effects',
+    'Was away from the medicine',
+    'Prescription ran out',
+    reasonOther,
+  ];
+  static const String retroWindowClosed =
+      'It is too late to change this dose. Missed doses can only be corrected '
+      'until the end of the next day.';
+  static const String retroTimeInFuture =
+      'Choose a time that has already passed.';
 
   // Permissions — a managed patient is read-only by design, so this is a
   // normal state to explain rather than an error to apologise for.

@@ -1,38 +1,27 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
-import '../../models/schedule_model.dart';
+import '../../models/dose_slot.dart';
 import '../../providers/patient_provider.dart';
+import '../../utils/date_formatter.dart';
+import '../../utils/dose_status_display.dart';
+import '../../utils/dose_timing.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../widgets/patient/dose_actions.dart';
 import 'dose_confirmed_screen.dart';
 
-/// The full-screen prompt for a dose that is due.
+/// The alarm screen for a dose that is due — opened by tapping its reminder.
 ///
-/// All three actions write to Firestore. Snooze in particular used to show a
-/// SnackBar reading "Dose snoozed for 10 minutes" and write nothing at all — no
-/// snooze count, no state change, no re-trigger — so the three-snooze cap in
-/// the spec existed only in a provider method that nothing called.
+/// It is the only place Snooze is offered (DOSE_LOGIC_PROPOSAL.md, 5.3). Done
+/// and Skip go through [DoseActions], so they follow the same early-logging,
+/// reason and Undo rules as the dashboard.
 class DoseAlertScreen extends StatefulWidget {
-  final ScheduleModel? schedule;
-  final String medicineName;
-  final String doseTime;
-  final int columnNumber;
+  final String scheduleId;
 
-  /// The dose log this alert belongs to, when one has been materialised. Needed
-  /// to carry the snooze count — without it a snooze cannot be counted, and the
-  /// cap cannot be enforced.
-  final String? doseLogId;
-
-  const DoseAlertScreen({
-    super.key,
-    this.schedule,
-    this.medicineName = 'Your medication',
-    this.doseTime = '',
-    this.columnNumber = 1,
-    this.doseLogId,
-  });
+  const DoseAlertScreen({super.key, required this.scheduleId});
 
   @override
   State<DoseAlertScreen> createState() => _DoseAlertScreenState();
@@ -41,80 +30,59 @@ class DoseAlertScreen extends StatefulWidget {
 class _DoseAlertScreenState extends State<DoseAlertScreen> {
   bool _isBusy = false;
 
-  String? get _scheduleId => widget.schedule?.scheduleId;
+  // The phase and a running snooze both change with the clock, not only with
+  // provider data, so the screen refreshes on its own.
+  Timer? _tick;
 
-  /// The log for this dose, preferring an explicit id and falling back to
-  /// today's materialised log for the schedule.
-  String? _resolveDoseLogId(PatientProvider patient) {
-    if (widget.doseLogId != null && widget.doseLogId!.isNotEmpty) {
-      return widget.doseLogId;
-    }
-    if (_scheduleId == null) return null;
-    return patient.todayLogForSchedule(_scheduleId!)?.doseLogId;
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
-  Future<void> _onTake() async {
-    final scheduleId = _scheduleId;
-    if (scheduleId == null) {
-      Navigator.of(context).pop();
-      return;
-    }
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
+  Future<void> _onTake(DoseSlot slot, String medicineName) async {
     setState(() => _isBusy = true);
-    final patient = context.read<PatientProvider>();
-    final result = await patient.confirmDoseTaken(
-      scheduleId: scheduleId,
-      doseLogId: _resolveDoseLogId(patient),
+    final navigator = Navigator.of(context);
+    final confirmedRoute = MaterialPageRoute<void>(
+      builder: (_) => DoseConfirmedScreen(
+        medicineName: medicineName,
+        timeTaken: 'Just now',
+      ),
     );
-
+    final ok = await DoseActions.take(
+      context,
+      slot,
+      // Undo removes the confirmation screen — the dose is no longer
+      // confirmed — but only that screen, wherever the patient has gone.
+      onUndone: () {
+        if (confirmedRoute.isActive) navigator.removeRoute(confirmedRoute);
+      },
+    );
     if (!mounted) return;
     setState(() => _isBusy = false);
-
-    switch (result) {
-      case DoseActionResult.success:
-      case DoseActionResult.alreadyConfirmed:
-        if (result == DoseActionResult.alreadyConfirmed) {
-          SnackbarHelper.showInfo(context, AppStrings.doseAlreadyTaken);
-        }
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => DoseConfirmedScreen(
-              medicineName: widget.medicineName,
-              timeTaken: 'Just now',
-            ),
-          ),
-        );
-      case DoseActionResult.failed:
-      case DoseActionResult.snoozeLimitReached:
-        SnackbarHelper.showError(
-          context,
-          patient.errorMessage ?? AppStrings.doseConfirmFailed,
-        );
-    }
+    if (ok) navigator.pushReplacement(confirmedRoute);
   }
 
-  Future<void> _onSnooze() async {
-    final patient = context.read<PatientProvider>();
-    final doseLogId = _resolveDoseLogId(patient);
-
-    // Without a dose log there is nothing to count a snooze against. Say so
-    // rather than pretending the snooze was recorded.
-    if (doseLogId == null) {
-      SnackbarHelper.showInfo(
-        context,
-        'This dose cannot be snoozed yet. Confirm it when you take it.',
-      );
-      return;
-    }
-
-    final current = patient.todayLogForSchedule(_scheduleId ?? '');
+  Future<void> _onSkip(DoseSlot slot) async {
     setState(() => _isBusy = true);
-    final result = await patient.snoozeDose(
-      doseLogId: doseLogId,
-      currentSnoozeCount: current?.snoozeCount ?? 0,
-      scheduleId: _scheduleId,
-    );
+    final ok = await DoseActions.skip(context, slot);
+    if (!mounted) return;
+    setState(() => _isBusy = false);
+    if (ok) Navigator.of(context).pop();
+  }
 
+  Future<void> _onSnooze(DoseSlot slot) async {
+    setState(() => _isBusy = true);
+    final patient = context.read<PatientProvider>();
+    final result = await patient.snoozeDose(slot);
     if (!mounted) return;
     setState(() => _isBusy = false);
 
@@ -136,74 +104,67 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
     }
   }
 
-  Future<void> _onSkip() async {
-    final patient = context.read<PatientProvider>();
-    final doseLogId = _resolveDoseLogId(patient);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Skip this dose?'),
-        content: const Text(
-          'This will be recorded as a missed dose, and your caregiver may be '
-          'notified.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text(
-              'Skip dose',
-              style: TextStyle(color: AppColors.missedRed),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    // Dismissing without a log leaves nothing to mark — the cron sweep will
-    // pick the dose up once it is 30 minutes overdue.
-    if (doseLogId == null) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    setState(() => _isBusy = true);
-    final result = await patient.markDoseMissed(
-      doseLogId: doseLogId,
-      reason: 'Skipped by patient',
-      scheduleId: _scheduleId,
-    );
-
-    if (!mounted) return;
-    setState(() => _isBusy = false);
-
-    if (result == DoseActionResult.success) {
-      SnackbarHelper.showInfo(context, AppStrings.doseMissed);
-      Navigator.of(context).pop();
-    } else {
-      SnackbarHelper.showError(
-        context,
-        patient.errorMessage ?? AppStrings.genericError,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final activeCol = widget.schedule?.matBoxColumn ?? widget.columnNumber;
-    final activeTime = widget.schedule?.scheduledTime ?? widget.doseTime;
-    final snoozeCount =
-        context
-            .watch<PatientProvider>()
-            .todayLogForSchedule(_scheduleId ?? '')
-            ?.snoozeCount ??
-        0;
+    final patient = context.watch<PatientProvider>();
+    final slot = patient.todaySlotFor(widget.scheduleId);
+    final now = DateTime.now();
+
+    if (slot == null) {
+      return _Shell(
+        title: 'Dose reminder',
+        message: 'This dose is no longer on your schedule today.',
+        onClose: () => Navigator.of(context).pop(),
+      );
+    }
+
+    final schedule = slot.schedule;
+    final medicineName = _capitalise(patient.medicationNameFor(schedule));
+
+    if (!slot.isOpen) {
+      final badge = DoseStatusDisplay.resolvedBadge(slot.log!);
+      return _Shell(
+        title: medicineName,
+        message: '${badge.label} · ${DoseStatusDisplay.detailFor(slot.log!)}',
+        onClose: () => Navigator.of(context).pop(),
+      );
+    }
+
+    final phase = DoseTiming.phaseOf(slot.scheduledAt, now);
+    if (phase == DosePhase.missed) {
+      return _Shell(
+        title: medicineName,
+        message: 'This dose was due ${DateFormatter.doseDayTime(slot.scheduledAt)} '
+            'and is now missed.',
+        actionLabel: 'Tell us what happened',
+        onAction: () async {
+          final navigator = Navigator.of(context);
+          await DoseActions.openMissed(context, slot);
+          if (mounted) navigator.pop();
+        },
+        onClose: () => Navigator.of(context).pop(),
+      );
+    }
+
+    // A compartment is named only when there is one AND a box is paired.
+    final activeCol =
+        patient.showsCompartment(schedule) ? schedule.matBoxColumn : null;
+    final med = patient.medicationFor(schedule.patMedRef);
+    final instruction = activeCol != null
+        ? 'Please take your dose from compartment $activeCol of your smart '
+            'medicine box.'
+        : med == null
+            ? 'Please take your dose now.'
+            : 'Take ${med.doseDescription}'
+                '${med.prescribedDosage.isEmpty ? '' : ' (${med.prescribedDosage})'}'
+                '${med.instructions.isEmpty ? '' : ' · ${med.instructions}'}.';
+    final log = slot.log;
+    final snoozeCount = log?.snoozeCount ?? 0;
+    final snoozeActive = log?.isSnoozeActive ?? false;
+    final canSnooze = !snoozeActive &&
+        (phase == DosePhase.dueNow || phase == DosePhase.late);
+    final outOfStock = schedule.pillsRemaining <= 0;
+    final badge = DoseStatusDisplay.badgeFor(log, slot.scheduledAt, now);
 
     return Scaffold(
       backgroundColor: AppColors.textPrimary,
@@ -212,6 +173,14 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           child: Column(
             children: [
+              Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
               const Spacer(),
 
               Container(
@@ -238,18 +207,14 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
               const SizedBox(height: 32),
 
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.patientBlue.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  activeTime.isEmpty
-                      ? 'DOSE REMINDER'
-                      : 'DOSE REMINDER · $activeTime',
+                  '${badge.label.toUpperCase()} · '
+                  '${DateFormatter.doseDayTime(slot.scheduledAt, now: now).toUpperCase()}',
                   style: const TextStyle(
                     color: Colors.lightBlueAccent,
                     fontSize: 12,
@@ -262,7 +227,7 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
               const SizedBox(height: 16),
 
               Text(
-                widget.medicineName,
+                medicineName,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
@@ -274,8 +239,7 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
               const SizedBox(height: 12),
 
               Text(
-                'Please take your dose from compartment $activeCol of your '
-                'smart medicine box.',
+                instruction,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white70,
@@ -286,41 +250,66 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
               ),
               const SizedBox(height: 28),
 
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.lightbulb,
-                      color: Colors.amberAccent,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Compartment $activeCol is lit',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: AppStyles.fontFamily,
+              // Only when something is actually lit. A phone-only medicine
+              // has nothing to point at, and the line above says what to take.
+              if (activeCol != null)
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.lightbulb,
+                          color: Colors.amberAccent, size: 24),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Compartment $activeCol is lit',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: AppStyles.fontFamily,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+
+              if (outOfStock) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.missedRed.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    AppStrings.outOfStockBadge,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
+                  ),
+                ),
+              ],
 
               if (snoozeCount > 0) ...[
                 const SizedBox(height: 14),
                 Text(
-                  snoozeCount >= 3
-                      ? 'Snoozed 3 times — the next snooze marks this missed'
-                      : 'Snoozed $snoozeCount of 3 times',
+                  snoozeActive
+                      ? '${AppStrings.snoozeActiveUntil(DateFormatter.toClockLabel(log!.snoozedUntil!))} '
+                          '($snoozeCount of 3)'
+                      : snoozeCount >= 3
+                          ? 'Snoozed 3 times — the next snooze marks this missed'
+                          : 'Snoozed $snoozeCount of 3 times',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.amberAccent,
                     fontSize: 12.5,
@@ -336,7 +325,9 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: _isBusy ? null : _onTake,
+                  onPressed: _isBusy || outOfStock
+                      ? null
+                      : () => _onTake(slot, medicineName),
                   icon: _isBusy
                       ? const SizedBox(
                           width: 20,
@@ -346,10 +337,8 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(
-                          Icons.check_circle_rounded,
-                          color: Colors.white,
-                        ),
+                      : const Icon(Icons.check_circle_rounded,
+                          color: Colors.white),
                   label: const Text(
                     'I Took My Dose',
                     style: TextStyle(
@@ -361,7 +350,9 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppColors.greenDark,
+                    disabledBackgroundColor:
+                        outOfStock ? Colors.white12 : AppColors.greenDark,
+                    disabledForegroundColor: Colors.white38,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -375,16 +366,17 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isBusy ? null : _onSnooze,
-                      icon: const Icon(
+                      onPressed:
+                          _isBusy || !canSnooze ? null : () => _onSnooze(slot),
+                      icon: Icon(
                         Icons.snooze_rounded,
-                        color: Colors.white70,
+                        color: canSnooze ? Colors.white70 : Colors.white30,
                         size: 18,
                       ),
-                      label: const Text(
-                        'Snooze 10m',
+                      label: Text(
+                        snoozeActive ? 'Snoozed' : 'Snooze 10m',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: canSnooze ? Colors.white70 : Colors.white30,
                           fontWeight: FontWeight.w700,
                           fontFamily: AppStyles.fontFamily,
                         ),
@@ -401,12 +393,9 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isBusy ? null : _onSkip,
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.redAccent,
-                        size: 18,
-                      ),
+                      onPressed: _isBusy ? null : () => _onSkip(slot),
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.redAccent, size: 18),
                       label: const Text(
                         'Skip dose',
                         style: TextStyle(
@@ -425,6 +414,108 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _capitalise(String name) =>
+      name.isEmpty ? name : name[0].toUpperCase() + name.substring(1);
+}
+
+/// The alarm screen when there is nothing to take: the dose is already
+/// recorded, missed, or no longer scheduled.
+class _Shell extends StatelessWidget {
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final VoidCallback onClose;
+
+  const _Shell({
+    required this.title,
+    required this.message,
+    required this.onClose,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.textPrimary,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              const Spacer(),
+              const Icon(Icons.alarm_off_rounded, color: Colors.white54, size: 64),
+              const SizedBox(height: 24),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: AppStyles.fontFamily,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  height: 1.5,
+                  fontFamily: AppStyles.fontFamily,
+                ),
+              ),
+              const Spacer(),
+              if (actionLabel != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: onAction,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.missedRed,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: Text(
+                      actionLabel!,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: OutlinedButton(
+                  onPressed: onClose,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white24),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
               ),
             ],
           ),

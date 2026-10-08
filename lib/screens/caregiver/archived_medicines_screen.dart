@@ -10,13 +10,16 @@ import '../../utils/snackbar_helper.dart';
 ///
 /// Two kinds live here and they are not the same thing:
 ///
-/// * **Finished** — the course ended. Its doses are real history, so the record
-///   is kept and cannot be erased from this screen.
-/// * **Removed by mistake** — wrong data entered. Nothing real happened, so it
-///   can be erased for good, behind a second confirmation.
+/// * **Finished** — the course ended. Its doses are real history and count in
+///   adherence.
+/// * **Entered by mistake** — wrong data. Its doses are kept but marked "not
+///   counted", so they never affect adherence.
 ///
-/// Restoring is offered for both: the usual reason to open this screen is that
-/// something was archived in error.
+/// Nothing here can be erased. A dose log is part of the medical record, so
+/// archiving is the only way out; a genuine request to erase someone's data is
+/// handled by an admin from the Firebase console. Restoring is offered for
+/// both kinds: the usual reason to open this screen is that something was
+/// archived in error.
 class ArchivedMedicinesScreen extends StatelessWidget {
   final String patientUid;
   final String patientName;
@@ -120,96 +123,6 @@ class _ArchivedCard extends StatelessWidget {
     }
   }
 
-  /// Two confirmations, deliberately.
-  ///
-  /// The first explains what is lost; the second makes the person type the
-  /// word DELETE. Erasing dose logs is the only irreversible action in the
-  /// app, and a single "are you sure" is too easy to tap through.
-  Future<void> _permanentlyDelete(BuildContext context) async {
-    final first = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Delete permanently?',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-        ),
-        content: Text(
-          '$_name, its dose times and every dose record for it will be erased. '
-          'This cannot be undone and the doses will disappear from history and '
-          'reports.',
-          style: const TextStyle(height: 1.5, color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Continue',
-                style: TextStyle(color: AppColors.missedRed)),
-          ),
-        ],
-      ),
-    );
-
-    if (first != true || !context.mounted) return;
-
-    final controller = TextEditingController();
-    final second = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Type DELETE to confirm',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.characters,
-            onChanged: (_) => setDialog(() {}),
-            decoration: const InputDecoration(hintText: 'DELETE'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: controller.text.trim().toUpperCase() == 'DELETE'
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
-              child: const Text('Delete for good',
-                  style: TextStyle(color: AppColors.missedRed)),
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-
-    if (second != true || !context.mounted) return;
-
-    try {
-      await FirestoreService().permanentlyDeleteMedication(
-        medication.patMedId,
-        patientUid: patientUid,
-      );
-      if (context.mounted) {
-        SnackbarHelper.showSuccess(context, '$_name deleted.');
-      }
-    } catch (e) {
-      if (context.mounted) {
-        SnackbarHelper.showError(context, 'Could not delete $_name.');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -241,7 +154,7 @@ class _ArchivedCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  _wasMistake ? 'Removed' : 'Course finished',
+                  _wasMistake ? 'Entered by mistake' : 'Course finished',
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
@@ -264,57 +177,36 @@ class _ArchivedCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _restore(context),
-                  icon: const Icon(Icons.restore_rounded, size: 18),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
-                    foregroundColor: AppColors.caregiverGreen,
-                    side: const BorderSide(color: AppColors.caregiverGreen),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                  ),
-                  label: const Text('Restore',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _restore(context),
+              icon: const Icon(Icons.restore_rounded, size: 18),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 44),
+                foregroundColor: AppColors.caregiverGreen,
+                side: const BorderSide(color: AppColors.caregiverGreen),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
                 ),
               ),
-              if (_wasMistake) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _permanentlyDelete(context),
-                    icon: const Icon(Icons.delete_forever_rounded, size: 18),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, 44),
-                      foregroundColor: AppColors.missedRed,
-                      side: const BorderSide(color: AppColors.missedRed),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                    ),
-                    label: const Text('Delete',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (!_wasMistake) ...[
-            const SizedBox(height: 10),
-            const Text(
-              'A finished course keeps its dose history, so it cannot be '
-              'erased here.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textMuted,
-                height: 1.45,
-              ),
+              label: const Text('Restore',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
             ),
-          ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _wasMistake
+                ? 'Entered by mistake — not counted. Its doses are kept on '
+                    'record but left out of adherence.'
+                : 'A finished course keeps its dose history, and its doses '
+                    'still count in adherence.',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              height: 1.45,
+            ),
+          ),
         ],
       ),
     );

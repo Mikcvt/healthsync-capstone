@@ -161,11 +161,11 @@ class _Badged extends StatelessWidget {
       children: [
         child,
         Positioned(
-          top: -4,
-          right: -8,
+          top: -3,
+          right: -7,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            constraints: const BoxConstraints(minWidth: 17),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+            constraints: const BoxConstraints(minWidth: 15),
             decoration: BoxDecoration(
               color: AppColors.missedRed,
               borderRadius: BorderRadius.circular(9),
@@ -176,7 +176,8 @@ class _Badged extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 10,
+                fontSize: 9.5,
+                height: 1.3,
                 fontWeight: FontWeight.w800,
               ),
             ),

@@ -4,8 +4,11 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../models/schedule_model.dart';
 import '../../providers/patient_provider.dart';
-import '../../utils/snackbar_helper.dart';
 import '../../constants/app_strings.dart';
+import '../../widgets/patient/dose_actions.dart';
+import '../../utils/dose_timing.dart';
+import '../../utils/dose_status_display.dart';
+import '../../utils/date_formatter.dart';
 
 class MedicineDetailScreen extends StatelessWidget {
   final ScheduleModel? schedule;
@@ -20,7 +23,14 @@ class MedicineDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final patientProvider = context.watch<PatientProvider>();
-    final currentSchedule = schedule ?? (patientProvider.schedules.isNotEmpty ? patientProvider.schedules.first : null);
+    // The live copy, so the pill count and the out-of-stock guard reflect the
+    // dose just confirmed rather than the snapshot this screen opened with.
+    final currentSchedule = schedule == null
+        ? (patientProvider.schedules.isNotEmpty ? patientProvider.schedules.first : null)
+        : patientProvider.scheduleById(schedule!.scheduleId) ?? schedule;
+    final outOfStock = (currentSchedule?.pillsRemaining ?? 1) <= 0;
+    final inBox = currentSchedule != null &&
+        patientProvider.showsCompartment(currentSchedule);
     final medName = fallbackName ?? 'Medication Details';
 
     return Scaffold(
@@ -65,7 +75,9 @@ class MedicineDetailScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            'Compartment ${currentSchedule?.matBoxColumn ?? 1}',
+                            inBox
+                                ? 'Compartment ${currentSchedule.matBoxColumn}'
+                                : 'Own pack · phone reminder',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -73,10 +85,13 @@ class MedicineDetailScreen extends StatelessWidget {
                             ),
                           ),
                         ),
+                        // No LED state for a medicine with no compartment
+                        // to light.
+                        if (inBox)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: (currentSchedule?.ledActive ?? false)
+                            color: (currentSchedule.ledActive)
                                 ? Colors.orangeAccent
                                 : Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
@@ -86,11 +101,11 @@ class MedicineDetailScreen extends StatelessWidget {
                               Icon(
                                 Icons.lightbulb,
                                 size: 14,
-                                color: (currentSchedule?.ledActive ?? false) ? Colors.white : Colors.white70,
+                                color: currentSchedule.ledActive ? Colors.white : Colors.white70,
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                (currentSchedule?.ledActive ?? false) ? 'LED ON' : 'LED OFF',
+                                currentSchedule.ledActive ? 'LED ON' : 'LED OFF',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
@@ -204,62 +219,49 @@ class MedicineDetailScreen extends StatelessWidget {
                     const Divider(height: 20, color: AppColors.borderGray),
                     _DetailRow(
                       icon: Icons.info_outline,
-                      title: 'Smart Reminder',
-                      value: 'Enabled on device',
+                      title: 'Reminder',
+                      value: inBox ? 'Phone + box light' : 'Phone notification',
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Action button
-              if (currentSchedule != null)
-                SizedBox(
+              if (currentSchedule != null && outOfStock) ...[
+                Container(
                   width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      // The result is honoured rather than assumed: this used
-                      // to report "marked as taken" even when the write failed
-                      // or the dose was already confirmed.
-                      final result = await patientProvider.confirmDoseTaken(
-                        scheduleId: currentSchedule.scheduleId,
-                      );
-                      if (!context.mounted) return;
-
-                      switch (result) {
-                        case DoseActionResult.success:
-                          SnackbarHelper.showSuccess(
-                            context,
-                            'Dose for $medName recorded.',
-                          );
-                          Navigator.pop(context);
-                        case DoseActionResult.alreadyConfirmed:
-                          SnackbarHelper.showInfo(
-                            context,
-                            AppStrings.doseAlreadyTaken,
-                          );
-                          Navigator.pop(context);
-                        case DoseActionResult.failed:
-                        case DoseActionResult.snoozeLimitReached:
-                          SnackbarHelper.showError(
-                            context,
-                            patientProvider.errorMessage ??
-                                AppStrings.doseConfirmFailed,
-                          );
-                      }
-                    },
-                    icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                    label: const Text(
-                      'Mark Dose as Taken Now',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.caregiverGreen,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.missedRedBg,
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, color: AppColors.missedRed, size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          AppStrings.outOfStockBadge,
+                          style: TextStyle(
+                            color: AppColors.missedRed,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // Today's dose of this medicine, through the same rules as the
+              // dashboard: locked until 30 minutes before, an early-logging
+              // prompt, Undo, and the missed-dose screen once it is missed.
+              if (currentSchedule != null)
+                _TodayDoseAction(
+                  scheduleId: currentSchedule.scheduleId,
+                  outOfStock: outOfStock,
                 ),
             ],
           ),
@@ -306,6 +308,131 @@ class _DetailRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TodayDoseAction extends StatelessWidget {
+  final String scheduleId;
+  final bool outOfStock;
+
+  const _TodayDoseAction({required this.scheduleId, required this.outOfStock});
+
+  @override
+  Widget build(BuildContext context) {
+    final patient = context.watch<PatientProvider>();
+    final slot = patient.todaySlotFor(scheduleId);
+    final now = DateTime.now();
+
+    if (slot == null) {
+      return const _ActionNote('No dose of this medicine is due today.');
+    }
+    if (!slot.isOpen) {
+      final badge = DoseStatusDisplay.resolvedBadge(slot.log!);
+      return _ActionNote(
+        "Today's ${DateFormatter.toClockLabel(slot.scheduledAt)} dose: "
+        '${badge.label} · ${DoseStatusDisplay.detailFor(slot.log!)}',
+      );
+    }
+
+    final phase = DoseTiming.phaseOf(slot.scheduledAt, now);
+    if (phase == DosePhase.missed) {
+      return SizedBox(
+        width: double.infinity,
+        height: 54,
+        child: OutlinedButton.icon(
+          onPressed: () => DoseActions.openMissed(context, slot),
+          icon: const Icon(Icons.edit_note_rounded),
+          label: const Text(
+            'Missed — add a reason',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.missedRed,
+            side: const BorderSide(color: AppColors.missedRed),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+      );
+    }
+
+    final locked = phase == DosePhase.upcomingLocked;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 54,
+          child: ElevatedButton.icon(
+            onPressed: outOfStock
+                ? null
+                : () async {
+                    final navigator = Navigator.of(context);
+                    final ok = await DoseActions.take(context, slot);
+                    if (ok) navigator.pop();
+                  },
+            icon: Icon(
+              locked ? Icons.lock_outline_rounded : Icons.check_circle_outline,
+              color: outOfStock || locked ? AppColors.textMuted : Colors.white,
+            ),
+            label: Text(
+              'Mark ${DateFormatter.toClockLabel(slot.scheduledAt)} dose as taken',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  locked ? AppColors.background : AppColors.caregiverGreen,
+              foregroundColor: locked ? AppColors.textMuted : Colors.white,
+              side: locked ? const BorderSide(color: AppColors.borderGray) : null,
+              elevation: 0,
+              disabledBackgroundColor: AppColors.borderGray,
+              disabledForegroundColor: AppColors.textMuted,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        if (locked) ...[
+          const SizedBox(height: 8),
+          Text(
+            AppStrings.actionsUnlockAt(
+              DateFormatter.toClockLabel(DoseTiming.unlockAt(slot.scheduledAt)),
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ActionNote extends StatelessWidget {
+  final String text;
+
+  const _ActionNote(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderGray),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 13.5,
+          color: AppColors.textSecondary,
+          height: 1.45,
+        ),
+      ),
     );
   }
 }

@@ -114,6 +114,29 @@ service cloud.firestore {
       allow delete: if mayAuthorFor(resource.data.patient_ref);
     }
 
+    // A patient's own status change on a dose log. The caregiver and the
+    // Worker are not limited by this.
+    //
+    //   pending/snoozed → taken, skipped, snoozed, missed   (normal actions)
+    //   missed → taken, only as timing "logged_late"        ("I took it but
+    //                                                         forgot to log it")
+    //   taken/skipped → pending/snoozed, only within 2 min   (Undo)
+    //   same status → same status                            (reason, snooze
+    //                                                         count, ack)
+    // A cancelled dose cannot be touched by the patient at all.
+    function patientDoseTransitionAllowed() {
+      let from = resource.data.status;
+      let to = request.resource.data.status;
+      return (from == to && from != 'cancelled')
+        || (from in ['pending', 'snoozed']
+          && to in ['taken', 'skipped', 'snoozed', 'missed'])
+        || (from == 'missed' && to == 'taken'
+          && request.resource.data.get('timing', '') == 'logged_late')
+        || (from in ['taken', 'skipped'] && to in ['pending', 'snoozed']
+          && resource.data.get('logged_at', null) is timestamp
+          && request.time < resource.data.logged_at + duration.value(2, 'm'));
+    }
+
     // Dose Logs — deliberately NOT gated on can_edit_medications. Confirming a
     // dose is exactly what a managed patient is for.
     match /dose_logs/{doseLogId} {
@@ -130,7 +153,13 @@ service cloud.firestore {
           || isCaregiverOf(resource.data.patient_ref))
         && request.resource.data.patient_ref == resource.data.patient_ref
         && request.resource.data.schedule_ref == resource.data.schedule_ref
-        && request.resource.data.scheduled_at == resource.data.scheduled_at;
+        && request.resource.data.scheduled_at == resource.data.scheduled_at
+        && (isCaregiverOf(resource.data.patient_ref)
+          || patientDoseTransitionAllowed());
+
+      // Never. A dose log is the medical record: archiving cancels future
+      // doses instead, and past ones are kept as they are.
+      allow delete: if false;
     }
 
     // Notifications

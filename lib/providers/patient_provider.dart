@@ -5,6 +5,7 @@ import '../models/patient_profile_model.dart';
 import '../models/patient_medication_model.dart';
 import '../models/schedule_model.dart';
 import '../models/dose_log_model.dart';
+import '../models/dose_slot.dart';
 import '../models/device_model.dart';
 import '../models/notification_model.dart';
 import '../models/caregiver_patient_link_model.dart';
@@ -12,7 +13,10 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/dose_reminder_scheduler.dart';
 import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
+import '../utils/adherence.dart';
 import '../utils/date_formatter.dart';
+import '../utils/dose_timing.dart';
 
 /// How far back the history stream reaches.
 ///
@@ -20,6 +24,9 @@ import '../utils/date_formatter.dart';
 /// history on every write, and the Spark plan allows 50k reads a day. Every
 /// screen in the app asks for 90 days or less.
 const Duration _historyWindow = Duration(days: 90);
+
+/// How long one snooze lasts. Another snooze is refused until it has run out.
+const Duration snoozeDuration = Duration(minutes: 10);
 
 /// The outcome of a dose action, so the screen can show the right message
 /// without having to interpret a bool.
@@ -34,6 +41,52 @@ enum DoseActionResult {
   snoozeLimitReached,
 
   failed,
+}
+
+/// What a Done or Skip changed, so Undo can put it back exactly
+/// (DOSE_LOGIC_PROPOSAL.md, section 4.3), and so the caregiver is told only
+/// once the Undo window has passed (4.2).
+class DoseUndo {
+  final String doseLogId;
+  final String scheduleId;
+
+  /// The dose-log fields as they were before the action.
+  final Map<String, dynamic> restore;
+
+  /// The status reported to the Worker once the action is final.
+  final String reportStatus;
+
+  /// Whether a pill was counted off, to give back on Undo.
+  final bool decremented;
+
+  /// The low-stock notification this action raised, hidden again on Undo.
+  final String? lowStockNotifId;
+
+  /// Whether the box LED was lit before, to light it again on Undo.
+  final bool ledWasActive;
+
+  bool _settled = false;
+
+  DoseUndo._({
+    required this.doseLogId,
+    required this.scheduleId,
+    required this.restore,
+    required this.reportStatus,
+    this.decremented = false,
+    this.lowStockNotifId,
+    this.ledWasActive = false,
+  });
+
+  /// Undone, or reported to the Worker. Either way nothing more happens.
+  bool get isSettled => _settled;
+}
+
+/// The result of a Done or Skip, with what is needed to undo it.
+class DoseOutcome {
+  final DoseActionResult result;
+  final DoseUndo? undo;
+
+  const DoseOutcome(this.result, [this.undo]);
 }
 
 class PatientProvider extends ChangeNotifier {
@@ -113,15 +166,6 @@ class PatientProvider extends ChangeNotifier {
     return _schedules.any((s) => s.scheduleId == log.scheduleRef);
   }
 
-  /// What the dashboard should still be showing.
-  ///
-  /// A dose the patient has dealt with — taken, or a miss they have seen —
-  /// leaves the list. Keeping everything made the dashboard longer as the day
-  /// went on, which is backwards: it should get shorter as things get done.
-  List<DoseLogModel> get outstandingTodayLogs => todayLogs
-      .where((log) => !log.isTaken && log.acknowledgedAt == null)
-      .toList();
-
   /// Asks the caregiver to delete this account.
   Future<bool> requestAccountDeletion({String reason = ''}) async {
     final uid = _patientUid;
@@ -154,20 +198,6 @@ class PatientProvider extends ChangeNotifier {
     }
   }
 
-  /// Dismisses a missed dose from the dashboard.
-  Future<bool> acknowledgeMissedDose(String doseLogId) async {
-    _errorMessage = null;
-    try {
-      await _firestoreService.acknowledgeDoseLog(doseLogId);
-      return true;
-    } catch (e) {
-      debugPrint('acknowledgeMissedDose failed: $e');
-      _errorMessage = AppStrings.genericError;
-      notifyListeners();
-      return false;
-    }
-  }
-
   List<DoseLogModel> get todayLogs {
     final today = DateTime.now();
     final key = DateFormatter.toDateKey(today);
@@ -192,18 +222,12 @@ class PatientProvider extends ChangeNotifier {
     return pending;
   }
 
-  double get todayAdherencePercentage => _adherenceOf(todayLogs);
-  double get overallAdherencePercentage => _adherenceOf(_allLogs);
-
-  /// Adherence counts only doses that have been resolved. Pending doses are
-  /// excluded in both directions — counting them as missed would show a patient
-  /// 0% at breakfast for a dose not yet due.
-  double _adherenceOf(List<DoseLogModel> logs) {
-    final resolved = logs.where((l) => l.isTaken || l.isMissed).length;
-    if (resolved == 0) return 100.0;
-    final taken = logs.where((l) => l.isTaken).length;
-    return (taken / resolved) * 100.0;
-  }
+  /// Adherence uses the shared rules in [AdherenceStats]: taken ÷ (taken +
+  /// missed + skipped), ignoring open, cancelled and mistake doses.
+  double get todayAdherencePercentage =>
+      AdherenceStats.of(todayLogs).adherence * 100.0;
+  double get overallAdherencePercentage => overallStats.adherence * 100.0;
+  AdherenceStats get overallStats => AdherenceStats.of(_allLogs);
 
   /// The next dose due today, or the first of tomorrow's if today is done.
   ///
@@ -242,6 +266,43 @@ class PatientProvider extends ChangeNotifier {
     return name.isEmpty ? 'your medication' : name;
   }
 
+  /// Whether a medicine box is paired. Without one the app is phone-only.
+  bool get hasBox => _device != null;
+
+  /// Whether to tell the patient to take [schedule] from a compartment. Needs
+  /// both a compartment and a paired box: an unpaired box keeps its
+  /// compartment numbers for re-pairing, but nothing is lit.
+  bool showsCompartment(ScheduleModel schedule) =>
+      hasBox && schedule.matBoxColumn != null;
+
+  /// What to take, in words: "Compartment 3" with a box, "1 tablet" without.
+  String doseInstructionFor(ScheduleModel schedule) {
+    if (showsCompartment(schedule)) {
+      return 'Compartment ${schedule.matBoxColumn}';
+    }
+    return medicationFor(schedule.patMedRef)?.doseDescription ?? 'Your dose';
+  }
+
+  /// Notification text for one dose.
+  String reminderBodyFor(ScheduleModel schedule) {
+    final name = medicationFor(schedule.patMedRef)?.medicationName.trim() ?? '';
+    return [
+      if (name.isNotEmpty) name,
+      doseInstructionFor(schedule),
+      schedule.scheduledTime,
+    ].join(' · ');
+  }
+
+  /// Re-arms on-device reminders with current wording. Called when schedules,
+  /// medicines, or whether a box is paired change.
+  void _syncReminders() {
+    if (!_schedulesLoaded) return;
+    DoseReminderScheduler().syncReminders(
+      _schedules,
+      bodyFor: reminderBodyFor,
+    );
+  }
+
   ScheduleModel? scheduleById(String scheduleId) {
     for (final schedule in _schedules) {
       if (schedule.scheduleId == scheduleId) return schedule;
@@ -255,6 +316,122 @@ class PatientProvider extends ChangeNotifier {
       if (log.scheduleRef == scheduleId) return log;
     }
     return null;
+  }
+
+  /// Whether [schedule] has a dose on [day]: the right weekday, and inside
+  /// its start and end dates. The old dashboard checked the weekday only, so a
+  /// course that had ended still showed.
+  static bool runsOn(ScheduleModel schedule, DateTime day) {
+    if (schedule.daysOfWeek.isNotEmpty &&
+        !schedule.daysOfWeek.contains(day.weekday)) {
+      return false;
+    }
+    final date = DateFormatter.startOfDay(day);
+    if (date.isBefore(DateFormatter.startOfDay(schedule.startDate))) {
+      return false;
+    }
+    final end = schedule.endDate;
+    if (end != null && date.isAfter(DateFormatter.startOfDay(end))) {
+      return false;
+    }
+    return true;
+  }
+
+  static String _dateKeyOf(DoseLogModel log) {
+    if (log.scheduledDate.isNotEmpty) return log.scheduledDate;
+    final at = log.scheduledAt;
+    return at == null ? '' : DateFormatter.toDateKey(at);
+  }
+
+  static bool _sameMinute(DoseLogModel log, DateTime at) {
+    final logAt = log.scheduledAt;
+    if (logAt != null) {
+      return logAt.year == at.year &&
+          logAt.month == at.month &&
+          logAt.day == at.day &&
+          logAt.hour == at.hour &&
+          logAt.minute == at.minute;
+    }
+    return DateFormatter.minutesOfDay(log.scheduledTime) ==
+        at.hour * 60 + at.minute;
+  }
+
+  /// Every dose due on [day], earliest first, each with its log if there is
+  /// one. Cancelled doses never appear.
+  List<DoseSlot> slotsForDay(DateTime day) {
+    final key = DateFormatter.toDateKey(day);
+    final logs = _allLogs
+        .where((l) => !l.isCancelled && _dateKeyOf(l) == key)
+        .toList();
+    final used = <String>{};
+    final slots = <DoseSlot>[];
+
+    for (final schedule in _schedules) {
+      if (!runsOn(schedule, day)) continue;
+      final at =
+          DateFormatter.parseScheduleTime(schedule.scheduledTime, onDate: day);
+      if (at == null) continue;
+      final log = logs
+          .where((l) =>
+              l.scheduleRef == schedule.scheduleId && _sameMinute(l, at))
+          .firstOrNull;
+      // A dose time that had already passed when the medicine was added (an
+      // 8 AM dose for a medicine added at 11 AM) never existed, unless
+      // something was recorded for it. Same 15-minute grace as the Worker.
+      if (log == null &&
+          at.add(const Duration(minutes: 15)).isBefore(schedule.createdAt)) {
+        continue;
+      }
+      if (log != null) used.add(log.doseLogId);
+      slots.add(DoseSlot(schedule: schedule, scheduledAt: at, log: log));
+    }
+
+    // A dose already decided whose time has since been edited: the schedule
+    // now points at a new time, but what happened at the old one still
+    // belongs in "Done today".
+    for (final log in logs) {
+      if (used.contains(log.doseLogId) || !log.isResolved) continue;
+      final schedule = scheduleById(log.scheduleRef);
+      if (schedule == null) continue;
+      final at = log.scheduledAt ??
+          DateFormatter.parseScheduleTime(log.scheduledTime, onDate: day);
+      if (at == null) continue;
+      slots.add(DoseSlot(schedule: schedule, scheduledAt: at, log: log));
+    }
+
+    slots.sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    return slots;
+  }
+
+  /// Today's dose for [scheduleId], or null if it has none today.
+  DoseSlot? todaySlotFor(String scheduleId) {
+    final now = DateTime.now();
+    final slots = slotsForDay(now)
+        .where((s) => s.schedule.scheduleId == scheduleId)
+        .toList();
+    if (slots.isEmpty) return null;
+    // Several slots happen only around an edited dose time; prefer the one
+    // still open.
+    return slots.where((s) => s.isOpen).firstOrNull ?? slots.last;
+  }
+
+  /// The dose of the same medicine just before [slot], today or yesterday —
+  /// for the half-gap early-logging rule.
+  DateTime? previousDoseAt(DoseSlot slot) {
+    final day = slot.scheduledAt;
+    final candidates = [
+      ...slotsForDay(day.subtract(const Duration(days: 1))),
+      ...slotsForDay(day),
+    ].where((s) =>
+        s.schedule.patMedRef == slot.schedule.patMedRef &&
+        s.scheduledAt.isBefore(slot.scheduledAt));
+    DateTime? latest;
+    for (final s in candidates) {
+      if (latest == null || s.scheduledAt.isAfter(latest)) {
+        latest = s.scheduledAt;
+      }
+    }
+    return latest;
   }
 
   // ==========================================
@@ -280,6 +457,8 @@ class PatientProvider extends ChangeNotifier {
         _firestoreService.streamPatientMedications(uid).listen((meds) {
       _medications = meds;
       _medicationsLoaded = true;
+      // Reminder text names the medicine, so a rename must reach it.
+      _syncReminders();
       notifyListeners();
     }, onError: (Object e) {
       _medicationsLoaded = true;
@@ -292,7 +471,7 @@ class PatientProvider extends ChangeNotifier {
       // Re-arm the on-device reminders whenever the regimen changes. The
       // caregiver edits from their own phone, so this stream is the only
       // signal the patient's device gets that a dose time moved.
-      DoseReminderScheduler().syncReminders(schs);
+      _syncReminders();
       notifyListeners();
     }, onError: (Object e) {
       _schedulesLoaded = true;
@@ -317,7 +496,11 @@ class PatientProvider extends ChangeNotifier {
     }, onError: _onStreamError);
 
     _deviceSub = _firestoreService.streamPatientDevice(uid).listen((dev) {
+      final hadBox = hasBox;
       _device = dev;
+      // Only pairing or unpairing changes reminder wording. Heartbeats update
+      // this document constantly and must not re-arm every reminder.
+      if (hadBox != hasBox) _syncReminders();
       notifyListeners();
     }, onError: _onStreamError);
 
@@ -350,156 +533,358 @@ class PatientProvider extends ChangeNotifier {
   // ==========================================
   // THE DOSE LOOP
   // ==========================================
+  //
+  // Every action writes Firestore first. Done and Skip then wait for the Undo
+  // window before the Worker is told (finalizeDoseAction), so an undone tap
+  // never notifies the caregiver. Everything else reports straight away.
 
-  /// Confirms a dose, from the app or the box button.
-  ///
-  /// Order matters. The dose log is written to Firestore **first** and the
-  /// Worker is told **after**, fire-and-forget: a failed notification must never
-  /// cost the patient their confirmation, and the cron sweep is the backstop if
-  /// the call never lands.
-  Future<DoseActionResult> confirmDoseTaken({
-    required String scheduleId,
-    String? doseLogId,
-    String confirmedVia = 'app',
-  }) async {
+  /// A fresh pending log for [slot] under its deterministic id.
+  DoseLogModel _newLog(String uid, DoseSlot slot, DateTime now) => DoseLogModel(
+        doseLogId: slot.doseLogId,
+        scheduleRef: slot.schedule.scheduleId,
+        patientRef: uid,
+        scheduledDate: DateFormatter.toDateKey(slot.scheduledAt),
+        scheduledTime: slot.schedule.scheduledTime,
+        scheduledAt: slot.scheduledAt,
+        confirmedVia: '',
+        recordedBy: uid,
+        createdAt: now,
+      );
+
+  /// The current schedule for [slot] — the slot may hold an older copy.
+  ScheduleModel _liveSchedule(DoseSlot slot) =>
+      scheduleById(slot.schedule.scheduleId) ?? slot.schedule;
+
+  DoseOutcome _fail(String message) {
+    _errorMessage = message;
+    notifyListeners();
+    return const DoseOutcome(DoseActionResult.failed);
+  }
+
+  /// Marks [slot] taken. [early] is true when the patient came through the
+  /// early-logging prompt. Call [finalizeDoseAction] when the Undo window
+  /// closes, or [undoDoseAction] if Undo is tapped.
+  Future<DoseOutcome> takeDose(DoseSlot slot, {bool early = false}) async {
     _errorMessage = null;
     final uid = _patientUid;
-    if (uid == null) return DoseActionResult.failed;
+    if (uid == null) return const DoseOutcome(DoseActionResult.failed);
+    final schedule = _liveSchedule(slot);
 
     try {
-      final existing = doseLogId != null && doseLogId.isNotEmpty
-          ? await _firestoreService.getDoseLog(doseLogId)
-          : todayLogForSchedule(scheduleId);
-
-      // Confirming twice must not decrement stock twice. A double tap on a
+      final existing = await _firestoreService.getDoseLog(slot.doseLogId);
+      // Confirming twice must not count a pill off twice. A double tap on a
       // slow connection is the common case, not an edge case.
       if (existing != null && existing.isTaken) {
-        return DoseActionResult.alreadyConfirmed;
+        return const DoseOutcome(DoseActionResult.alreadyConfirmed);
+      }
+      if (existing != null && !existing.isOpen) {
+        return _fail(AppStrings.doseAlreadyResolved);
+      }
+      // An empty compartment means the patient cannot have taken this dose.
+      // Recording it anyway told the caregiver they had.
+      if (schedule.pillsRemaining <= 0) {
+        return _fail(AppStrings.doseOutOfStock);
       }
 
       final now = DateTime.now();
-      final schedule = scheduleById(scheduleId);
-      String resolvedLogId;
+      final timing = DoseTiming.timingFor(
+        takenAt: now,
+        scheduledAt: slot.scheduledAt,
+        early: early,
+      );
 
+      final Map<String, dynamic> restore;
       if (existing != null) {
-        await _firestoreService.updateDoseLogStatus(
-          doseLogId: existing.doseLogId,
-          status: 'taken',
-          takenAt: now,
-          confirmedVia: confirmedVia,
-          // Left false on purpose. Only the Worker knows whether a push
-          // actually left, and hardcoding true here disarmed the sweep's
-          // backstop for every dropped notification.
-          caregiverNotified: false,
-        );
-        resolvedLogId = existing.doseLogId;
+        restore = {
+          'status': existing.status,
+          'taken_at': existing.takenAt,
+          'timing': existing.timing,
+          'confirmed_via': existing.confirmedVia,
+          'logged_at': existing.loggedAt,
+          'caregiver_notified': existing.caregiverNotified,
+        };
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+          'status': DoseStatus.taken,
+          'taken_at': now,
+          'timing': timing,
+          'confirmed_via': 'app',
+          'logged_at': now,
+          // Left false on purpose: only the Worker knows whether a push
+          // actually left.
+          'caregiver_notified': false,
+        });
       } else {
-        // No materialised log — an off-schedule confirmation. scheduled_at is
-        // always populated, or the sweep cannot see this row and history
-        // cannot sort it.
-        final scheduledAt = schedule != null
-            ? DateFormatter.parseScheduleTime(schedule.scheduledTime, onDate: now)
-            : null;
-        resolvedLogId = await _firestoreService.recordDoseLog(
-          DoseLogModel(
-            doseLogId: '',
-            scheduleRef: scheduleId,
-            patientRef: uid,
-            scheduledDate: DateFormatter.toDateKey(now),
-            scheduledTime: schedule?.scheduledTime ??
-                DateFormatter.toTimeLabel(now),
-            scheduledAt: scheduledAt ?? now,
-            status: 'taken',
-            takenAt: now,
-            confirmedVia: confirmedVia,
-            caregiverNotified: false,
-            recordedBy: uid,
-            createdAt: now,
-          ),
-        );
+        // Not materialised yet. Written under the Worker's own id, so the
+        // materialiser sees it and does not create a second, pending copy
+        // that the sweep would later mark missed.
+        restore = {
+          'status': DoseStatus.pending,
+          'taken_at': null,
+          'timing': null,
+          'confirmed_via': '',
+          'logged_at': null,
+          'caregiver_notified': false,
+        };
+        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+          status: DoseStatus.taken,
+          takenAt: now,
+          timing: timing,
+          confirmedVia: 'app',
+          loggedAt: now,
+        ));
       }
 
       // Switch the box LED off and count the stock down. Two separate writes
       // because the security rules allow a managed patient to touch exactly
-      // these two fields, one key at a time.
-      await _firestoreService.updateScheduleLed(scheduleId, false);
-      if (schedule != null) {
-        await _firestoreService.decrementPillsRemaining(
-          scheduleId,
-          schedule.pillsRemaining > 0 ? 1 : 0,
-        );
-      }
+      // these two fields on a schedule.
+      final ledWasActive = schedule.ledActive;
+      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
+      await _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1);
+      final notifId =
+          await _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
 
       notifyListeners();
-      _reportDoseEvent(
-        doseLogId: resolvedLogId,
-        status: 'taken',
-        scheduleId: scheduleId,
+      return DoseOutcome(
+        DoseActionResult.success,
+        DoseUndo._(
+          doseLogId: slot.doseLogId,
+          scheduleId: schedule.scheduleId,
+          restore: restore,
+          reportStatus: DoseStatus.taken,
+          decremented: true,
+          lowStockNotifId: notifId,
+          ledWasActive: ledWasActive,
+        ),
       );
-      return DoseActionResult.success;
     } catch (e) {
-      debugPrint('confirmDoseTaken failed: $e');
-      _errorMessage = AppStrings.doseConfirmFailed;
-      notifyListeners();
-      return DoseActionResult.failed;
+      debugPrint('takeDose failed: $e');
+      return _fail(AppStrings.doseConfirmFailed);
     }
   }
 
-  /// Snoozes a dose by ten minutes, up to three times.
-  ///
-  /// The cap is enforced here and again in the Worker's sweep — the app cannot
-  /// be the only place it lives, because the app may be closed when the third
-  /// snooze expires.
-  Future<DoseActionResult> snoozeDose({
-    required String doseLogId,
-    required int currentSnoozeCount,
-    String? scheduleId,
-  }) async {
+  /// Marks [slot] skipped with [reason]. Same Undo contract as [takeDose].
+  Future<DoseOutcome> skipDose(DoseSlot slot, String reason) async {
+    _errorMessage = null;
+    final uid = _patientUid;
+    if (uid == null) return const DoseOutcome(DoseActionResult.failed);
+    final schedule = _liveSchedule(slot);
+
+    try {
+      final existing = await _firestoreService.getDoseLog(slot.doseLogId);
+      if (existing != null && existing.isTaken) {
+        return const DoseOutcome(DoseActionResult.alreadyConfirmed);
+      }
+      if (existing != null && !existing.isOpen) {
+        return _fail(AppStrings.doseAlreadyResolved);
+      }
+
+      final now = DateTime.now();
+      final Map<String, dynamic> restore;
+      if (existing != null) {
+        restore = {
+          'status': existing.status,
+          'skipped_reason': existing.skippedReason,
+          'acknowledged_at': existing.acknowledgedAt,
+          'logged_at': existing.loggedAt,
+          'caregiver_notified': existing.caregiverNotified,
+        };
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+          'status': DoseStatus.skipped,
+          'skipped_reason': reason,
+          'acknowledged_at': now,
+          'logged_at': now,
+          'caregiver_notified': false,
+        });
+      } else {
+        restore = {
+          'status': DoseStatus.pending,
+          'skipped_reason': '',
+          'acknowledged_at': null,
+          'logged_at': null,
+          'caregiver_notified': false,
+        };
+        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+          status: DoseStatus.skipped,
+          skippedReason: reason,
+          acknowledgedAt: now,
+          loggedAt: now,
+        ));
+      }
+
+      final ledWasActive = schedule.ledActive;
+      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
+
+      notifyListeners();
+      return DoseOutcome(
+        DoseActionResult.success,
+        DoseUndo._(
+          doseLogId: slot.doseLogId,
+          scheduleId: schedule.scheduleId,
+          restore: restore,
+          reportStatus: DoseStatus.skipped,
+          ledWasActive: ledWasActive,
+        ),
+      );
+    } catch (e) {
+      debugPrint('skipDose failed: $e');
+      return _fail(AppStrings.genericError);
+    }
+  }
+
+  /// Puts a dose back exactly as it was before Done or Skip: status and
+  /// fields, the pill, the low-stock notice and the LED. The Worker is never
+  /// told about an undone action.
+  Future<bool> undoDoseAction(DoseUndo undo) async {
+    if (undo._settled) return false;
+    undo._settled = true;
     _errorMessage = null;
     try {
-      if (currentSnoozeCount >= 3) {
+      await _firestoreService.updateDoseLogFields(undo.doseLogId, undo.restore);
+      if (undo.decremented) {
+        await _firestoreService.incrementPillsRemaining(undo.scheduleId, 1);
+      }
+      final notifId = undo.lowStockNotifId;
+      if (notifId != null) {
+        await _firestoreService.deactivateNotification(notifId);
+      }
+      if (undo.ledWasActive) {
+        await _firestoreService.updateScheduleLed(undo.scheduleId, true);
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('undoDoseAction failed: $e');
+      // The action stands, so the caregiver must still hear about it.
+      undo._settled = false;
+      finalizeDoseAction(undo);
+      _errorMessage = AppStrings.undoFailed;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Called when the Undo window closes without Undo: the action is final,
+  /// so now the Worker tells the caregiver. If the app is killed before this
+  /// runs, the dose is still saved; only the push is lost (and for Skip, the
+  /// Worker's backstop picks it up).
+  void finalizeDoseAction(DoseUndo undo) {
+    if (undo._settled) return;
+    undo._settled = true;
+    _reportDoseEvent(
+      doseLogId: undo.doseLogId,
+      status: undo.reportStatus,
+      scheduleId: undo.scheduleId,
+    );
+  }
+
+  /// Records a low-stock alert for the patient once stock reaches the
+  /// threshold, and again when it reaches zero — not on every dose below it.
+  /// Returns the notification's id, so Undo can hide it again.
+  ///
+  /// The caregiver's copy is sent by the Worker from `/dose-events`: security
+  /// rules only let a client write notifications addressed to itself.
+  Future<String?> _alertIfStockLow(
+    String uid,
+    ScheduleModel schedule,
+    int remaining,
+  ) async {
+    if (remaining != schedule.lowStockThreshold && remaining != 0) return null;
+    try {
+      return await NotificationService().sendLowStockAlert(
+        userUid: uid,
+        medicationName: medicationNameFor(schedule),
+        remainingCount: remaining,
+      );
+    } catch (e) {
+      // The dose is already recorded; a lost alert must not fail it.
+      debugPrint('low stock alert failed: $e');
+      return null;
+    }
+  }
+
+  /// Snoozes [slot] by ten minutes, up to three times. Only offered on the
+  /// alarm screen, and only while the dose is due or late.
+  ///
+  /// The cap is enforced here and again in the Worker's sweep — the app may be
+  /// closed when the last snooze expires.
+  Future<DoseActionResult> snoozeDose(DoseSlot slot) async {
+    _errorMessage = null;
+    final uid = _patientUid;
+    if (uid == null) return DoseActionResult.failed;
+
+    final phase = DoseTiming.phaseOf(slot.scheduledAt, DateTime.now());
+    if (phase != DosePhase.dueNow && phase != DosePhase.late) {
+      _fail(AppStrings.snoozeNotAvailable);
+      return DoseActionResult.failed;
+    }
+
+    try {
+      final existing = await _firestoreService.getDoseLog(slot.doseLogId);
+      if (existing != null && existing.isTaken) {
+        return DoseActionResult.alreadyConfirmed;
+      }
+      if (existing != null && !existing.isOpen) {
+        _fail(AppStrings.doseAlreadyResolved);
+        return DoseActionResult.failed;
+      }
+      // One snooze at a time. The cap alone let three quick taps burn every
+      // snooze and mark the dose missed immediately.
+      if (existing != null && existing.isSnoozeActive) {
+        _fail(AppStrings.snoozeActiveUntil(
+          DateFormatter.toClockLabel(existing.snoozedUntil!),
+        ));
+        return DoseActionResult.failed;
+      }
+
+      final count = existing?.snoozeCount ?? 0;
+      if (count >= 3) {
         final marked = await markDoseMissed(
-          doseLogId: doseLogId,
+          doseLogId: slot.doseLogId,
           reason: 'Exceeded the 3-snooze limit',
-          scheduleId: scheduleId,
+          scheduleId: slot.schedule.scheduleId,
         );
         return marked == DoseActionResult.success
             ? DoseActionResult.snoozeLimitReached
             : DoseActionResult.failed;
       }
 
-      await _firestoreService.updateDoseLogStatus(
-        doseLogId: doseLogId,
-        status: 'snoozed',
-        snoozeCount: currentSnoozeCount + 1,
-      );
+      final now = DateTime.now();
+      final until = now.add(snoozeDuration);
+      if (existing == null) {
+        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+          status: DoseStatus.snoozed,
+          snoozeCount: 1,
+          snoozedUntil: until,
+        ));
+      } else {
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+          'status': DoseStatus.snoozed,
+          'snooze_count': count + 1,
+          'snoozed_until': until,
+        });
+      }
 
       // Re-fire locally in ten minutes. Without this the snooze only changes a
-      // database field and the patient is never prompted again — the dose then
-      // goes missed with no second chance, which is the opposite of snoozing.
-      if (scheduleId != null && scheduleId.isNotEmpty) {
-        final schedule = _schedules
-            .where((s) => s.scheduleId == scheduleId)
-            .cast<ScheduleModel?>()
-            .firstWhere((s) => s != null, orElse: () => null);
-        await DoseReminderScheduler().scheduleSnooze(
-          scheduleId: scheduleId,
-          matBoxColumn: schedule?.matBoxColumn ?? 1,
-        );
-      }
+      // database field and the patient is never prompted again.
+      final schedule = _liveSchedule(slot);
+      await DoseReminderScheduler().scheduleSnooze(
+        scheduleId: schedule.scheduleId,
+        body: '${reminderBodyFor(schedule)} — please take it now.',
+        delay: snoozeDuration,
+      );
 
       notifyListeners();
       return DoseActionResult.success;
     } catch (e) {
       debugPrint('snoozeDose failed: $e');
-      _errorMessage = AppStrings.genericError;
-      notifyListeners();
+      _fail(AppStrings.genericError);
       return DoseActionResult.failed;
     }
   }
 
   /// Marks a dose missed and turns the compartment LED off, so the box stops
-  /// prompting for a dose the system has written off.
+  /// prompting for a dose the system has written off. Used when the snooze
+  /// limit is reached.
   Future<DoseActionResult> markDoseMissed({
     required String doseLogId,
     String reason = 'Not confirmed',
@@ -507,19 +892,19 @@ class PatientProvider extends ChangeNotifier {
   }) async {
     _errorMessage = null;
     try {
-      await _firestoreService.updateDoseLogStatus(
-        doseLogId: doseLogId,
-        status: 'missed',
-        skippedReason: reason,
-        caregiverNotified: false,
-      );
+      await _firestoreService.updateDoseLogFields(doseLogId, {
+        'status': DoseStatus.missed,
+        'skipped_reason': reason,
+        'caregiver_notified': false,
+        'logged_at': DateTime.now(),
+      });
       if (scheduleId != null && scheduleId.isNotEmpty) {
         await _firestoreService.updateScheduleLed(scheduleId, false);
       }
       notifyListeners();
       _reportDoseEvent(
         doseLogId: doseLogId,
-        status: 'missed',
+        status: DoseStatus.missed,
         scheduleId: scheduleId,
       );
       return DoseActionResult.success;
@@ -527,6 +912,150 @@ class PatientProvider extends ChangeNotifier {
       debugPrint('markDoseMissed failed: $e');
       _errorMessage = AppStrings.genericError;
       notifyListeners();
+      return DoseActionResult.failed;
+    }
+  }
+
+  /// "I took it but forgot to log it" (DOSE_LOGIC_PROPOSAL.md, 7.3).
+  ///
+  /// Turns a missed dose into a taken one, labelled `logged_late` so reports
+  /// can still tell it was corrected, with [takenAt] the time the patient says
+  /// they took it. Allowed only until the end of the next day.
+  Future<DoseActionResult> logTakenLate(
+    DoseSlot slot,
+    DateTime takenAt,
+  ) async {
+    _errorMessage = null;
+    final uid = _patientUid;
+    if (uid == null) return DoseActionResult.failed;
+    final now = DateTime.now();
+
+    if (!DoseTiming.retroLogAllowed(slot.scheduledAt, now)) {
+      _fail(AppStrings.retroWindowClosed);
+      return DoseActionResult.failed;
+    }
+    if (takenAt.isAfter(now)) {
+      _fail(AppStrings.retroTimeInFuture);
+      return DoseActionResult.failed;
+    }
+    final schedule = _liveSchedule(slot);
+    if (schedule.pillsRemaining <= 0) {
+      _fail(AppStrings.doseOutOfStock);
+      return DoseActionResult.failed;
+    }
+
+    try {
+      final existing = await _firestoreService.getDoseLog(slot.doseLogId);
+      if (existing != null && existing.isTaken) {
+        return DoseActionResult.alreadyConfirmed;
+      }
+      // Only a missed dose (or one past its missed window that the Worker has
+      // not swept yet) can be corrected this way.
+      final missedWindow =
+          DoseTiming.phaseOf(slot.scheduledAt, now) == DosePhase.missed;
+      final correctable = existing == null
+          ? missedWindow
+          : existing.isMissed || (existing.isOpen && missedWindow);
+      if (!correctable) {
+        _fail(AppStrings.doseAlreadyResolved);
+        return DoseActionResult.failed;
+      }
+
+      final fields = {
+        'status': DoseStatus.taken,
+        'timing': DoseTimingTag.loggedLate,
+        'taken_at': takenAt,
+        'logged_at': now,
+        'acknowledged_at': now,
+        'confirmed_via': 'app',
+        'skipped_reason': '',
+        'caregiver_notified': false,
+      };
+      if (existing == null) {
+        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+          status: DoseStatus.taken,
+          timing: DoseTimingTag.loggedLate,
+          takenAt: takenAt,
+          loggedAt: now,
+          acknowledgedAt: now,
+          confirmedVia: 'app',
+        ));
+      } else {
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, fields);
+      }
+
+      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
+      await _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1);
+      await _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+
+      notifyListeners();
+      // The Worker reads timing `logged_late` and sends the caregiver a
+      // correction rather than "Dose taken".
+      _reportDoseEvent(
+        doseLogId: slot.doseLogId,
+        status: DoseStatus.taken,
+        scheduleId: schedule.scheduleId,
+      );
+      return DoseActionResult.success;
+    } catch (e) {
+      debugPrint('logTakenLate failed: $e');
+      _fail(AppStrings.doseConfirmFailed);
+      return DoseActionResult.failed;
+    }
+  }
+
+  /// Saves why a dose was missed. A dose the Worker has not swept yet is
+  /// marked missed here, and the caregiver is told, because the sweep will no
+  /// longer see it.
+  Future<DoseActionResult> saveMissedReason(DoseSlot slot, String reason) async {
+    _errorMessage = null;
+    final uid = _patientUid;
+    if (uid == null) return DoseActionResult.failed;
+
+    try {
+      final now = DateTime.now();
+      final existing = await _firestoreService.getDoseLog(slot.doseLogId);
+
+      if (existing != null && existing.isMissed) {
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+          'skipped_reason': reason,
+          'acknowledged_at': now,
+        });
+        notifyListeners();
+        return DoseActionResult.success;
+      }
+      if (existing != null && !existing.isOpen) {
+        _fail(AppStrings.doseAlreadyResolved);
+        return DoseActionResult.failed;
+      }
+
+      if (existing == null) {
+        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+          status: DoseStatus.missed,
+          skippedReason: reason,
+          acknowledgedAt: now,
+          loggedAt: now,
+        ));
+      } else {
+        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+          'status': DoseStatus.missed,
+          'skipped_reason': reason,
+          'acknowledged_at': now,
+          'logged_at': now,
+          'caregiver_notified': false,
+        });
+      }
+      await _firestoreService.updateScheduleLed(slot.schedule.scheduleId, false);
+      notifyListeners();
+      _reportDoseEvent(
+        doseLogId: slot.doseLogId,
+        status: DoseStatus.missed,
+        scheduleId: slot.schedule.scheduleId,
+      );
+      return DoseActionResult.success;
+    } catch (e) {
+      debugPrint('saveMissedReason failed: $e');
+      _fail(AppStrings.genericError);
       return DoseActionResult.failed;
     }
   }

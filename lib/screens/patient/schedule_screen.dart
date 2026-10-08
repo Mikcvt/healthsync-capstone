@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/patient_provider.dart';
 import 'medicine_detail_screen.dart';
+import '../../widgets/shared/medicine_badge.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
@@ -75,7 +76,8 @@ class ScheduleScreen extends StatelessWidget {
                   final matchingMed = medications.where((m) => m.patMedId == sch.patMedRef).firstOrNull;
                   final medName = matchingMed?.medicationName.isNotEmpty == true
                       ? matchingMed!.medicationName
-                      : (sch.caregiverDoctor.isNotEmpty ? 'Medication (Col ${sch.matBoxColumn})' : 'Prescription ${index + 1}');
+                      : 'Prescription ${index + 1}';
+                  final showCol = patientProvider.showsCompartment(sch);
 
                   return GestureDetector(
                     onTap: () {
@@ -94,28 +96,12 @@ class ScheduleScreen extends StatelessWidget {
                       decoration: AppStyles.cardDecoration,
                       child: Row(
                         children: [
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: AppColors.patientBlue.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.access_time_rounded, size: 18, color: AppColors.patientBlue),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Col ${sch.matBoxColumn}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.patientBlue,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          MedicineBadge(
+                            column: showCol ? sch.matBoxColumn : null,
+                            dosageForm: matchingMed?.dosageForm ?? 'Tablet',
+                            size: 52,
+                            foreground: AppColors.patientBlue,
+                            background: AppColors.patientBlue.withValues(alpha: 0.12),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -133,7 +119,9 @@ class ScheduleScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${sch.scheduledTime} · ${sch.pillsRemaining} pills remaining',
+                                  showCol
+                                      ? '${sch.scheduledTime} · ${sch.pillsRemaining} left'
+                                      : '${sch.scheduledTime} · ${patientProvider.doseInstructionFor(sch)} · ${sch.pillsRemaining} left',
                                   style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                                 ),
                               ],

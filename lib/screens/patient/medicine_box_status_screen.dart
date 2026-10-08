@@ -8,6 +8,8 @@ import '../../models/device_model.dart';
 import '../../services/device_service.dart';
 import '../../utils/date_formatter.dart';
 import 'device_pairing_screen.dart';
+import '../../widgets/shared/floating_nav_bar.dart';
+import '../../widgets/shared/medicine_badge.dart';
 
 /// Live view of the physical 8-compartment box.
 ///
@@ -23,6 +25,12 @@ class MedicineBoxStatusScreen extends StatelessWidget {
     final device = patient.device;
     final compartments =
         DeviceService().buildCompartmentGrid(patient.schedules);
+    // Medicines with no compartment on any of their dose times.
+    final outside = patient.medications
+        .where((m) => patient.schedules
+            .where((s) => s.patMedRef == m.patMedId)
+            .every((s) => s.matBoxColumn == null))
+        .toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -40,59 +48,126 @@ class MedicineBoxStatusScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          // Clears the floating nav bar; this is a tab.
+          padding: const EdgeInsets.fromLTRB(
+            20,
+            16,
+            20,
+            FloatingNavBar.contentPadding,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (device == null)
-                const _NoDeviceCard()
-              else
-                _DeviceCard(device: device),
-              const SizedBox(height: 24),
-
-              const Text(
-                'Compartments',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                  fontFamily: AppStyles.fontFamily,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                patient.schedules.isEmpty
-                    ? 'No compartments assigned yet.'
-                    : 'An amber light means that compartment is lit on the box '
-                        'right now.',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
-                  height: 1.5,
-                  fontFamily: AppStyles.fontFamily,
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              GridView.count(
-                crossAxisCount: 4,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.82,
-                children: [
-                  for (final compartment in compartments)
-                    _CompartmentTile(
-                      compartment: compartment,
-                      medicineName: compartment.schedule == null
-                          ? ''
-                          : patient.medicationNameFor(compartment.schedule!),
+            children: device == null
+                ? const [_NoDeviceCard()]
+                : [
+                    _DeviceCard(device: device),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Compartments',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 16),
-            ],
+                    const SizedBox(height: 4),
+                    Text(
+                      compartments.every((c) => !c.isAssigned)
+                          ? 'Your caregiver has not placed any medicine in the '
+                              'box yet.'
+                          : 'An amber light means that compartment is lit on '
+                              'the box right now.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        height: 1.5,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    GridView.count(
+                      crossAxisCount: 4,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 10,
+                      // Tall enough for icon, column, a two-line name and the
+                      // pill count on a 360dp-wide phone; 0.82 overflowed.
+                      childAspectRatio: 0.66,
+                      children: [
+                        for (final compartment in compartments)
+                          _CompartmentTile(
+                            compartment: compartment,
+                            medicineName: compartment.schedule == null
+                                ? ''
+                                : patient
+                                    .medicationNameFor(compartment.schedule!),
+                          ),
+                      ],
+                    ),
+                    if (outside.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Outside the box',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                          fontFamily: AppStyles.fontFamily,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Kept in their own packs. Reminders for these come on '
+                        'this phone only.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                          height: 1.5,
+                          fontFamily: AppStyles.fontFamily,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      for (final med in outside)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: AppStyles.cardDecoration,
+                          child: Row(
+                            children: [
+                              MedicineBadge(
+                                column: null,
+                                dosageForm: med.dosageForm,
+                                size: 40,
+                                foreground: AppColors.patientBlue,
+                                background: AppColors.blueLight,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  med.medicationName,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                    fontFamily: AppStyles.fontFamily,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                med.doseDescription,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: AppColors.textSecondary,
+                                  fontFamily: AppStyles.fontFamily,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ],
           ),
         ),
       ),
@@ -113,20 +188,31 @@ class _NoDeviceCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.inbox_outlined, color: AppColors.textMuted, size: 26),
+              Icon(Icons.phone_android_rounded,
+                  color: AppColors.patientBlue, size: 26),
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  AppStrings.noDevicePaired,
+                  'No medicine box yet',
                   style: TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: AppColors.textSecondary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
                     fontFamily: AppStyles.fontFamily,
                   ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            AppStrings.noDevicePaired,
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.55,
+              color: AppColors.textSecondary,
+              fontFamily: AppStyles.fontFamily,
+            ),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -276,7 +362,7 @@ class _CompartmentTile extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(14),
@@ -284,15 +370,16 @@ class _CompartmentTile extends StatelessWidget {
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             compartment.ledActive
                 ? Icons.lightbulb
                 : Icons.lightbulb_outline_rounded,
             color: accent,
-            size: 22,
+            size: 20,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             'Col ${compartment.columnNumber}',
             style: TextStyle(
@@ -303,22 +390,28 @@ class _CompartmentTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          Text(
-            compartment.isAssigned ? medicineName : 'Empty',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 10,
-              color: AppColors.textSecondary,
-              height: 1.3,
-              fontFamily: AppStyles.fontFamily,
+          // Flexible lets a long name give up its second line instead of
+          // pushing the pill count off the bottom of the tile.
+          Flexible(
+            child: Text(
+              compartment.isAssigned ? medicineName : 'Empty',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.textSecondary,
+                height: 1.25,
+                fontFamily: AppStyles.fontFamily,
+              ),
             ),
           ),
           if (compartment.isAssigned) ...[
             const SizedBox(height: 3),
             Text(
               '${compartment.pillsRemaining} left',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,

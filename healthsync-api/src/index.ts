@@ -93,9 +93,15 @@ async function runCron(env: Env): Promise<void> {
 	}
 
 	try {
-		const { missed, notified } = await runSweep(db, accessToken, sa.project_id);
+		const { late, missed, notified, skipsRecovered } = await runSweep(db, accessToken, sa.project_id);
+		if (late > 0) {
+			console.log(`Sweep: ${late} running-late alert(s) sent.`);
+		}
 		if (missed > 0) {
 			console.log(`Sweep: ${missed} dose(s) marked missed, ${notified} caregiver(s) notified.`);
+		}
+		if (skipsRecovered > 0) {
+			console.log(`Sweep: ${skipsRecovered} skip alert(s) sent by the backstop.`);
 		}
 	} catch (err) {
 		console.error('Sweep failed:', err);

@@ -12,6 +12,7 @@ import '../../providers/patient_provider.dart';
 import '../../utils/date_formatter.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../utils/validators.dart';
+import '../../widgets/shared/compartment_picker.dart';
 
 /// Edits one dose of one medicine.
 ///
@@ -40,7 +41,6 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
   late TextEditingController _timeController;
   late TextEditingController _pillsController;
   late TextEditingController _thresholdController;
-  late int _selectedColumn;
   late Set<int> _selectedDays;
   bool _isSaving = false;
 
@@ -66,7 +66,6 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
         TextEditingController(text: '${schedule?.pillsRemaining ?? 30}');
     _thresholdController =
         TextEditingController(text: '${schedule?.lowStockThreshold ?? 5}');
-    _selectedColumn = schedule?.matBoxColumn ?? 1;
     _selectedDays = {...?schedule?.daysOfWeek};
     if (_selectedDays.isEmpty) _selectedDays = {1, 2, 3, 4, 5, 6, 7};
   }
@@ -148,7 +147,6 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
 
     final updatedSchedule = schedule.copyWith(
       scheduledTime: _timeController.text.trim(),
-      matBoxColumn: _selectedColumn,
       daysOfWeek: _selectedDays.toList()..sort(),
       pillsRemaining:
           int.tryParse(_pillsController.text) ?? schedule.pillsRemaining,
@@ -382,27 +380,20 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
               ),
 
               const SizedBox(height: 24),
-              const _SectionLabel('Smart box compartment'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: List.generate(8, (index) {
-                  final col = index + 1;
-                  final selected = _selectedColumn == col;
-                  return ChoiceChip(
-                    label: Text('Col $col'),
-                    selected: selected,
-                    onSelected: (_) => setState(() => _selectedColumn = col),
-                    selectedColor: AppColors.ledActive,
-                    labelStyle: TextStyle(
-                      color: selected ? Colors.white : AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  );
-                }),
+              const _SectionLabel('Smart box'),
+              // Read-only here. A medicine's dose times share one
+              // compartment, and this screen edits a single dose time, so
+              // moving it here would split the medicine across two.
+              BoxInfoBanner(
+                icon: widget.schedule?.matBoxColumn != null
+                    ? Icons.lightbulb_outline_rounded
+                    : Icons.phone_android_rounded,
+                message: widget.schedule?.matBoxColumn != null
+                    ? 'In compartment ${widget.schedule!.matBoxColumn}. To '
+                        'move it, use Smart box on the medicines screen.'
+                    : 'Not in the box — reminded on the phone. To place it in '
+                        'a compartment, use Smart box on the medicines screen.',
               ),
-
               const SizedBox(height: 24),
               const _SectionLabel('Stock'),
               Row(

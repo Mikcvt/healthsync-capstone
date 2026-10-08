@@ -2,29 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
+import '../../models/dose_slot.dart';
 import '../../providers/patient_provider.dart';
+import '../../utils/date_formatter.dart';
+import '../../utils/dose_timing.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../widgets/patient/dose_reason_picker.dart';
 
-/// Records why a dose was missed, into `dose_logs.skipped_reason`.
+/// Asks why a dose was missed (DOSE_LOGIC_PROPOSAL.md, section 7).
 ///
-/// The reason picker was already here but the button only showed a SnackBar
-/// reading "Missed dose reason recorded." and wrote nothing. The screen also
-/// had no route into it from anywhere in the app.
+/// Opened by tapping a missed dose on the dashboard — previously nothing led
+/// here. "I took it but forgot to log it" is offered until the end of the
+/// next day; it asks roughly when the dose was taken and records it as taken,
+/// labelled "Logged late". Every other reason keeps the dose missed.
 class MissedDoseScreen extends StatefulWidget {
+  final DoseSlot slot;
   final String medicineName;
-  final String scheduledTime;
-
-  /// The dose being explained. Without it there is nothing to write the reason
-  /// to, and the screen says so rather than appearing to save.
-  final String? doseLogId;
-  final String? scheduleId;
 
   const MissedDoseScreen({
     super.key,
+    required this.slot,
     this.medicineName = 'Your medication',
-    this.scheduledTime = '',
-    this.doseLogId,
-    this.scheduleId,
   });
 
   @override
@@ -33,54 +31,90 @@ class MissedDoseScreen extends StatefulWidget {
 
 class _MissedDoseScreenState extends State<MissedDoseScreen> {
   bool _isSaving = false;
-  String _selectedReason = 'Forgot to take';
-  final List<String> _reasons = [
-    'Forgot to take',
-    'Felt sick / side effects',
-    'Was away from medicine box',
-    'Prescription ran out',
-    'Other reason',
-  ];
+  String? _reason;
 
-  /// Writes the reason onto the dose log, marking it missed.
-  Future<void> _onLogReason() async {
-    final doseLogId = widget.doseLogId;
+  bool get _retroAllowed =>
+      DoseTiming.retroLogAllowed(widget.slot.scheduledAt, DateTime.now());
 
-    // Nothing to attach the reason to. The cron sweep will still mark the dose
-    // missed on its own, so this is informational rather than an error.
-    if (doseLogId == null || doseLogId.isEmpty) {
-      SnackbarHelper.showInfo(
-        context,
-        'This dose has no record to update yet.',
-      );
-      Navigator.of(context).pop();
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    final patient = context.read<PatientProvider>();
-    final result = await patient.markDoseMissed(
-      doseLogId: doseLogId,
-      reason: _selectedReason,
-      scheduleId: widget.scheduleId,
+  /// "About what time did you take it?", defaulting to the dose time. The
+  /// answer must already have passed and be no earlier than the dose could
+  /// have been logged early.
+  Future<DateTime?> _askTakenTime() async {
+    final scheduled = widget.slot.scheduledAt;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(scheduled),
+      helpText: 'About what time did you take it?',
     );
+    if (picked == null || !mounted) return null;
+
+    // The dose's own day, unless that would put the time before the earliest
+    // it could be taken — then it was after midnight, on the next day.
+    var takenAt = DateTime(
+      scheduled.year,
+      scheduled.month,
+      scheduled.day,
+      picked.hour,
+      picked.minute,
+    );
+    final earliest = scheduled.subtract(DoseTiming.earlyCap);
+    if (takenAt.isBefore(earliest)) {
+      takenAt = takenAt.add(const Duration(days: 1));
+    }
+    if (takenAt.isAfter(DateTime.now())) {
+      SnackbarHelper.showError(context, AppStrings.retroTimeInFuture);
+      return null;
+    }
+    return takenAt;
+  }
+
+  Future<void> _onSave() async {
+    final reason = _reason;
+    if (reason == null) return;
+    final patient = context.read<PatientProvider>();
+
+    final DoseActionResult result;
+    if (reason == AppStrings.reasonTookButForgot) {
+      final takenAt = await _askTakenTime();
+      if (takenAt == null || !mounted) return;
+      setState(() => _isSaving = true);
+      result = await patient.logTakenLate(widget.slot, takenAt);
+    } else {
+      setState(() => _isSaving = true);
+      result = await patient.saveMissedReason(widget.slot, reason);
+    }
 
     if (!mounted) return;
     setState(() => _isSaving = false);
 
-    if (result == DoseActionResult.success) {
-      SnackbarHelper.showSuccess(context, 'Reason recorded.');
-      Navigator.of(context).pop();
-    } else {
-      SnackbarHelper.showError(
-        context,
-        patient.errorMessage ?? AppStrings.genericError,
-      );
+    switch (result) {
+      case DoseActionResult.success:
+        SnackbarHelper.showSuccess(
+          context,
+          reason == AppStrings.reasonTookButForgot
+              ? 'Recorded as taken (logged late).'
+              : 'Reason recorded.',
+        );
+        Navigator.of(context).pop();
+      case DoseActionResult.alreadyConfirmed:
+        SnackbarHelper.showInfo(context, AppStrings.doseAlreadyTaken);
+        Navigator.of(context).pop();
+      case DoseActionResult.failed:
+      case DoseActionResult.snoozeLimitReached:
+        SnackbarHelper.showError(
+          context,
+          patient.errorMessage ?? AppStrings.genericError,
+        );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final reasons = [
+      if (_retroAllowed) AppStrings.reasonTookButForgot,
+      ...AppStrings.doseReasons,
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -91,7 +125,7 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Missed Dose Alert',
+          'Missed dose',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontFamily: 'PlusJakartaSans',
@@ -100,120 +134,106 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
-                ),
-                child: Row(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Container(
-                      width: 48,
-                      height: 48,
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.18),
-                        shape: BoxShape.circle,
+                        color: AppColors.missedRedBg,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppColors.missedRed.withValues(alpha: 0.25),
+                        ),
                       ),
-                      child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text(
-                            widget.medicineName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.missedRed.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
                             ),
+                            child: const Icon(Icons.warning_amber_rounded,
+                                color: AppColors.missedRed),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Scheduled for ${widget.scheduledTime}',
-                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.medicineName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Was due ${DateFormatter.doseDayTime(widget.slot.scheduledAt)}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'What happened?',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        fontFamily: 'PlusJakartaSans',
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _retroAllowed
+                          ? 'Your caregiver will see this. If you did take it, '
+                              'choose the first option and it will count as '
+                              'taken, marked "Logged late".'
+                          : 'Your caregiver will see this. This dose is too '
+                              'old to change to taken.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DoseReasonPicker(
+                      reasons: reasons,
+                      onChanged: (reason) => setState(() => _reason = reason),
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-
-              const Text(
-                'Select Reason for Missing Dose',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                  fontFamily: 'PlusJakartaSans',
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'This will be shared with your caregiver so they can provide support if needed.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-
-              ..._reasons.map((r) {
-                final isSelected = _selectedReason == r;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedReason = r),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.patientBlue.withValues(alpha: 0.08) : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isSelected ? AppColors.patientBlue : AppColors.borderGray,
-                        width: isSelected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                          color: isSelected ? AppColors.patientBlue : AppColors.textSecondary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            r,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                              color: isSelected ? AppColors.patientBlue : AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-
-              const Spacer(),
-
-              SizedBox(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _isSaving ? null : _onLogReason,
+                  onPressed: _isSaving || _reason == null ? null : _onSave,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.missedRed,
+                    backgroundColor: _reason == AppStrings.reasonTookButForgot
+                        ? AppColors.caregiverGreen
+                        : AppColors.missedRed,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: AppColors.borderGray,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -224,11 +244,16 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
                         )
-                      : const Text('Log Reason & Dismiss', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      : Text(
+                          _reason == AppStrings.reasonTookButForgot
+                              ? 'Choose the time I took it'
+                              : 'Save reason',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
