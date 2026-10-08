@@ -24,21 +24,13 @@ class RoleSelectScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 8),
-              const Text('Choose your role', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontFamily: 'PlusJakartaSans')),
+              const Text('Create your account', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontFamily: 'PlusJakartaSans')),
               const SizedBox(height: 8),
-              const Text('Select how you want to use HealthSync.', style: TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFamily: 'PlusJakartaSans', height: 1.5)),
+              const Text('Signing up is for care partners. Patients join with a code instead.', style: TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFamily: 'PlusJakartaSans', height: 1.5)),
               const SizedBox(height: 24),
-              // Only self-registering roles appear here. A managed patient
-              // never reaches this screen — they enter a code on the welcome
-              // screen instead, and their account already exists.
-              _RoleCard(
-                title: 'Just for myself',
-                subtitle: 'Manage your own medicines, set your own reminders, and track your progress independently.',
-                icon: Icons.person_outline_rounded,
-                color: AppColors.soloPurple,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen(role: 'solo'))),
-              ),
-              const SizedBox(height: 14),
+              // Caregiver is the only self-registering account. A managed
+              // patient never reaches this screen — they enter a code on the
+              // welcome screen, and their account already exists.
               _RoleCard(
                 title: 'Caregiver',
                 subtitle: 'Set up medicines for someone you care for, monitor their doses, and get alerts when one is missed.',

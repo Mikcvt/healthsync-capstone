@@ -30,7 +30,7 @@ class ScheduleProvider extends ChangeNotifier {
 
   /// Set when a caregiver is authoring on a patient's behalf, so the wizard
   /// writes to that patient rather than to the signed-in user. Null means the
-  /// user is adding their own medicine (solo).
+  /// caregiver is authoring for the signed-in account itself.
   String? _targetPatientUid;
   String? _targetPatientName;
 

@@ -15,7 +15,7 @@ import '../../utils/validators.dart';
 
 /// Edits one dose of one medicine.
 ///
-/// Reachable from both sides: a solo user editing their own regimen, and a
+/// Reachable from the caregiver's own medicine list and from a
 /// caregiver editing a managed patient's. Those write through different
 /// providers because the patient-side provider is never initialised on a
 /// caregiver's device, so the save path is chosen from the account type.

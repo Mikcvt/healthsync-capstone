@@ -10,7 +10,7 @@ import '../../utils/snackbar_helper.dart';
 import '../../utils/validators.dart';
 import 'device_pairing_screen.dart';
 
-/// First-run setup for a patient or solo user.
+/// First-run setup for a patient.
 ///
 /// Every field here maps to a real column in `users` or `patient_profile`.
 /// Address and blood type were on the original mockup but exist nowhere in the

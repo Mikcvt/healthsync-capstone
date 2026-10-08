@@ -12,7 +12,7 @@
 |---|---|
 | Managed-patient OTP login | **Cloudflare Worker + Firebase custom token.** The Worker pre-creates the patient Auth account, validates the OTP, and mints a custom token the app signs in with. |
 | Backend hosting | **Firebase stays on the free Spark plan.** Cloud Functions cannot deploy on Spark at all, so the four server-side jobs move to a **Cloudflare Worker** (free plan, no credit card, cron triggers included). Total cost: ₱0. |
-| Solo user | **Full third role** — own dashboard, own analytics, purple accent, self-registration. |
+| Solo user | ~~Full third role~~ — **removed October 2026.** Scaffolded but never documented in the capstone paper or fully built. Caregiver is the only self-registering account. |
 | Plan priority | **Shippable app by Nov 30.** Phases ordered by what blocks a Play Store release. |
 
 **What the Worker exists to do.** Three things need a private key that must never ship inside the APK, and one needs a clock that runs when every phone is asleep:
@@ -42,7 +42,7 @@ Everything else — all reads, all writes the user is allowed to make — goes s
 | Caregiver creates the patient account | Patient self-registers with email + password |
 | Caregiver generates OTP, patient enters it | Patient generates invite code, caregiver enters it (`linkByInviteCode()`) |
 | `otp_codes` collection, 48h expiry, one-time use | No `otp_codes` collection at all |
-| Three roles including solo | `UserModel.role` is patient or caregiver only |
+| ~~Three roles including solo~~ | `UserModel.role` is patient or caregiver only — **this gap closed from the other side:** the solo role was removed in Oct 2026, so two roles is now correct |
 | `account_type`, `can_edit_medications` fields | Neither field exists on `UserModel` |
 | Server-side missed-dose sweep | No server-side component of any kind yet |
 
@@ -78,7 +78,7 @@ Free plan, and all three are real constraints rather than trivia:
 
 Pure model and rules work. No UI. Do this before any screen, or every screen gets rewritten.
 
-1. `UserModel` — add `accountType` (managed / solo / caregiver) and `canEditMedications` (bool). Add getters `isSolo` and `isManaged`. Keep `role` for backward compatibility.
+1. `UserModel` — add `accountType` (managed / solo / caregiver) and `canEditMedications` (bool). Add getters `isSolo` and `isManaged`. Keep `role` for backward compatibility. *(Done. `solo` and `isSolo` have since been removed with the role.)*
 2. New `lib/models/otp_code_model.dart` matching the `otp_codes` schema in `CLAUDE.md`.
 3. `firestore_service.dart` — add `createOtpCode()`, `getOtpCodeByCode()`, `markOtpUsed()`. **Do not delete** `linkByInviteCode()` or `generatePatientInviteCode()` yet; mark them `@Deprecated` and remove in Phase 9 once the OTP path is proven.
 4. `firestore.rules` — add an `otp_codes` block: caregivers create, **nobody reads or updates from the client at all** (the Worker reads it with admin privileges, which bypass rules). A client-readable `otp_codes` collection would be a brute-forceable list of account keys. Gate `patient_medications` and `schedules` writes on `can_edit_medications`.
@@ -124,9 +124,9 @@ Now the UI, against a data layer that already works.
 - `otp_entry_screen.dart` — **new.** Eight-character code entry, POSTs to the Worker's `/otp/redeem`, then `signInWithCustomToken()`. No email field, no password field, no forgot-password link. Handle all three failure modes distinctly: wrong code, expired code, already-used code.
 - New `lib/services/api_service.dart` — the only place the app talks to the Worker. The Worker base URL belongs in a `--dart-define`, not hardcoded, so you can point at a local `wrangler dev` while developing.
 - `otp_success_screen.dart` — **new.** Shows the patient their name and their pre-loaded schedule, then goes straight into `PatientMainScreen`.
-- `role_select_screen.dart` — add the solo option (currently hardcoded to patient and caregiver).
-- `register_screen.dart` — accept `role: 'solo'`, set `account_type: 'solo'` and `can_edit_medications: true`.
-- `main.dart` `AuthGate` — route on `accountType`, not `role`: managed to patient screens read-only, solo to solo screens, caregiver to caregiver screens. Skip the email-verification gate for managed patients, who have no real email.
+- `role_select_screen.dart` — add the solo option (currently hardcoded to patient and caregiver). *(Done, then reverted: the solo card was removed with the role, leaving caregiver as the only self-registering option.)*
+- `register_screen.dart` — accept `role: 'solo'`, set `account_type: 'solo'` and `can_edit_medications: true`. *(Superseded: the form is caregiver-only and rejects any other role.)*
+- `main.dart` `AuthGate` — route on `accountType`, not `role`: managed to patient screens read-only, caregiver to caregiver screens. Skip the email-verification gate for managed patients, who have no real email. *(The solo branch was removed with the role.)*
 
 **Done when:** on a real device you can go caregiver signup → create patient → generate code → install on a second device → enter code → land on a dashboard with the schedule already there. **This is the capstone's core claim. Demo it to your adviser this week.**
 
@@ -159,13 +159,20 @@ The feature the project is graded on. All screens exist; they need wiring to rea
 
 ---
 
-## Phase 6 — Solo role (Nov 10–13, 4 days)
+## Phase 6 — Solo role — REMOVED (Nov 10–13 freed)
 
-- `solo_dashboard_screen.dart` and `solo_analytics_screen.dart` — **new.**
-- `soloPurple` (`0xFF7C3AED`) accent in `app_colors.dart` — note `CLAUDE.md` has a typo here (`soloP urple`); use `soloPurple`.
-- Solo users reuse every other patient screen but with edit buttons **enabled**. Gate on `canEditMedications`, never on `role`.
+**The solo role was cut in October 2026 and will not be built.** It was
+scaffolded only and was never documented in the capstone paper, so removing it
+cost nothing downstream. Caregiver is the only self-registering account; a
+patient always arrives with a code from their caregiver.
 
-**Done when:** a solo user can self-register and run the full add → schedule → confirm loop with no caregiver in the picture.
+Neither `solo_dashboard_screen.dart` nor `solo_analytics_screen.dart` was ever
+created. The purple accent stays in `app_colors.dart` as `streakPurple`, which
+is what actually uses it — the streak notification type.
+
+The four days this phase held are now slack, which the schedule previously had
+none of. Spend them on Phase 7 (ESP32), historically the phase most likely to
+overrun.
 
 ---
 
@@ -215,12 +222,12 @@ Hardware comes late deliberately: it can be demoed from a working app, and it is
 | 3 | Oct 20–26 | 3 Auth flows ← **core demo milestone** |
 | 4 | Oct 27–Nov 2 | 4 Caregiver authoring |
 | 5 | Nov 3–9 | 5 Dose loop |
-| 6 | Nov 10–13 | 6 Solo role |
+| 6 | Nov 10–13 | ~~6 Solo role~~ — removed; days are now slack |
 | 7 | Nov 14–20 | 7 ESP32 |
 | 8 | Nov 21–25 | 8 Polish |
 | 8 | Nov 26–30 | 9 Release |
 
-**There is no slack week.** If a phase slips, the cut list in priority order is: solo role (Phase 6), then ESP32 offline sync (7.4), then streaks and low stock (Phase 8). Never cut Phase 2 or Phase 9.
+**Slack is now four days**, freed by removing the solo role. If a phase slips beyond that, the cut list in priority order is: ESP32 offline sync (7.4), then streaks and low stock (Phase 8). Never cut Phase 2 or Phase 9.
 
 ---
 

@@ -27,8 +27,8 @@ service cloud.firestore {
     }
 
     // Managed patients are read-only on medications by design: only the
-    // caregiver who created them may author their regimen. Solo users and
-    // caregivers carry can_edit_medications == true.
+    // caregiver who created them may author their regimen. Caregivers carry
+    // can_edit_medications == true.
     function canEditMedications() {
       return isAuthenticated() && callerDoc().can_edit_medications == true;
     }
@@ -38,7 +38,7 @@ service cloud.firestore {
     }
 
     // A user may write medications for a patient if they own that patient
-    // record (solo) or are that patient's caregiver — and may edit at all.
+    // record or are that patient's caregiver — and may edit at all.
     function mayAuthorFor(patientId) {
       return canEditMedications()
         && (isOwner(patientId) || isCaregiverOf(patientId));
@@ -52,8 +52,8 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.auth.uid == userId;
 
       // A user must not be able to promote themselves: can_edit_medications and
-      // account_type are set at creation (by the user themselves for solo and
-      // caregiver signups, or by the Worker for managed patients) and are
+      // account_type are set at creation (by the user themselves for a
+      // caregiver signup, or by the Worker for managed patients) and are
       // immutable thereafter from the client. Admin SDK writes bypass rules, so
       // the Worker can still change them.
       allow update: if isOwner(userId)
@@ -81,8 +81,8 @@ service cloud.firestore {
     // Medications reference collection (shared drug catalogue).
     //
     // Read-only from every client. can_edit_medications governs a user's own
-    // regimen, not this shared list — gating writes on it meant any solo user
-    // could rewrite or delete catalogue entries for every other user. Seeding
+    // regimen, not this shared list — gating writes on it meant any user with
+    // edit rights could rewrite catalogue entries for everyone else. Seeding
     // and corrections go through the console or the Worker, both of which
     // bypass these rules with admin credentials.
     match /medications/{medicationId} {

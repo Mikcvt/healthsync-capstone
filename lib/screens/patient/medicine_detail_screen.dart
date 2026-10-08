@@ -55,7 +55,7 @@ class MedicineDetailScreen extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (_) => EditMedicineScreen(
                       schedule: currentSchedule,
-                      // Pass the medicine too, so a solo user can correct its
+                      // Pass the medicine too, so an editor can correct its
                       // name and dosage and not just the dose time.
                       medication: currentSchedule == null
                           ? null

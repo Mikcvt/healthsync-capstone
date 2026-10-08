@@ -395,7 +395,6 @@ class _ProfileCard extends StatelessWidget {
 
   static String _roleLabel(UserModel? user) {
     if (user == null) return 'Patient';
-    if (user.isSolo) return 'Managing my own medicines';
     if (user.isManaged) return 'Patient · managed by caregiver';
     return 'Patient';
   }

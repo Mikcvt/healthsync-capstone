@@ -68,7 +68,7 @@ C:\Users\User\healthsync\
 
 ---
 
-## Three user types (redesigned flow)
+## Two user types
 
 ### 1. Caregiver / Care partner
 - Registers and logs in with email and password
@@ -87,13 +87,10 @@ C:\Users\User\healthsync\
 - Can only confirm doses and view their own history
 - Cannot edit medications — read-only access
 
-### 3. Solo user
-- Downloads app → selects Solo on welcome screen
-- Self-registers with email and password
-- Manages their own medications completely independently
-- Has full add, edit, delete access to their own medications
-- No caregiver connection needed
-- Receives their own FCM reminders
+> **A third "solo user" role was removed in October 2026.** It was scaffolded
+> but never documented in the capstone paper and never fully built. Caregiver is
+> now the only self-registering account; a patient always arrives with a code.
+> Do not reintroduce it.
 
 ---
 
@@ -104,8 +101,8 @@ C:\Users\User\healthsync\
 - Mark used: true in Firestore immediately after first login
 - Expires 48 hours after generation
 - Patient auth via OTP token — no password required
-- account_type field: "managed" (patient) or "solo" (solo user) or "caregiver"
-- can_edit_medications: true for caregiver and solo only, false for managed patient
+- account_type field: "managed" (patient) or "caregiver"
+- can_edit_medications: true for caregiver only, false for managed patient
 ```
 
 **Firestore OTP collection — `otp_codes`:**
@@ -125,7 +122,7 @@ used            bool       (set to true on first use)
 ### Colors
 
 ```dart
-// Patient / Solo
+// Patient
 patientBlue:    Color(0xFF1B5FD4)
 blueLight:      Color(0xFFEBF1FF)
 blueDark:       Color(0xFF0F3E9E)
@@ -135,8 +132,8 @@ caregiverGreen: Color(0xFF0D9B6B)
 greenLight:     Color(0xFFE4F7F0)
 greenDark:      Color(0xFF066845)
 
-// Solo user accent
-soloP urple:    Color(0xFF7C3AED)
+// Streak accent (streak notifications only, not a role colour)
+streakPurple:   Color(0xFF7C3AED)
 
 // Gradient (headers and primary buttons)
 gradient: LinearGradient(
@@ -187,8 +184,8 @@ ledOff:         Color(0xFFE2E8F0)
 ### users
 ```
 uid             string (Firebase Auth UID)
-role            string ("patient" | "caregiver" | "solo")
-account_type    string ("managed" | "solo" | "caregiver")
+role            string ("patient" | "caregiver")
+account_type    string ("managed" | "caregiver")
 first_name      string
 last_name       string
 email           string
@@ -247,7 +244,7 @@ date_prescribed     date
 start_date          date
 end_date            date
 is_active           bool
-created_by          string (caregiver uid or solo uid)
+created_by          string (caregiver uid)
 updated_at          timestamp
 ```
 
@@ -422,9 +419,9 @@ how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 
 ### AUTH screens
 ```
-[x] welcome_screen.dart               three-way split: caregiver / code / solo
+[x] welcome_screen.dart               caregiver sign-up / patient code / log in
 [x] role_select_screen.dart
-[x] register_screen.dart              accepts role: solo
+[x] register_screen.dart              caregiver only
 [x] login_screen.dart
 [x] forgot_password_screen.dart
 [x] email_verification_screen.dart    skipped for managed patients
@@ -484,12 +481,11 @@ DELETED — a static duplicate of a working screen:
   missed_alert_screen.dart       → use caregiver_alerts_screen.dart
 ```
 
-### SOLO USER screens (Phase 6)
+### SOLO USER screens — removed
 ```
-[ ] solo_dashboard_screen.dart
-[ ] solo_analytics_screen.dart
-(shares every other patient screen, with edit controls enabled —
- gate on canEditMedications, never on role)
+The solo role was removed in October 2026 before either screen was built.
+Neither solo_dashboard_screen.dart nor solo_analytics_screen.dart ever
+existed as files. Nothing to build here.
 ```
 
 ---
@@ -636,6 +632,13 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
 
 ✅ Fonts were fetched at runtime through google_fonts despite the TTFs sitting
    in fonts/. Now bundled, per coding standard 7.
+
+✅ Solo user role removed (Oct 2026). It was scaffolded only: an AccountType
+   constant, an isSolo getter, one role card on role_select_screen, and a
+   fallback in auth_service that turned any non-caregiver signup into a solo
+   account. Self-registration is now caregiver-only and rejects any other role
+   rather than defaulting. A users document still carrying account_type 'solo'
+   resolves to 'managed' — read-only, the safe direction.
 
 ⚠️ STILL OPEN: applicationId is "com.example.healthsync". Google Play REJECTS
    com.example.* and the id cannot be changed after the first upload. Changing

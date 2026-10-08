@@ -57,15 +57,24 @@ class AuthService {
         throw Exception('User creation failed: No user returned');
       }
 
-      // Self-registration only ever produces a caregiver or a solo user.
+      // Self-registration only ever produces a caregiver.
+      //
       // Managed patients never reach this method — their account is created by
       // the Worker on the caregiver's behalf, and they sign in with a custom
-      // token minted from an OTP. Both roles here own their own data, so both
-      // get can_edit_medications.
+      // token minted from an OTP. So a non-caregiver role arriving here is a
+      // routing mistake, and it is rejected rather than defaulted: silently
+      // creating a caregiver would grant permissions nobody asked for. The Auth
+      // account already exists by this point, so it is rolled back first to
+      // leave the email address usable.
       final normalizedRole = role.toLowerCase().trim();
-      final accountType = normalizedRole == 'caregiver'
-          ? AccountType.caregiver
-          : AccountType.solo;
+      if (normalizedRole != 'caregiver') {
+        await _rollbackRegistration(user);
+        throw Exception(
+          'Only caregiver accounts can be created here. If someone set '
+          'HealthSync up for you, use the code they sent you instead.',
+        );
+      }
+      const accountType = AccountType.caregiver;
 
       final userModel = UserModel(
         uid: user.uid,
@@ -96,55 +105,19 @@ class AuthService {
             .doc(user.uid)
             .set(userModel.toMap(), SetOptions(merge: true));
 
-        if (userModel.isCaregiver) {
-          await _firestore.collection('caregiver_profile').doc(user.uid).set({
-            'profile_id': user.uid,
-            'user_ref': user.uid,
-            'alert_pref_missed': true,
-            'alert_pref_low_stock': true,
-            'alert_pref_daily': true,
-            'created_at': Timestamp.now(),
-          }, SetOptions(merge: true));
-        } else {
-          // Solo users keep a patient_profile too — they have medications,
-          // schedules and dose logs exactly like a managed patient does.
-          await _firestore.collection('patient_profile').doc(user.uid).set({
-            'profile_id': user.uid,
-            'user_ref': user.uid,
-            'medical_conditions': '',
-            'allergies': '',
-            'emergency_contact': '',
-            'emergency_phone': '',
-            'caregiver_ref': null,
-            'created_at': Timestamp.now(),
-          }, SetOptions(merge: true));
-        }
+        // Only a caregiver_profile is written here. The patient_profile branch
+        // that used to sit alongside it served self-managing accounts; a managed
+        // patient's profile is created by the Worker when a caregiver adds them.
+        await _firestore.collection('caregiver_profile').doc(user.uid).set({
+          'profile_id': user.uid,
+          'user_ref': user.uid,
+          'alert_pref_missed': true,
+          'alert_pref_low_stock': true,
+          'alert_pref_daily': true,
+          'created_at': Timestamp.now(),
+        }, SetOptions(merge: true));
       } catch (e) {
-        // Roll back everything this registration touched so the email stays
-        // usable. Without this, a dropped connection at exactly this point
-        // costs the person their email address forever.
-        //
-        // The Firestore documents must go too: NotificationService writes an
-        // fcm_token to users/{uid} as soon as the auth state changes, which
-        // happens before this point. Deleting only the Auth account would
-        // leave that document behind as an orphan with no owner.
-        for (final ref in [
-          _firestore.collection('users').doc(user.uid),
-          _firestore.collection('patient_profile').doc(user.uid),
-          _firestore.collection('caregiver_profile').doc(user.uid),
-        ]) {
-          try {
-            await ref.delete();
-          } catch (_) {
-            // Best effort — the thrown error below is the useful signal.
-          }
-        }
-        try {
-          await user.delete();
-        } catch (_) {
-          // Deletion can itself fail offline; the thrown error below is still
-          // the more useful signal.
-        }
+        await _rollbackRegistration(user);
         throw Exception(
           'Could not finish creating your account. Please check your '
           'connection and try again.',
@@ -165,6 +138,36 @@ class AuthService {
       throw _handleAuthException(e);
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Undoes a half-finished registration so the email address stays usable.
+  ///
+  /// Without this, a dropped connection partway through costs the person that
+  /// address forever: registering again gives "email already in use" and
+  /// signing in gives "profile could not be loaded".
+  ///
+  /// The Firestore documents must go too. NotificationService writes an
+  /// fcm_token to users/{uid} as soon as the auth state changes, which happens
+  /// before registration finishes, so deleting only the Auth account would
+  /// leave that document orphaned with no owner.
+  Future<void> _rollbackRegistration(User user) async {
+    for (final ref in [
+      _firestore.collection('users').doc(user.uid),
+      _firestore.collection('patient_profile').doc(user.uid),
+      _firestore.collection('caregiver_profile').doc(user.uid),
+    ]) {
+      try {
+        await ref.delete();
+      } catch (_) {
+        // Best effort — the caller's thrown error is the useful signal.
+      }
+    }
+    try {
+      await user.delete();
+    } catch (_) {
+      // Deletion can itself fail offline; the caller's error is still more
+      // useful than this one.
     }
   }
 

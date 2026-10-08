@@ -6,7 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/preferences_service.dart';
 import 'notifications_screen.dart';
 
-/// App preferences for a patient or solo user.
+/// App preferences for a patient.
 ///
 /// The reminder toggles are device-local and persisted through
 /// [PreferencesService] — they used to be plain `setState` fields that reset

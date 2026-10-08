@@ -549,7 +549,7 @@ class PatientProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // MEDICATIONS (solo users only — gated on can_edit_medications)
+  // MEDICATIONS (gated on can_edit_medications — caregivers only)
   // ==========================================
 
   /// Updates the medicine itself — name, dosage, instructions, doctor.

@@ -34,9 +34,9 @@ class ScheduleScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          // Only caregivers and solo users may author medicines. A managed
-          // patient is read-only by design, so the control is absent rather
-          // than present-and-failing.
+          // Only caregivers may author medicines. A managed patient is
+          // read-only by design, so the control is absent rather than
+          // present-and-failing.
           if (canEdit)
             IconButton(
               icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.patientBlue, size: 28),

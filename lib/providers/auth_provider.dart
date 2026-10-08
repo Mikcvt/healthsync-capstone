@@ -64,11 +64,11 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => status == AuthStatus.ready;
   bool get isPatient => _currentUserModel?.isPatient ?? true;
   bool get isCaregiver => _currentUserModel?.isCaregiver ?? false;
-  bool get isSolo => _currentUserModel?.isSolo ?? false;
   bool get isManaged => _currentUserModel?.isManaged ?? false;
 
   /// Whether this user may author medications. Screens gate edit controls on
-  /// this, never on [isPatient] — a solo user is a patient who may edit.
+  /// this rather than on [isCaregiver], so the rule lives in one field that the
+  /// security rules also enforce.
   bool get canEditMedications =>
       _currentUserModel?.canEditMedications ?? false;
   bool get isLoading => _isLoading;

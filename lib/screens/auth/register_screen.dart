@@ -8,9 +8,12 @@ import 'login_screen.dart';
 import '../../utils/snackbar_helper.dart';
 
 class RegisterScreen extends StatefulWidget {
+  /// The account this form creates. Caregiver is the only self-registering
+  /// role, so it is also the default — a managed patient's account is created
+  /// by their caregiver and entered with a code, never through this form.
   final String role;
 
-  const RegisterScreen({super.key, this.role = 'patient'});
+  const RegisterScreen({super.key, this.role = 'caregiver'});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();

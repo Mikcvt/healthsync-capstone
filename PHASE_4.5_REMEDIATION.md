@@ -516,8 +516,8 @@ reaches Firestore. `errors` = failure path shows a message.
 | `caregiver_alerts_screen` | **no** | **no** | **no** | **BROKEN** — hardcoded (Task 4) |
 | `missed_alert_screen` | **no** | **no** | **no** | **BROKEN** — hardcoded (Task 4) |
 | **SOLO** (Phase 6) | | | | |
-| `solo_dashboard_screen` | — | — | — | not built |
-| `solo_analytics_screen` | — | — | — | not built |
+| `solo_dashboard_screen` | — | — | — | role removed Oct 2026; never built |
+| `solo_analytics_screen` | — | — | — | role removed Oct 2026; never built |
 
 **Totals:** 25 OK · 6 FIX · 14 BROKEN or DELETE
 

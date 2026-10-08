@@ -1,18 +1,22 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Account types. A user's capabilities are driven by [accountType], never by
-/// [role] — `role` is kept only so documents written before the three-role
+/// [role] — `role` is kept only so documents written before the account-type
 /// redesign still load.
+///
+/// There are two roles: a caregiver who authors a patient's regimen, and a
+/// managed patient who confirms doses. A third self-managing "solo" type was
+/// scaffolded and has been removed; [_deriveAccountType] still maps any
+/// document left carrying it.
 class AccountType {
   static const String managed = 'managed';
-  static const String solo = 'solo';
   static const String caregiver = 'caregiver';
 }
 
 class UserModel {
   final String uid;
-  final String role; // 'patient' | 'caregiver' | 'solo'
-  final String accountType; // 'managed' | 'solo' | 'caregiver'
+  final String role; // 'patient' | 'caregiver'
+  final String accountType; // 'managed' | 'caregiver'
   final String firstName;
   final String lastName;
   final String email;
@@ -43,7 +47,6 @@ class UserModel {
 
   bool get isPatient => role == 'patient';
   bool get isCaregiver => accountType == AccountType.caregiver;
-  bool get isSolo => accountType == AccountType.solo;
   bool get isManaged => accountType == AccountType.managed;
 
   /// Whether this patient is waiting on their caregiver to approve deletion.
@@ -55,21 +58,21 @@ class UserModel {
   bool get requiresEmailVerification => !isManaged;
 
   /// Back-fills [accountType] for documents written before the redesign.
+  ///
+  /// A stored `'solo'` is mapped to [AccountType.managed] rather than kept:
+  /// the type no longer exists, and resolving an unknown account to the
+  /// read-only side is the safe direction to fail. Pairing that with
+  /// [_deriveCanEdit] means such an account cannot author medications.
   static String _deriveAccountType(String role, Object? stored) {
-    if (stored is String && stored.isNotEmpty) return stored;
-    switch (role) {
-      case 'caregiver':
-        return AccountType.caregiver;
-      case 'solo':
-        return AccountType.solo;
-      default:
-        return AccountType.managed;
+    if (stored is String && stored.isNotEmpty) {
+      return stored == 'solo' ? AccountType.managed : stored;
     }
+    return role == 'caregiver' ? AccountType.caregiver : AccountType.managed;
   }
 
-  /// Only caregivers and solo users may author medications. A managed patient
-  /// is read-only by design, so an absent field must resolve to `false` for
-  /// them rather than defaulting open.
+  /// Only caregivers may author medications. A managed patient is read-only by
+  /// design, so an absent field must resolve to `false` for them rather than
+  /// defaulting open.
   static bool _deriveCanEdit(String accountType, Object? stored) {
     if (stored is bool) return stored;
     return accountType != AccountType.managed;

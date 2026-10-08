@@ -8,7 +8,7 @@ import '../../providers/patient_provider.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../utils/validators.dart';
 
-/// Lets a patient or solo user edit their own details.
+/// Lets a patient edit their own details.
 ///
 /// Two fields live in different places: name, phone and email belong to
 /// `users/{uid}` and go through [AuthProvider]; conditions, allergies and the

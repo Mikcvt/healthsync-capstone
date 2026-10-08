@@ -186,7 +186,7 @@ class PatientDashboardScreen extends StatelessWidget {
                       ),
                       // No "Link" action: a patient can no longer attach a
                       // caregiver themselves. Managed patients are created by
-                      // their caregiver already linked, and solo users manage
+                      // their caregiver already linked, and editors manage
                       // their own medicines by design.
                     ],
                   ),

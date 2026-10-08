@@ -168,8 +168,8 @@ class _NotificationTile extends StatelessWidget {
       case 'streak':
         return (
           Icons.local_fire_department_outlined,
-          AppColors.soloPurple,
-          AppColors.soloPurpleLight
+          AppColors.streakPurple,
+          AppColors.streakPurpleLight
         );
       default:
         return (

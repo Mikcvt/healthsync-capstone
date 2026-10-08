@@ -92,9 +92,8 @@ class AuthGate extends StatelessWidget {
           return const EmailVerificationScreen();
         }
 
-        // Routing is driven by account_type, not role: a solo user is a patient
-        // who may edit their own medicines, and gating on role would send them
-        // to the wrong place.
+        // Routing is driven by account_type, not role, so a document whose
+        // role predates the current scheme still lands in the right place.
         if (user.isCaregiver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             context.read<CaregiverProvider>().initForCaregiver(user.uid);

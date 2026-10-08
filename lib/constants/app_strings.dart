@@ -14,8 +14,6 @@ class AppStrings {
   // Empty states — patient
   static const String noMedications =
       'No medications yet. Your caregiver will add them for you.';
-  static const String noMedicationsSolo =
-      'No medications yet. Add your first one to start tracking.';
   static const String noSchedulesToday = 'Nothing scheduled for today.';
   static const String noDoseHistory =
       'No dose history yet. Your record builds as you confirm doses.';
