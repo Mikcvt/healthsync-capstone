@@ -141,6 +141,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patient_ref",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
