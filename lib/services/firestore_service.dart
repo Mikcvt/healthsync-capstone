@@ -147,72 +147,6 @@ class FirestoreService {
         .update(model.toMap());
   }
 
-  /// Retires a medication **and every schedule that points at it**.
-  ///
-  /// Deactivating only one side is what left medicines sitting in the list with
-  /// their schedules gone, and schedules firing for medicines the patient had
-  /// already removed.
-  /// Retires a medicine and every schedule attached to it.
-  ///
-  /// [patientUid] is required because Firestore rules are not filters: a query
-  /// on `pat_med_ref` alone could in principle match another patient's
-  /// schedules, so the rules engine rejects it outright no matter what the data
-  /// actually holds. Constraining on `patient_ref` is what makes the query
-  /// provably safe — and it is the correct query regardless.
-  // ==========================================
-  // ACCOUNT DELETION (patient requests, caregiver approves)
-  //
-  // A managed patient cannot delete themselves outright: their account holds a
-  // medication record their caregiver is responsible for, and a tap in a
-  // moment of frustration should not destroy it. The request is recorded, the
-  // caregiver sees it, and only they can carry it out.
-  // ==========================================
-
-  /// Flags a patient account for deletion, pending caregiver approval.
-  Future<void> requestAccountDeletion({
-    required String patientUid,
-    String reason = '',
-  }) async {
-    await _db.collection('users').doc(patientUid).update({
-      'deletion_requested_at': Timestamp.now(),
-      'deletion_reason': reason.trim(),
-      // A new request replaces the answer to the last one.
-      'deletion_declined_at': null,
-    });
-  }
-
-  /// The caregiver declines a patient's deletion request, and the patient is
-  /// told.
-  ///
-  /// This used to call [cancelAccountDeletionRequest], which writes the
-  /// patient's users document — and the rules only let a user update their
-  /// own, so every Decline failed. The rules now let the patient's caregiver
-  /// touch these three fields and create this one kind of notification.
-  Future<void> declineAccountDeletionRequest(String patientUid) async {
-    final now = Timestamp.now();
-    final notification = _db.collection('notifications').doc();
-    final batch = _db.batch()
-      ..update(_db.collection('users').doc(patientUid), {
-        'deletion_requested_at': null,
-        'deletion_reason': null,
-        'deletion_declined_at': now,
-      })
-      ..set(notification, {
-        'notif_id': notification.id,
-        'user_ref': patientUid,
-        'patient_ref': patientUid,
-        'notification_type': 'request_declined',
-        'title': 'Deletion request declined',
-        'message': 'Your care partner declined your request to delete your '
-            'account. Your account and reminders stay as they are.',
-        'sent_at': now,
-        'read_at': null,
-        'channel': 'in_app',
-        'is_active': true,
-      });
-    await batch.commit();
-  }
-
   /// What the patient's phone found when it checked whether reminders can
   /// fire, plus when the app was opened. Read by the caregiver dashboard.
   Future<void> reportReminderHealth(
@@ -226,14 +160,6 @@ class FirestoreService {
       'reminders_exact_alarms_ok': exactAlarmsOk,
       'reminders_battery_ok': batteryOk,
       'app_last_opened_at': Timestamp.now(),
-    });
-  }
-
-  /// Withdraws a pending deletion request.
-  Future<void> cancelAccountDeletionRequest(String patientUid) async {
-    await _db.collection('users').doc(patientUid).update({
-      'deletion_requested_at': null,
-      'deletion_reason': null,
     });
   }
 

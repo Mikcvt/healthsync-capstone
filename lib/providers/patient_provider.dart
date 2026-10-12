@@ -204,38 +204,6 @@ class PatientProvider extends ChangeNotifier {
     }
   }
 
-  /// Asks the caregiver to delete this account.
-  Future<bool> requestAccountDeletion({String reason = ''}) async {
-    final uid = _patientUid;
-    if (uid == null) return false;
-    _errorMessage = null;
-    try {
-      await _firestoreService.requestAccountDeletion(
-        patientUid: uid,
-        reason: reason,
-      );
-      return true;
-    } catch (e) {
-      debugPrint('requestAccountDeletion failed: $e');
-      _errorMessage = AppStrings.genericError;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Withdraws the request.
-  Future<bool> cancelAccountDeletionRequest() async {
-    final uid = _patientUid;
-    if (uid == null) return false;
-    try {
-      await _firestoreService.cancelAccountDeletionRequest(uid);
-      return true;
-    } catch (e) {
-      debugPrint('cancelAccountDeletionRequest failed: $e');
-      return false;
-    }
-  }
-
   List<DoseLogModel> get todayLogs {
     final today = DateTime.now();
     final key = DateFormatter.toDateKey(today);

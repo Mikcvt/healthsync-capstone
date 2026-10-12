@@ -11,6 +11,7 @@ import 'providers/schedule_provider.dart';
 import 'screens/auth/splash_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/auth/email_verification_screen.dart';
+import 'screens/auth/pending_deletion_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
 import 'services/connectivity_service.dart';
@@ -100,6 +101,9 @@ class AuthGate extends StatelessWidget {
 
       case AuthStatus.profileMissing:
         return const _ProfileUnavailableScreen();
+
+      case AuthStatus.pendingDeletion:
+        return const PendingDeletionScreen();
 
       case AuthStatus.ready:
         final user = authProvider.currentUserModel!;

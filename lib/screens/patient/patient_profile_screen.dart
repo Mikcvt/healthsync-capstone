@@ -15,6 +15,7 @@ import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
 import '../../widgets/shared/about_healthsync_sheet.dart';
 import '../../widgets/shared/confirm_dialog.dart';
+import '../../widgets/shared/warning_line.dart';
 
 class PatientProfileScreen extends StatefulWidget {
   const PatientProfileScreen({super.key});
@@ -129,30 +130,14 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                       onTap: _handleSignOut,
                     ),
                     const SizedBox(height: 12),
-                    Builder(
-                      builder: (context) {
-                        final me =
-                            context.watch<AuthProvider>().currentUserModel;
-                        final pending = me?.hasPendingDeletion ?? false;
-                        final declined = me?.deletionWasDeclined ?? false;
-                        return _ProfileOption(
-                          label: pending
-                              ? 'Deletion requested'
-                              : 'Delete my account',
-                          subtitle: pending
-                              ? 'Waiting for your care partner to approve'
-                              : declined
-                                  ? 'Your care partner declined your last '
-                                      'request'
-                                  : 'Your care partner must approve this',
-                          icon: pending
-                              ? Icons.hourglass_top_rounded
-                              : Icons.delete_outline,
-                          dangerous: true,
-                          onTap: () => _handleDeletionRequest(pending),
-                        );
-                      },
+                    _ProfileOption(
+                      label: 'Delete my account',
+                      subtitle: 'Your care partner can restore it for 30 days',
+                      icon: Icons.delete_outline,
+                      dangerous: true,
+                      onTap: _handleDeleteAccount,
                     ),
+                    const SizedBox(height: 12),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -164,99 +149,35 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     );
   }
 
-  /// Asks the caregiver to delete this account, or withdraws that request.
-  ///
-  /// Deliberately not immediate. A managed patient's record belongs to the care
-  /// relationship, and a tap in a bad moment should not destroy the medication
-  /// history their caregiver depends on.
-  Future<void> _handleDeletionRequest(bool alreadyPending) async {
-    final patient = context.read<PatientProvider>();
-
-    if (alreadyPending) {
-      final cancel = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Withdraw your request?',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          content: const Text(
-            'Your account will stay exactly as it is.',
-            style: TextStyle(height: 1.5, color: AppColors.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep request'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Withdraw'),
-            ),
-          ],
-        ),
-      );
-      if (cancel != true || !mounted) return;
-      final ok = await patient.cancelAccountDeletionRequest();
-      if (!mounted) return;
-      ok
-          ? SnackbarHelper.showSuccess(context, 'Request withdrawn.')
-          : SnackbarHelper.showError(context, AppStrings.genericError);
-      return;
-    }
-
-    final controller = TextEditingController();
+  /// Deletes this account. No approval is needed: Google Play requires that
+  /// whoever asks for deletion gets it. A tap in a bad moment is covered by
+  /// the 30 days in which the care partner, who is told at once, can restore
+  /// it.
+  Future<void> _handleDeleteAccount() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Request account deletion?',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Your care partner will be asked to approve this. Nothing is '
-              'deleted until they do, and you can withdraw the request at any '
-              'time.',
-              style: TextStyle(height: 1.5, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Reason (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Send request',
-                style: TextStyle(color: AppColors.missedRed)),
-          ),
-        ],
-      ),
+      builder: (_) => const _DeleteOwnAccountDialog(),
     );
-    final reason = controller.text;
-    controller.dispose();
-
     if (confirmed != true || !mounted) return;
-    final ok = await patient.requestAccountDeletion(reason: reason);
+
+    final auth = context.read<AuthProvider>();
+    final ok = await auth.deleteOwnPatientAccount();
     if (!mounted) return;
-    ok
-        ? SnackbarHelper.showSuccess(
-            context, 'Your care partner has been asked to approve this.')
-        : SnackbarHelper.showError(context, AppStrings.genericError);
+    if (!ok) {
+      SnackbarHelper.showError(
+          context, auth.errorMessage ?? AppStrings.genericError);
+      return;
+    }
+    final purgeOn = auth.deletionPurgeDate;
+    SnackbarHelper.showInfo(
+      context,
+      purgeOn == null
+          ? 'Your account was deleted.'
+          : 'Your account will be deleted on '
+              '${DateFormatter.toShortDate(purgeOn)}.',
+    );
+    // AuthGate shows the welcome screen once signed out.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _handleSignOut() async {
@@ -715,6 +636,85 @@ class _ProfileOption extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Spells out what deleting their own account means for a patient, behind an
+/// "I understand" box. There is no password to ask for: managed patients
+/// sign in with a code.
+class _DeleteOwnAccountDialog extends StatefulWidget {
+  const _DeleteOwnAccountDialog();
+
+  @override
+  State<_DeleteOwnAccountDialog> createState() =>
+      _DeleteOwnAccountDialogState();
+}
+
+class _DeleteOwnAccountDialogState extends State<_DeleteOwnAccountDialog> {
+  bool _understood = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Delete your account?',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.missedRedBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  WarningLine(
+                    'Your reminders stop now and this phone is signed out.',
+                  ),
+                  WarningLine(
+                    'After 30 days your medicines, schedule and dose history '
+                    'are permanently deleted.',
+                  ),
+                  WarningLine(
+                    'Your care partner is told, and can restore your account '
+                    'until then.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            CheckboxListTile(
+              value: _understood,
+              onChanged: (value) =>
+                  setState(() => _understood = value ?? false),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              activeColor: AppColors.missedRed,
+              title: const Text(
+                'I understand my account will be deleted.',
+                style: TextStyle(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _understood ? () => Navigator.pop(context, true) : null,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.missedRed),
+          child: const Text('Delete my account'),
+        ),
+      ],
     );
   }
 }

@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../services/firestore_service.dart';
 import '../patient/change_password_screen.dart';
+import '../../utils/date_formatter.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/shared/confirm_dialog.dart';
 import '../../widgets/shared/legal_links.dart';
@@ -42,8 +43,16 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
       builder: (_) => const _DeleteAccountDialog(),
     );
     if (deleted != true || !mounted) return;
-    // AuthGate renders WelcomeScreen once the account is gone; replacing the
-    // root here would leave later sign-ins with nothing to route them.
+    final purgeOn = context.read<AuthProvider>().deletionPurgeDate;
+    if (purgeOn != null) {
+      SnackbarHelper.showInfo(
+        context,
+        'Your account will be deleted on ${DateFormatter.toShortDate(purgeOn)}. '
+        'Sign in before then to restore it.',
+      );
+    }
+    // AuthGate renders WelcomeScreen once signed out; replacing the root here
+    // would leave later sign-ins with nothing to route them.
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
@@ -328,22 +337,23 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                 children: [
                   WarningLine(
                     count == 0
-                        ? 'Any patient accounts you created will be permanently deleted.'
+                        ? 'Any patient accounts you created will be deleted too.'
                         : 'Your ${count == 1 ? 'patient\'s account' : '$count patients\' accounts'} '
-                            'will be permanently deleted:',
+                            'will be deleted too:',
                   ),
                   for (final uid in patientUids) _PatientNameLine(uid),
                   const WarningLine(
-                    'All medication schedules, reminders, dose history and '
-                    'alerts, yours and your patients\', will be erased.',
+                    'You and your patients are signed out now. Their reminders '
+                    'stop and unused patient codes stop working.',
                   ),
                   const WarningLine(
-                    'Your patients\' phones will be signed out and stop '
-                    'reminding them. Paired medicine boxes are unlinked and '
-                    'unused patient codes stop working.',
+                    'After 30 days everything is permanently deleted: '
+                    'medication schedules, dose history and alerts, yours and '
+                    'your patients\'. Paired medicine boxes are unlinked.',
                   ),
                   const WarningLine(
-                    'This cannot be undone. Nothing can be recovered.',
+                    'To undo it, sign in again within the 30 days and choose '
+                    'Restore.',
                   ),
                 ],
               ),
@@ -400,7 +410,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Delete everything'),
+              : const Text('Delete account'),
         ),
       ],
     );

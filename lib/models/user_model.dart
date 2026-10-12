@@ -25,13 +25,15 @@ class UserModel {
   final DateTime createdAt;
   final bool isActive;
 
-  /// Set when the patient has asked to delete their account. Their caregiver
-  /// must approve before anything is removed.
+  /// Set by the Worker when the account was deleted. It stays restorable
+  /// until [deletionScheduledFor], when everything is purged.
   final DateTime? deletionRequestedAt;
 
-  /// Set when the caregiver declined the patient's last deletion request.
-  /// Cleared when the patient asks again.
-  final DateTime? deletionDeclinedAt;
+  /// When the account will be permanently deleted. Null for a live account.
+  final DateTime? deletionScheduledFor;
+
+  /// Who deleted it: the account's own uid, or the care partner's.
+  final String? deletionRequestedBy;
 
   /// What the patient's phone last reported about whether reminders can fire
   /// (ReminderHealthService). Null until the patient app has reported. The
@@ -59,7 +61,8 @@ class UserModel {
     required this.createdAt,
     this.isActive = true,
     this.deletionRequestedAt,
-    this.deletionDeclinedAt,
+    this.deletionScheduledFor,
+    this.deletionRequestedBy,
     this.remindersNotificationsOk,
     this.remindersExactAlarmsOk,
     this.remindersBatteryOk,
@@ -72,12 +75,11 @@ class UserModel {
   bool get isCaregiver => accountType == AccountType.caregiver;
   bool get isManaged => accountType == AccountType.managed;
 
-  /// Whether this patient is waiting on their caregiver to approve deletion.
-  bool get hasPendingDeletion => deletionRequestedAt != null;
+  /// Deleted, and still inside the 30 days in which it can be restored.
+  bool get hasPendingDeletion => deletionScheduledFor != null;
 
-  /// Whether the last deletion request was declined, and none is pending.
-  bool get deletionWasDeclined =>
-      deletionDeclinedAt != null && deletionRequestedAt == null;
+  /// The patient deleted their own account, rather than their care partner.
+  bool get deletedThemselves => deletionRequestedBy == uid;
 
   /// False when the patient's phone reported something that stops reminders.
   /// Null (unknown) counts as fine: older app versions never report.
@@ -141,9 +143,10 @@ class UserModel {
       deletionRequestedAt: map['deletion_requested_at'] is Timestamp
           ? (map['deletion_requested_at'] as Timestamp).toDate()
           : null,
-      deletionDeclinedAt: map['deletion_declined_at'] is Timestamp
-          ? (map['deletion_declined_at'] as Timestamp).toDate()
+      deletionScheduledFor: map['deletion_scheduled_for'] is Timestamp
+          ? (map['deletion_scheduled_for'] as Timestamp).toDate()
           : null,
+      deletionRequestedBy: map['deletion_requested_by'] as String?,
       remindersNotificationsOk: map['reminders_notifications_ok'] as bool?,
       remindersExactAlarmsOk: map['reminders_exact_alarms_ok'] as bool?,
       remindersBatteryOk: map['reminders_battery_ok'] as bool?,
@@ -193,7 +196,8 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       deletionRequestedAt: deletionRequestedAt ?? this.deletionRequestedAt,
-      deletionDeclinedAt: deletionDeclinedAt,
+      deletionScheduledFor: deletionScheduledFor,
+      deletionRequestedBy: deletionRequestedBy,
       remindersNotificationsOk: remindersNotificationsOk,
       remindersExactAlarmsOk: remindersExactAlarmsOk,
       remindersBatteryOk: remindersBatteryOk,

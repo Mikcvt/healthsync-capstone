@@ -372,12 +372,15 @@ class CaregiverProvider extends ChangeNotifier {
     }
   }
 
-  /// Permanently deletes a patient and everything recorded for them, whether
-  /// the caregiver is removing them or approving the patient's own request.
-  ///
-  /// "Removing" used to only switch the patient off: the login, medicines and
-  /// every dose log stayed forever. The Worker now does the full delete; it
-  /// needs a fresh sign-in, so the password is checked first.
+  DateTime? _lastPurgeDate;
+
+  /// When the patient deleted by the last [deletePatient] will be erased.
+  DateTime? get lastPurgeDate => _lastPurgeDate;
+
+  /// Deletes a patient and everything recorded for them. The Worker pauses
+  /// the account at once and purges it after 30 days; until then
+  /// [restorePatient] brings it back. It needs a fresh sign-in, so the
+  /// password is checked first.
   Future<bool> deletePatient(
     String patientUid, {
     required String password,
@@ -386,7 +389,7 @@ class CaregiverProvider extends ChangeNotifier {
     _errorMessage = null;
     try {
       await AuthService().reauthenticate(password);
-      await _apiService.deletePatient(patientUid);
+      _lastPurgeDate = await _apiService.deletePatient(patientUid);
       if (_selectedPatientUid == patientUid) {
         _selectedPatientUid = null;
         _selectedPatientUser = null;
@@ -419,12 +422,18 @@ class CaregiverProvider extends ChangeNotifier {
     }
   }
 
-  /// Declines the request, leaving the account in place.
-  Future<bool> declineDeletionRequest(String patientUid) async {
+  /// Restores a patient deleted within the last 30 days, by the care partner
+  /// or by the patient themselves. Their medicines and reminders resume; they
+  /// need a new code to sign in on their phone again.
+  Future<bool> restorePatient(String patientUid) async {
     _errorMessage = null;
     try {
-      await _firestoreService.declineAccountDeletionRequest(patientUid);
+      await _apiService.restoreAccount(patientUid: patientUid);
       return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       notifyListeners();

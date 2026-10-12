@@ -5,23 +5,17 @@ import '../../constants/app_styles.dart';
 import '../../providers/caregiver_provider.dart';
 import '../shared/warning_line.dart';
 
-/// Confirms and carries out the permanent deletion of one patient.
-///
-/// Shared by "Remove patient" and by approving the patient's own deletion
-/// request, which used to delete on a single tap with no confirmation at all.
+/// Confirms and carries out the deletion of one patient: paused at once,
+/// permanently erased after 30 days unless restored from their card.
 /// Pops true once the patient is deleted; failures are shown in the dialog.
 class DeletePatientDialog extends StatefulWidget {
   final String patientUid;
   final String patientName;
 
-  /// The patient asked for this, so the wording says so.
-  final bool requestedByPatient;
-
   const DeletePatientDialog({
     super.key,
     required this.patientUid,
     required this.patientName,
-    this.requestedByPatient = false,
   });
 
   @override
@@ -75,28 +69,12 @@ class _DeletePatientDialogState extends State<DeletePatientDialog> {
   Widget build(BuildContext context) {
     final name = widget.patientName;
     return AlertDialog(
-      title: Text(
-        widget.requestedByPatient
-            ? 'Approve $name\'s request?'
-            : 'Delete $name permanently?',
-      ),
+      title: Text('Delete $name?'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.requestedByPatient)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  '$name asked for their account to be deleted. Approving '
-                  'deletes it now.',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -106,20 +84,20 @@ class _DeletePatientDialogState extends State<DeletePatientDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  WarningLine('$name\'s account will be permanently deleted.'),
                   const WarningLine(
-                    'All their medicines, schedules, reminders, dose history '
-                    'and alerts will be erased, including adherence reports.',
+                    'Their phone is signed out now and stops reminding them. '
+                    'Their codes stop working.',
+                  ),
+                  WarningLine(
+                    'After 30 days $name\'s account is permanently deleted, '
+                    'with all their medicines, schedules, dose history, '
+                    'alerts and adherence reports. Their medicine box is '
+                    'unlinked.',
                   ),
                   const WarningLine(
-                    'Their phone will be signed out and stop reminding them. '
-                    'Their medicine box is unlinked and their codes stop '
-                    'working.',
-                  ),
-                  const WarningLine(
-                    'This cannot be undone. If they only finished their '
-                    'medicines, use "Mark treatment complete" instead to keep '
-                    'their history.',
+                    'Until then you can restore them from My Patients. If '
+                    'they only finished their medicines, use "Mark treatment '
+                    'complete" instead to keep their history.',
                   ),
                 ],
               ),
@@ -176,7 +154,7 @@ class _DeletePatientDialogState extends State<DeletePatientDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Delete permanently'),
+              : const Text('Delete'),
         ),
       ],
     );

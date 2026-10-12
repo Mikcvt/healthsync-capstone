@@ -243,6 +243,12 @@ class _AlertCard extends StatelessWidget {
           AppColors.pendingAmber,
           AppColors.pendingAmberBg
         );
+      case 'account_deletion':
+        return (
+          Icons.person_remove_outlined,
+          AppColors.missedRed,
+          AppColors.missedRedBg
+        );
       default:
         return (
           Icons.notifications_active_outlined,

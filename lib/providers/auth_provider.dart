@@ -28,6 +28,11 @@ enum AuthStatus {
 
   /// Session and profile both loaded. Route on [UserModel.accountType].
   ready,
+
+  /// A care partner signed in to an account they deleted, still inside its 30
+  /// days. They may restore it or sign out, nothing else. (A managed patient
+  /// in this state is signed out instead: their care partner restores them.)
+  pendingDeletion,
 }
 
 class AuthProvider extends ChangeNotifier {
@@ -51,12 +56,21 @@ class AuthProvider extends ChangeNotifier {
   /// so an absent profile can be told apart from one still in flight.
   bool _profileResolved = false;
 
+  /// A deleted patient's sign-out is under way.
+  bool _deletedSignOutStarted = false;
+
   UserModel? get currentUserModel => _currentUserModel;
 
   AuthStatus get status {
     if (!_authResolved) return AuthStatus.checking;
     if (_authService.currentUser == null) return AuthStatus.signedOut;
-    if (_currentUserModel != null) return AuthStatus.ready;
+    final user = _currentUserModel;
+    if (user != null && user.hasPendingDeletion) {
+      // A patient is being signed out (see _listenToUserProfile); showing
+      // their dashboard for that moment would restart their reminders.
+      return user.isManaged ? AuthStatus.loadingProfile : AuthStatus.pendingDeletion;
+    }
+    if (user != null) return AuthStatus.ready;
     return _profileResolved
         ? AuthStatus.profileMissing
         : AuthStatus.loadingProfile;
@@ -107,6 +121,16 @@ class AuthProvider extends ChangeNotifier {
       _currentUserModel = profile;
       _profileResolved = true;
       notifyListeners();
+      // Deleted by themselves or their care partner: this phone stops here.
+      // Signing out also cancels every reminder scheduled on it.
+      // Once: signing out clears the push token, which emits the profile again.
+      if (profile != null &&
+          profile.isManaged &&
+          profile.hasPendingDeletion &&
+          !_deletedSignOutStarted) {
+        _deletedSignOutStarted = true;
+        signOut().whenComplete(() => _deletedSignOutStarted = false);
+      }
     }, onError: (Object e) {
       // A rules failure or a dropped connection must not leave the gate stuck
       // on a spinner forever.
@@ -344,18 +368,63 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  DateTime? _deletionPurgeDate;
+
+  /// When the account deleted by the last [deleteAccount] or
+  /// [deleteOwnPatientAccount] will be permanently erased.
+  DateTime? get deletionPurgeDate => _deletionPurgeDate;
+
   /// Deletes a caregiver's account together with every patient account they
-  /// manage. The Worker does the cascade; this proves the password, asks for
-  /// it, and signs this phone out.
+  /// manage. The Worker pauses them all and purges them after 30 days; this
+  /// proves the password and signs this phone out. Signing back in within the
+  /// 30 days offers a restore.
   Future<bool> deleteAccount({required String password}) async {
     _setLoading(true);
     _errorMessage = null;
     try {
       await _authService.reauthenticate(password);
-      await _apiService.deleteAccount();
-      // The Auth account is already gone; this clears the local session.
-      await _authService.signOut();
-      _currentUserModel = null;
+      _deletionPurgeDate = await _apiService.deleteAccount();
+      await signOut();
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  /// A managed patient deletes their own account. No approval and no password
+  /// (they have none): the Worker tells their care partner, who can restore
+  /// it within 30 days. This phone is signed out.
+  Future<bool> deleteOwnPatientAccount() async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      _deletionPurgeDate = await _apiService.deleteAccount();
+      await signOut();
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  /// Cancels the signed-in care partner's own deletion, and their patients'.
+  /// The profile stream then clears [AuthStatus.pendingDeletion].
+  Future<bool> restoreAccount() async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      await _apiService.restoreAccount();
       _setLoading(false);
       return true;
     } on ApiException catch (e) {

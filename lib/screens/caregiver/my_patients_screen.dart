@@ -9,6 +9,7 @@ import '../../constants/app_styles.dart';
 import '../../models/user_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/date_formatter.dart';
 import 'add_patient_screen.dart';
 import 'patient_detail_screen.dart';
 import 'setup_medications_screen.dart';
@@ -140,7 +141,7 @@ class _PatientCardState extends State<_PatientCard> {
 
         return InkWell(
           onTap: widget.onTap,
-          onLongPress: patient == null
+          onLongPress: patient == null || patient.hasPendingDeletion
               ? null
               : () => _confirmRemove(
                     context,
@@ -185,10 +186,10 @@ class _PatientCardState extends State<_PatientCard> {
                       ),
                       const SizedBox(height: 5),
                       if (patient != null) _StatusChip(patient: patient),
-                      if (patient?.hasPendingDeletion == true) ...[
+                      if (patient != null && patient.hasPendingDeletion) ...[
                         const SizedBox(height: 6),
-                        _DeletionRequestBanner(
-                          patientUid: widget.patientUid,
+                        _PendingDeletionBanner(
+                          patient: patient,
                           name: displayName,
                         ),
                       ],
@@ -332,97 +333,112 @@ class _EmptyPatients extends StatelessWidget {
   }
 }
 
-/// Permanently deletes a patient, behind a dialog that spells out what goes
-/// with them and asks for the password.
-///
-/// Removing used to only deactivate the patient, keeping their login and data
-/// forever. [requestedByPatient] words the dialog as approving their request.
+/// Deletes a patient, behind a dialog that spells out what goes with them and
+/// asks for the password. Restorable from their card for 30 days.
 Future<void> _confirmRemove(
   BuildContext context, {
   required String patientUid,
   required String displayName,
-  bool requestedByPatient = false,
 }) async {
+  final caregiver = context.read<CaregiverProvider>();
   final deleted = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (_) => DeletePatientDialog(
       patientUid: patientUid,
       patientName: displayName,
-      requestedByPatient: requestedByPatient,
     ),
   );
   if (deleted == true && context.mounted) {
-    SnackbarHelper.showSuccess(context, '$displayName was deleted.');
+    final purgeOn = caregiver.lastPurgeDate;
+    SnackbarHelper.showSuccess(
+      context,
+      purgeOn == null
+          ? '$displayName was deleted.'
+          : '$displayName will be deleted on '
+              '${DateFormatter.toShortDate(purgeOn)}. You can restore them '
+              'until then.',
+    );
   }
 }
 
-/// Surfaces a patient's own request to be deleted, with both answers.
+/// A patient deleted within the last 30 days, by the care partner or by
+/// themselves, with the one thing still possible: bringing them back.
 ///
-/// The patient cannot act on this themselves by design, so the caregiver has
-/// to see it somewhere they actually look — their patient list.
-class _DeletionRequestBanner extends StatelessWidget {
-  final String patientUid;
+/// Replaces the approve/decline banner. A patient's own deletion no longer
+/// waits for approval (Google Play requires that whoever asks gets it), so
+/// the care partner's say is the restore instead.
+class _PendingDeletionBanner extends StatefulWidget {
+  final UserModel patient;
   final String name;
 
-  const _DeletionRequestBanner({required this.patientUid, required this.name});
+  const _PendingDeletionBanner({required this.patient, required this.name});
+
+  @override
+  State<_PendingDeletionBanner> createState() => _PendingDeletionBannerState();
+}
+
+class _PendingDeletionBannerState extends State<_PendingDeletionBanner> {
+  bool _restoring = false;
+
+  Future<void> _restore() async {
+    setState(() => _restoring = true);
+    final caregiver = context.read<CaregiverProvider>();
+    final ok = await caregiver.restorePatient(widget.patient.uid);
+    if (!mounted) return;
+    setState(() => _restoring = false);
+    ok
+        ? SnackbarHelper.showSuccess(
+            context,
+            '${widget.name} is restored. Send them a new code to sign in.',
+          )
+        : SnackbarHelper.showError(
+            context,
+            caregiver.errorMessage ?? 'Could not restore ${widget.name}.',
+          );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final caregiver = context.read<CaregiverProvider>();
+    final purgeOn = widget.patient.deletionScheduledFor;
+    final when =
+        purgeOn == null ? 'soon' : 'on ${DateFormatter.toShortDate(purgeOn)}';
+    final who = widget.patient.deletedThemselves
+        ? '${widget.name} deleted their account'
+        : 'You deleted this account';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
       decoration: BoxDecoration(
-        color: AppColors.pendingAmberBg,
+        color: AppColors.missedRedBg,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$name asked to delete their account',
+            '$who. It will be permanently deleted $when.',
             style: const TextStyle(
               fontSize: 12,
+              height: 1.4,
               fontWeight: FontWeight.w700,
-              color: AppColors.pendingAmber,
+              color: AppColors.missedRed,
             ),
           ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              TextButton(
-                onPressed: () => _confirmRemove(
-                  context,
-                  patientUid: patientUid,
-                  displayName: name,
-                  requestedByPatient: true,
-                ),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 30),
-                ),
-                child: const Text('Approve',
-                    style: TextStyle(
-                        fontSize: 12.5, color: AppColors.missedRed)),
+          TextButton(
+            onPressed: _restoring ? null : _restore,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+            ),
+            child: Text(
+              _restoring ? 'Restoring…' : 'Restore',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.caregiverGreen,
               ),
-              TextButton(
-                onPressed: () async {
-                  final ok =
-                      await caregiver.declineDeletionRequest(patientUid);
-                  if (!context.mounted) return;
-                  ok
-                      ? SnackbarHelper.showInfo(context, 'Request declined.')
-                      : SnackbarHelper.showError(
-                          context, 'Could not decline the request.');
-                },
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 30),
-                ),
-                child: const Text('Decline', style: TextStyle(fontSize: 12.5)),
-              ),
-            ],
+            ),
           ),
         ],
       ),

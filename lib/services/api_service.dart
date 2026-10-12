@@ -183,24 +183,43 @@ class ApiService {
     }
   }
 
-  /// Deletes the signed-in caregiver's account, every patient account they
-  /// manage, and all of their data. The Worker refuses a sign-in older than
-  /// five minutes, so re-authenticate first.
+  /// Deletes the signed-in account. A caregiver's takes every patient account
+  /// they manage with it, and needs a sign-in under five minutes old, so
+  /// re-authenticate first. A managed patient's needs no re-authentication.
   ///
-  /// Returns how many patient accounts were deleted.
-  Future<int> deleteAccount() async {
+  /// Nothing is erased yet: the accounts are paused and purged after 30 days,
+  /// unless restored. Returns the purge date.
+  Future<DateTime?> deleteAccount() async {
     final data = await _post('/account/delete', {}, authenticated: true);
-    return (data['patients_deleted'] as num?)?.toInt() ?? 0;
+    return _purgeDate(data);
   }
 
-  /// Permanently deletes one of the caregiver's patients and all of their
-  /// data. Like [deleteAccount], it needs a sign-in under five minutes old.
-  Future<void> deletePatient(String patientUid) async {
-    await _post(
+  /// Deletes one of the caregiver's patients, restorable for 30 days. Like
+  /// [deleteAccount], it needs a sign-in under five minutes old. Returns the
+  /// purge date.
+  Future<DateTime?> deletePatient(String patientUid) async {
+    final data = await _post(
       '/patients/delete',
       {'patient_uid': patientUid},
       authenticated: true,
     );
+    return _purgeDate(data);
+  }
+
+  /// Undoes a deletion within its 30 days: the caller's own account (with the
+  /// patients deleted alongside it), or with [patientUid], one of their
+  /// patients.
+  Future<void> restoreAccount({String? patientUid}) async {
+    await _post(
+      '/account/restore',
+      {'patient_uid': ?patientUid},
+      authenticated: true,
+    );
+  }
+
+  static DateTime? _purgeDate(Map<String, dynamic> data) {
+    final raw = data['purge_after'];
+    return raw is String ? DateTime.tryParse(raw)?.toLocal() : null;
   }
 
   void dispose() => _client.close();
