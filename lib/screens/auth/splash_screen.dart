@@ -56,7 +56,12 @@ class _StartupSplashState extends State<StartupSplash>
   /// After this long without loading, say so and offer Try again.
   static const _slowAfter = Duration(seconds: 8);
 
-  late final DateTime _shownAt = DateTime.now();
+  /// Set by [_minTimer]. A `late final _shownAt = DateTime.now()` used to stand
+  /// here, but a late initializer runs on first read, not at start-up: when the
+  /// profile loaded quickly (a signed-in patient, from cache) the clock started
+  /// at that first exit attempt, the timer's own check then came too early, and
+  /// nothing asked again — the splash stayed up forever.
+  bool _minElapsed = false;
   Timer? _minTimer;
   Timer? _slowTimer;
 
@@ -100,7 +105,10 @@ class _StartupSplashState extends State<StartupSplash>
     super.initState();
     // Before the first screen is built, so the welcome screen sees it.
     SplashHandoff.covering.value = true;
-    _minTimer = Timer(_minShown, _maybeExit);
+    _minTimer = Timer(_minShown, () {
+      _minElapsed = true;
+      _maybeExit();
+    });
     _startSlowTimer();
     _exit.addListener(_onExitTick);
   }
@@ -149,8 +157,7 @@ class _StartupSplashState extends State<StartupSplash>
   }
 
   void _maybeExit() {
-    if (_exiting || _done || !mounted || !widget.ready) return;
-    if (DateTime.now().difference(_shownAt) < _minShown) return;
+    if (_exiting || _done || !mounted || !widget.ready || !_minElapsed) return;
     _exiting = true;
     _slowTimer?.cancel();
     // One frame so the first screen underneath is laid out and measurable.
