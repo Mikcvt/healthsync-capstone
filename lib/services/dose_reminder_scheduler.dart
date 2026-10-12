@@ -72,6 +72,16 @@ class DoseReminderScheduler {
     return await android.canScheduleExactNotifications() ?? false;
   }
 
+  /// Exact when the user allows it. Android 14+ denies exact alarms by default,
+  /// and an exact request without the permission throws — one throw would
+  /// leave the patient with no reminders at all. Inexact may fire a few
+  /// minutes late, which the reminder check card on settings warns about.
+  Future<AndroidScheduleMode> _scheduleMode() async {
+    return await canScheduleExactAlarms()
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
   /// Whether the OS will show this app's notifications at all.
   Future<bool> notificationsEnabled() async {
     final android = _plugin.resolvePlatformSpecificImplementation<
@@ -129,6 +139,7 @@ class DoseReminderScheduler {
       await cancelAll();
 
       final now = tz.TZDateTime.now(tz.local);
+      final mode = await _scheduleMode();
       var scheduled = 0;
 
       for (final schedule in schedules) {
@@ -144,6 +155,7 @@ class DoseReminderScheduler {
             schedule,
             instant,
             bodyFor?.call(schedule) ?? schedule.scheduledTime,
+            mode,
           );
           scheduled++;
         }
@@ -192,6 +204,7 @@ class DoseReminderScheduler {
     ScheduleModel schedule,
     tz.TZDateTime at,
     String body,
+    AndroidScheduleMode mode,
   ) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -215,10 +228,9 @@ class DoseReminderScheduler {
       body: body,
       scheduledDate: at,
       notificationDetails: details,
-      // exactAllowWhileIdle is the only mode that fires in Doze. inexact
-      // scheduling can drift by tens of minutes, which would collide with the
-      // 30-minute missed-dose window.
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // exactAllowWhileIdle whenever allowed: inexact scheduling can drift by
+      // tens of minutes, which would collide with the 30-minute late window.
+      androidScheduleMode: mode,
       payload: schedule.scheduleId,
     );
   }
@@ -257,7 +269,7 @@ class DoseReminderScheduler {
           autoCancel: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       payload: scheduleId,
     );
   }

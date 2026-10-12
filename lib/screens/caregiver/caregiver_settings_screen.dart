@@ -227,7 +227,7 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
                 _ActionRow(
                   icon: Icons.delete_outline,
                   label: 'Delete account',
-                  subtitle: 'Deactivate your HealthSync account',
+                  subtitle: 'Delete your HealthSync account',
                   color: AppColors.missedRed,
                   onTap: _deleteAccount,
                 ),

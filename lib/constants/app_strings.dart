@@ -10,13 +10,11 @@ class AppStrings {
   // Identity
   static const String appName = 'HealthSync';
 
-  // Legal pages (Cloudflare Pages). This is the deployment-specific address
-  // chosen by the team; the permanent one is https://healthsync-site.pages.dev
-  // and would also pick up later edits to the policy.
-  static const String termsUrl =
-      'https://5f45d49d.healthsync-site.pages.dev/terms/';
-  static const String privacyUrl =
-      'https://5f45d49d.healthsync-site.pages.dev/privacy/';
+  // Legal pages (Cloudflare Pages). The permanent address, not a per-deploy
+  // preview hash, so later policy edits show up and the links match the
+  // privacy policy URL given to Play Console.
+  static const String termsUrl = 'https://healthsync-site.pages.dev/terms/';
+  static const String privacyUrl = 'https://healthsync-site.pages.dev/privacy/';
   static const String appTagline = 'Stay on top of every dose';
 
   // Empty states — patient

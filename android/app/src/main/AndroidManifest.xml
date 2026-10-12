@@ -6,13 +6,13 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
-    <!-- Dose reminders must fire at the minute they are due, so they are exact
-         alarms rather than inexact ones. Android 13+ grants SCHEDULE_EXACT_ALARM
-         by default but lets the user revoke it; USE_EXACT_ALARM is the
-         non-revocable form, allowed for alarm and medication-reminder apps,
-         which is exactly this use case. -->
+    <!-- Dose reminders fire at the minute they are due as exact alarms.
+         Android 14+ denies SCHEDULE_EXACT_ALARM by default; the app asks for it
+         and falls back to inexact alarms until it is granted
+         (DoseReminderScheduler._scheduleMode). USE_EXACT_ALARM is not declared:
+         Play restricts it to apps whose core function is an alarm clock or
+         calendar. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
 
     <application
         android:label="HealthSync"
