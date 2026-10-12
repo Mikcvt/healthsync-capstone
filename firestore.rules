@@ -55,15 +55,15 @@ service cloud.firestore {
       // caregiver signup, or by the Worker for managed patients) and are
       // immutable thereafter from the client. Admin SDK writes bypass rules, so
       // the Worker can still change them.
-      allow update: if (isOwner(userId)
+      // The deletion fields are the Worker's alone: clearing
+      // deletion_scheduled_for from a phone must not pass for a restore,
+      // which also has to switch the schedules back on.
+      allow update: if isOwner(userId)
         && request.resource.data.account_type == resource.data.account_type
-        && request.resource.data.can_edit_medications == resource.data.can_edit_medications)
-        // The patient's own caregiver may answer a deletion request, and touch
-        // nothing else. Without this, Decline was refused every time.
-        || (isCaregiverOf(userId)
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['deletion_requested_at', 'deletion_reason',
-                        'deletion_declined_at']));
+        && request.resource.data.can_edit_medications == resource.data.can_edit_medications
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['deletion_requested_at', 'deletion_requested_by',
+                     'deletion_scheduled_for']);
       allow delete: if isOwner(userId);
     }
 
@@ -193,10 +193,6 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read, write: if isOwner(resource.data.user_ref)
         || request.resource.data.user_ref == request.auth.uid;
-      // A caregiver may tell their own patient that a deletion request was
-      // declined. Only that one kind, so this cannot become a spam channel.
-      allow create: if isCaregiverOf(request.resource.data.user_ref)
-        && request.resource.data.notification_type == 'request_declined';
     }
 
     // OTP codes — the patient NEVER touches this collection. They are not even

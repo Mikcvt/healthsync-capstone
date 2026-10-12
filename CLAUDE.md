@@ -201,10 +201,12 @@ phone           string
 can_edit_medications  bool
 created_at      timestamp
 is_active       bool
-deletion_requested_at timestamp  (patient asked to be deleted)
-deletion_declined_at  timestamp  (caregiver declined; the rules let the
-                                  patient's caregiver write only these
-                                  deletion fields on a patient's users doc)
+deletion_requested_at  timestamp ┐ set by the Worker when the account is
+deletion_requested_by  string    │ deleted (own uid, or the care partner's);
+deletion_scheduled_for timestamp ┘ purged on that date unless restored.
+                                   Written by the Worker only: the rules
+                                   refuse any client write to these three.
+                                   is_active is false meanwhile.
 reminders_notifications_ok bool  ┐ reported by the patient app
 reminders_exact_alarms_ok  bool  │ (ReminderHealthService) for the caregiver
 reminders_battery_ok       bool  │ dashboard; written on change or at most
@@ -286,6 +288,8 @@ start_date      date
 end_date        date
 is_active       bool
 led_active      bool   (ESP32 polls this to activate/deactivate LED)
+paused_for_deletion bool  (switched off by an account deletion; a restore
+                           switches back on exactly these)
 created_at      timestamp
 updated_at      timestamp  (server time; stamped by every caregiver change that
                            alters which doses exist. The Worker creates doses
@@ -334,7 +338,7 @@ caregiver_notified  bool       (the caregiver has the alert, pushed or in-app)
 late_notified       bool       (the 30-minute running-late alert went out)
 skipped_reason      string     (reason for a skipped or missed dose)
 acknowledged_at     timestamp  (a reason was given)
-cancelled_reason    string ("archived" | "rescheduled")
+cancelled_reason    string ("archived" | "rescheduled" | "account_deleted")
 excluded_from_adherence bool   (medicine archived as "entered by mistake")
 recorded_by         string
 created_at          timestamp
@@ -342,8 +346,9 @@ is_active           bool
 
 NEVER DELETED by the app. firestore.rules has `allow delete: if false` on
 dose_logs. Archiving cancels future pending doses; restoring revives them.
-The one exception is account deletion: the Worker's POST /account/delete
-purges a caregiver's and their patients' dose logs with everything else.
+The one exception is account deletion: 30 days after POST /account/delete
+or /patients/delete, the Worker's purge cron erases the dose logs with
+everything else.
 ```
 
 ### notifications
@@ -354,7 +359,8 @@ patient_ref         string (→ users) — caregiver alerts only; the Alerts tab
                     opens this patient on tap
 dose_log_ref        string (→ dose_logs)
 notification_type   string ("reminder" | "confirmed" | "late" | "missed" |
-                            "skipped" | "correction" | "low_stock" | "streak")
+                            "skipped" | "correction" | "low_stock" | "streak" |
+                            "account_deletion")
 title               string
 message             string
 sent_at             timestamp
@@ -735,14 +741,21 @@ Endpoints:
                               (50-subrequest limit). FCM channel: healthsync_alerts
   POST /account/delete        caregiver deletes their account AND every managed
                               patient (found via patient_profile.caregiver_ref,
-                              never via links). Needs a sign-in < 5 min old.
-                              Writes an account_deletions job first.
-  POST /patients/delete       caregiver deletes ONE patient and all their data (remove,
-                              or approve the patient's request). Same purge, same
+                              never via links; needs a sign-in < 5 min old), or
+                              a managed patient deletes their own (no approval,
+                              no re-auth; care partner notified). Either way:
+                              an account_deletions job with purge_after = +30
+                              days, then the accounts are PAUSED (is_active
+                              false, tokens cleared, schedules off with
+                              paused_for_deletion, open doses cancelled).
+  POST /patients/delete       caregiver deletes ONE patient. Same pause, same
                               recent-sign-in rule, ownership via patient_profile.
-  cron */15 * * * *           finishes account_deletions jobs and re-purges for
-                              65 min (ID-token stragglers); at 19:00 UTC also
-                              queues caregivers deleted before this existed
+  POST /account/restore       within the 30 days: the caller's own deletion (with
+                              its patients), or {patient_uid} for one of theirs.
+  cron */15 * * * *           purges account_deletions jobs whose purge_after has
+                              passed, re-purging for 65 min (ID-token
+                              stragglers); at 19:00 UTC also queues caregivers
+                              deleted before this existed
   GET  /device/{serial}/schedule   ESP32 polls this instead of Firestore
   POST /device/{serial}/dose       ESP32 button press
 
@@ -842,10 +855,20 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    the patient's profile names the code's caregiver and the account is an
    active managed patient. The patient's experience is unchanged.
 
-✅ Removing a patient is a real delete (Oct 2026): "Remove" and approving the
-   patient's deletion request both call POST /patients/delete, behind a dialog
-   with the consequences, the password and an "I understand" box. Approve used
-   to delete on one tap. deactivatePatient() is gone.
+✅ Removing a patient is a real delete (Oct 2026): "Remove" calls
+   POST /patients/delete, behind a dialog with the consequences, the password
+   and an "I understand" box. deactivatePatient() is gone.
+
+✅ 30-day restore and patient self-delete (Oct 2026): Play requires that
+   whoever asks for deletion gets it, but a care partner could decline a
+   patient's request. Now a patient deletes their own account (confirm +
+   "I understand", no approval) and the care partner is notified. Every
+   deletion pauses the accounts for 30 days and then purges them. A care
+   partner signing in to their own deleted account gets
+   pending_deletion_screen.dart (Restore / Sign out); a deleted patient shows
+   "Restore" on their My Patients card. Patient phones sign themselves out
+   when their users doc gets deletion_scheduled_for. Restored patients need a
+   new code. Website wording: WEBSITE_DELETION_UPDATE.md.
 
 ✅ Mark treatment complete (Oct 2026): patient_detail_screen archives every
    active medicine as a finished course in one step (schedules inactive, LEDs
@@ -854,8 +877,9 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    only while that is set AND no medicine is active.
 
 Every delete, remove or archive action must show what it takes with it and
-need an explicit confirm. Permanent deletes also need the password and an
-"I understand" checkbox (lib/widgets/caregiver/delete_patient_dialog.dart).
+need an explicit confirm. Account deletes also need an "I understand"
+checkbox, and the password for a care partner
+(lib/widgets/caregiver/delete_patient_dialog.dart).
 
 ✅ Moved to a new Firebase project (Oct 2026): healthsyncapp-b546b, package
    com.healthsyncteam.app (com.example.* is rejected by Play). MainActivity
