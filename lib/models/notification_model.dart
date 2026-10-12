@@ -3,6 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class NotificationModel {
   final String notifId;
   final String userRef;
+
+  /// The patient a caregiver alert is about. Written by the Worker; null on
+  /// a patient's own notifications.
+  final String? patientRef;
   final String? doseLogRef;
   final String notificationType; // 'dose_reminder', 'missed_alert', 'low_stock', 'caregiver_link'
   final String title;
@@ -16,6 +20,7 @@ class NotificationModel {
   const NotificationModel({
     required this.notifId,
     required this.userRef,
+    this.patientRef,
     this.doseLogRef,
     required this.notificationType,
     required this.title,
@@ -38,6 +43,7 @@ class NotificationModel {
     return NotificationModel(
       notifId: id ?? (map['notif_id'] as String? ?? ''),
       userRef: map['user_ref'] as String? ?? '',
+      patientRef: map['patient_ref'] as String?,
       doseLogRef: map['dose_log_ref'] as String?,
       notificationType: map['notification_type'] as String? ?? 'dose_reminder',
       title: map['title'] as String? ?? '',
@@ -66,6 +72,7 @@ class NotificationModel {
     return {
       'notif_id': notifId,
       'user_ref': userRef,
+      'patient_ref': patientRef,
       'dose_log_ref': doseLogRef,
       'notification_type': notificationType,
       'title': title,
@@ -81,6 +88,7 @@ class NotificationModel {
   NotificationModel copyWith({
     String? notifId,
     String? userRef,
+    String? patientRef,
     String? doseLogRef,
     String? notificationType,
     String? title,
@@ -94,6 +102,7 @@ class NotificationModel {
     return NotificationModel(
       notifId: notifId ?? this.notifId,
       userRef: userRef ?? this.userRef,
+      patientRef: patientRef ?? this.patientRef,
       doseLogRef: doseLogRef ?? this.doseLogRef,
       notificationType: notificationType ?? this.notificationType,
       title: title ?? this.title,

@@ -14,7 +14,8 @@
 	// Every 5 minutes = 288 runs/day, well inside the free plan's 100k/day.
 	"triggers": {
 		"crons": [
-			"*/5 * * * *"
+			"*/5 * * * *",
+			"*/15 * * * *"
 		]
 	},
 	"upload_source_maps": true,

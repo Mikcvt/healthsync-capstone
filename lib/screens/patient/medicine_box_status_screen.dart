@@ -74,7 +74,7 @@ class MedicineBoxStatusScreen extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       compartments.every((c) => !c.isAssigned)
-                          ? 'Your caregiver has not placed any medicine in the '
+                          ? 'Your care partner has not placed any medicine in the '
                               'box yet.'
                           : 'An amber light means that compartment is lit on '
                               'the box right now.',
@@ -265,6 +265,8 @@ class _DeviceCard extends StatelessWidget {
                 height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
+                  // Green = online is a status signal, so the dot keeps it;
+                  // the rest of this patient screen is patient blue.
                   color:
                       isOnline ? AppColors.caregiverGreen : AppColors.textMuted,
                 ),
@@ -276,7 +278,7 @@ class _DeviceCard extends StatelessWidget {
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: isOnline
-                      ? AppColors.caregiverGreen
+                      ? AppColors.patientBlue
                       : AppColors.textSecondary,
                   fontFamily: AppStyles.fontFamily,
                 ),
@@ -357,8 +359,10 @@ class _CompartmentTile extends StatelessWidget {
       background = AppColors.pendingAmberBg;
       accent = AppColors.pendingAmber;
     } else {
-      background = AppColors.ledDoneBg;
-      accent = AppColors.ledDone;
+      // A filled compartment, not lit: patient blue. Lit stays amber, the
+      // colour of the real LED on the box.
+      background = AppColors.blueLight;
+      accent = AppColors.patientBlue;
     }
 
     return Container(

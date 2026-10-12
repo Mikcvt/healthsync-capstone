@@ -48,6 +48,7 @@ app.*.map.json
 *serviceAccount*.json
 *service-account*.json
 healthsync-b8394-*.json
+*-firebase-adminsdk-*.json
 .dev.vars
 .env
 .env.*

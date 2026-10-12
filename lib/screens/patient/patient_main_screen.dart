@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -138,7 +139,14 @@ class _PatientMainScreenState extends State<PatientMainScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingAlarm());
     }
 
-    return Scaffold(
+    // Back on any tab but Home returns to Home; only Back on Home leaves the
+    // app. Without this, Back on Profile or Alerts closed the app at once.
+    return PopScope(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _selectedIndex = 0);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
       body: _screens[_selectedIndex],
@@ -148,33 +156,36 @@ class _PatientMainScreenState extends State<PatientMainScreen> {
         accent: AppColors.patientBlue,
         destinations: [
           const NavDestination(
-            icon: Icons.home_outlined,
-            activeIcon: Icons.home_rounded,
+            icon: CupertinoIcons.house,
+            activeIcon: CupertinoIcons.house_fill,
             label: 'Home',
           ),
           const NavDestination(
-            icon: Icons.calendar_today_outlined,
-            activeIcon: Icons.calendar_today_rounded,
+            // Cupertino has no filled calendar; the active pill marks it.
+            icon: CupertinoIcons.calendar,
+            activeIcon: CupertinoIcons.calendar,
             label: 'Schedule',
           ),
           const NavDestination(
-            icon: Icons.widgets_outlined,
-            activeIcon: Icons.widgets_rounded,
+            // Eight compartments in a grid, like the box itself.
+            icon: CupertinoIcons.square_grid_2x2,
+            activeIcon: CupertinoIcons.square_grid_2x2_fill,
             label: 'Box',
           ),
           NavDestination(
-            icon: Icons.notifications_none_rounded,
-            activeIcon: Icons.notifications_rounded,
+            icon: CupertinoIcons.bell,
+            activeIcon: CupertinoIcons.bell_fill,
             label: 'Alerts',
             badgeCount: unread,
           ),
           const NavDestination(
-            icon: Icons.person_outline,
-            activeIcon: Icons.person,
+            icon: CupertinoIcons.person,
+            activeIcon: CupertinoIcons.person_fill,
             label: 'Profile',
             isAvatar: true,
           ),
         ],
+      ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../utils/main_tab_signal.dart';
 
 class AddMedicineSuccessScreen extends StatelessWidget {
   final String medicineName;
@@ -22,9 +23,33 @@ class AddMedicineSuccessScreen extends StatelessWidget {
     this.hasBox = true,
   });
 
+  /// Leaves the whole wizard and lands on Manage medications, where the new
+  /// medicine is listed and the caregiver can check it or add another. A
+  /// plain pop() dropped the user back on step 2, because step 3 was replaced
+  /// by this screen rather than stacked on top of it.
+  void _backToManageMedications(BuildContext context) {
+    Navigator.of(context).popUntil(
+      (route) => route.settings.name != addMedicineFlowRoute,
+    );
+  }
+
+  /// Closes everything and shows the caregiver's dashboard, whichever tab the
+  /// flow was started from.
+  void _backToDashboard(BuildContext context) {
+    MainTabSignal.goHome();
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // System Back behaves like "Add another medicine", not like stepping back
+    // into a wizard that has already been saved.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _backToManageMedications(context);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
@@ -110,20 +135,35 @@ class AddMedicineSuccessScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 height: 54,
-                child: ElevatedButton(
-                  // Leaves the whole wizard, not just this screen. A plain
-                  // pop() dropped the user back on step 2, because step 3 was
-                  // replaced by this screen rather than stacked on top of it.
-                  onPressed: () => Navigator.of(context).popUntil(
-                    (route) => route.settings.name != addMedicineFlowRoute,
+                child: OutlinedButton.icon(
+                  onPressed: () => _backToManageMedications(context),
+                  icon: const Icon(Icons.add_rounded),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.caregiverGreen,
+                    side: const BorderSide(color: AppColors.caregiverGreen),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
+                  label: const Text(
+                    'Add another medicine',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: () => _backToDashboard(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
+                    backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   child: const Text(
-                    'Done · View Schedule',
+                    'Done',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -131,6 +171,7 @@ class AddMedicineSuccessScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -151,7 +192,7 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.patientBlue),
+        Icon(icon, size: 20, color: AppColors.caregiverGreen),
         const SizedBox(width: 12),
         Expanded(
           child: Text(

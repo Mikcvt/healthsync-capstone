@@ -203,10 +203,10 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                     const SizedBox(height: 6),
                     Text(
                       _retroAllowed
-                          ? 'Your caregiver will see this. If you did take it, '
+                          ? 'Your care partner will see this. If you did take it, '
                               'choose the first option and it will count as '
                               'taken, marked "Logged late".'
-                          : 'Your caregiver will see this. This dose is too '
+                          : 'Your care partner will see this. This dose is too '
                               'old to change to taken.',
                       style: const TextStyle(
                         fontSize: 13,
@@ -232,7 +232,7 @@ class _MissedDoseScreenState extends State<MissedDoseScreen> {
                   onPressed: _isSaving || _reason == null ? null : _onSave,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _reason == AppStrings.reasonTookButForgot
-                        ? AppColors.caregiverGreen
+                        ? AppColors.patientBlue
                         : AppColors.missedRed,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: AppColors.borderGray,

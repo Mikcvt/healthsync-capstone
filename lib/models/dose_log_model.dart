@@ -83,6 +83,10 @@ class DoseLogModel {
   /// is kept but never counted in adherence.
   final bool excludedFromAdherence;
 
+  /// Changed on this phone but not yet received by the server — saved
+  /// offline, waiting to sync. Read from the snapshot, never stored.
+  final bool pendingSync;
+
   const DoseLogModel({
     required this.doseLogId,
     required this.scheduleRef,
@@ -106,6 +110,7 @@ class DoseLogModel {
     this.loggedAt,
     this.cancelledReason,
     this.excludedFromAdherence = false,
+    this.pendingSync = false,
   });
 
   bool get isTaken => status == DoseStatus.taken;
@@ -143,7 +148,8 @@ class DoseLogModel {
 
   factory DoseLogModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
-    return DoseLogModel.fromMap(data, doc.id);
+    return DoseLogModel.fromMap(data, doc.id)
+        .copyWith(pendingSync: doc.metadata.hasPendingWrites);
   }
 
   static DateTime? _date(Object? raw) {
@@ -238,6 +244,7 @@ class DoseLogModel {
     DateTime? loggedAt,
     String? cancelledReason,
     bool? excludedFromAdherence,
+    bool? pendingSync,
   }) {
     return DoseLogModel(
       doseLogId: doseLogId ?? this.doseLogId,
@@ -263,6 +270,7 @@ class DoseLogModel {
       cancelledReason: cancelledReason ?? this.cancelledReason,
       excludedFromAdherence:
           excludedFromAdherence ?? this.excludedFromAdherence,
+      pendingSync: pendingSync ?? this.pendingSync,
     );
   }
 }

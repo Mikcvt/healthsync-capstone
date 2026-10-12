@@ -132,7 +132,7 @@ class _OtpEntryScreenState extends State<OtpEntryScreen> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Your caregiver sent you an 8-character code by text or email. '
+                'Your care partner sent you an 8-character code by text or email. '
                 'Enter it below and your medicines will already be set up.',
                 style: TextStyle(
                   fontSize: 14,
@@ -251,7 +251,7 @@ class _OtpEntryScreenState extends State<OtpEntryScreen> {
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Codes expire 48 hours after your caregiver creates them '
+                        'Codes expire 48 hours after your care partner creates them '
                         'and can only be used once. If yours has stopped working, '
                         'ask them to send a new one.',
                         style: TextStyle(

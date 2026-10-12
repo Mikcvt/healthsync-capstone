@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import 'legal_links.dart';
 
 /// Shared by the patient settings and profile screens so the two "About"
 /// entries cannot drift apart.
@@ -215,7 +216,22 @@ class _AboutSheet extends StatelessWidget {
                 fontFamily: AppStyles.fontFamily,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: () => openLegalPage(context, privacy: false),
+                  child: const Text('Terms of Service'),
+                ),
+                const Text('·', style: TextStyle(color: AppColors.textMuted)),
+                TextButton(
+                  onPressed: () => openLegalPage(context, privacy: true),
+                  child: const Text('Privacy Policy'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             SizedBox(
               height: 48,
               child: FilledButton(

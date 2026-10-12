@@ -143,6 +143,36 @@ function withinRange(schedule: Record<string, unknown>, dateKey: string): boolea
 	return true;
 }
 
+/**
+ * How far back a caregiver's edit still triggers an early run. Twice the cron
+ * interval, so one failed or late run does not lose the edit.
+ */
+const RECENT_CHANGE_MS = 10 * 60 * 1000;
+
+/**
+ * Whether dose creation should run on this 5-minute tick.
+ *
+ * It used to run on every tick, re-reading every active schedule and every
+ * upcoming dose 288 times a day to find, almost always, nothing to do — most
+ * of the project's Firestore reads. Doses are created a day ahead, so once an
+ * hour is enough for an unchanged schedule.
+ *
+ * An edit cannot wait the hour. A dose time moved from 8:00 to 9:00 at 7:45
+ * would keep its 8:00 dose, which the sweep then reports late and missed, and
+ * the stale-dose cleanup below only cancels doses still in the future. So the
+ * app stamps updated_at on every caregiver change, and a stamp from the last
+ * ten minutes runs it now. That check costs one read.
+ */
+export async function shouldMaterialize(db: Firestore, at: Date): Promise<boolean> {
+	if (at.getUTCMinutes() < 5) return true;
+	const recent = await db.query(
+		'schedules',
+		[{ field: 'updated_at', op: 'GREATER_THAN_OR_EQUAL', value: new Date(at.getTime() - RECENT_CHANGE_MS) }],
+		1,
+	);
+	return recent.length > 0;
+}
+
 export async function runMaterialize(db: Firestore): Promise<{ created: number }> {
 	const now = new Date();
 

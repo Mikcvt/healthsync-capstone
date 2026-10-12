@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/patient_provider.dart';
 
 class DoseConfirmedScreen extends StatelessWidget {
   final String medicineName;
@@ -14,6 +16,7 @@ class DoseConfirmedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final linked = context.watch<PatientProvider>().isLinkedToCaregiver;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -27,12 +30,12 @@ class DoseConfirmedScreen extends StatelessWidget {
                 width: 96,
                 height: 96,
                 decoration: BoxDecoration(
-                  color: AppColors.ledDoneBg,
+                  color: AppColors.blueLight,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.verified_rounded,
-                  color: AppColors.caregiverGreen,
+                  color: AppColors.patientBlue,
                   size: 54,
                 ),
               ),
@@ -50,7 +53,8 @@ class DoseConfirmedScreen extends StatelessWidget {
               const SizedBox(height: 10),
 
               Text(
-                'Great job! You took $medicineName at $timeTaken. Your daily adherence is updated and your caregiver has been notified.',
+                'Great job! You took $medicineName at $timeTaken. Your daily adherence is updated'
+                '${linked ? ' and your care partner can see it.' : '.'}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 15,
@@ -61,6 +65,7 @@ class DoseConfirmedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
+              if (linked)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -71,10 +76,10 @@ class DoseConfirmedScreen extends StatelessWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: AppColors.caregiverGreen.withValues(alpha: 0.12),
+                        color: AppColors.patientBlue.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Icon(Icons.favorite_rounded, color: AppColors.caregiverGreen),
+                      child: const Icon(Icons.favorite_rounded, color: AppColors.patientBlue),
                     ),
                     const SizedBox(width: 16),
                     const Expanded(
@@ -82,7 +87,7 @@ class DoseConfirmedScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Caregiver Notified',
+                            'Shared with your Care Partner',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
@@ -91,7 +96,7 @@ class DoseConfirmedScreen extends StatelessWidget {
                           ),
                           SizedBox(height: 3),
                           Text(
-                            'Synced to caregiver dashboard',
+                            'They see this dose on their dashboard',
                             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                           ),
                         ],

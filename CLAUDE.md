@@ -68,6 +68,14 @@ C:\Users\User\healthsync\
 
 ---
 
+## Wording: "Care Partner", never caregiver or guardian, on screen
+
+"caregiver" in code (CaregiverProvider, caregiver_ref, account_type
+"caregiver", file names) is the same role users see as **Care Partner**. Code
+and stored fields keep the old name; renaming them would break every account.
+Anything a user sees or hears says "Care Partner" in titles and labels and
+"care partner" inside sentences. Never "guardian".
+
 ## Two user types
 
 ### 1. Caregiver / Care partner
@@ -193,11 +201,23 @@ phone           string
 can_edit_medications  bool
 created_at      timestamp
 is_active       bool
+deletion_requested_at timestamp  (patient asked to be deleted)
+deletion_declined_at  timestamp  (caregiver declined; the rules let the
+                                  patient's caregiver write only these
+                                  deletion fields on a patient's users doc)
+reminders_notifications_ok bool  ┐ reported by the patient app
+reminders_exact_alarms_ok  bool  │ (ReminderHealthService) for the caregiver
+reminders_battery_ok       bool  │ dashboard; written on change or at most
+app_last_opened_at    timestamp  ┘ every 6 hours
+                (none of these are in UserModel.toMap, so a profile save
+                cannot overwrite them)
 ```
 
 ### patient_profile
 ```
 profile_id         string
+treatment_completed_at timestamp  (set by "Mark treatment complete"; read-only
+                                   in the Dart model, never written by toMap)
 user_ref           string (→ users)
 caregiver_ref      string (→ users)
 medical_conditions array  of string  ← NOT a string. The Dart model parses with
@@ -267,6 +287,11 @@ end_date        date
 is_active       bool
 led_active      bool   (ESP32 polls this to activate/deactivate LED)
 created_at      timestamp
+updated_at      timestamp  (server time; stamped by every caregiver change that
+                           alters which doses exist. The Worker creates doses
+                           hourly and runs early only when it sees a recent
+                           stamp — a schedule write without it waits an hour.
+                           Patient writes never set it.)
 ```
 
 ### dose_logs
@@ -291,8 +316,16 @@ timing              string ("early" | "on_time" | "late" | "logged_late"),
                     set when taken. logged_late = was missed, then corrected
                     with "I took it but forgot to log it".
 taken_at            timestamp  (for logged_late: when the patient says)
-logged_at           timestamp  (when the patient last acted; the rules allow
-                               Undo for 2 minutes after it)
+logged_at           timestamp  (when the patient last acted, by the phone's
+                               clock; the rules allow Undo for 2 minutes after
+                               it)
+synced_at           timestamp  (server time the change ARRIVED; stamped on
+                               every app write. The alert backstop goes by it,
+                               so a dose logged offline still gets its alert)
+missed_at           timestamp  (when it was marked missed; set by the sweep)
+undone_at           timestamp  (when Undo was tapped; lets an offline Undo
+                               pass the 2-minute rule after a late sync)
+stock_counted       bool       (false = taken while the count read 0)
 snooze_count        number
 snoozed_until       timestamp  (when the current snooze ends; another snooze
                                is refused before then)
@@ -307,14 +340,18 @@ recorded_by         string
 created_at          timestamp
 is_active           bool
 
-NEVER DELETED. firestore.rules has `allow delete: if false` on dose_logs.
-Archiving cancels future pending doses; restoring revives them.
+NEVER DELETED by the app. firestore.rules has `allow delete: if false` on
+dose_logs. Archiving cancels future pending doses; restoring revives them.
+The one exception is account deletion: the Worker's POST /account/delete
+purges a caregiver's and their patients' dose logs with everything else.
 ```
 
 ### notifications
 ```
 notif_id            string
 user_ref            string (→ users)
+patient_ref         string (→ users) — caregiver alerts only; the Alerts tab
+                    opens this patient on tap
 dose_log_ref        string (→ dose_logs)
 notification_type   string ("reminder" | "confirmed" | "late" | "missed" |
                             "skipped" | "correction" | "low_stock" | "streak")
@@ -419,10 +456,40 @@ Low stock (a confirmed dose brings pills_remaining to the threshold, or to 0)
     → in-app notification for the patient (written by the app)
     → FCM + notification for the caregiver (Worker, POST /dose-events),
       unless caregiver_profile.alert_pref_low_stock is false
-    → at 0 pills, "Mark as taken" is disabled until the caregiver refills
+    → at 0 pills the dose can still be logged (the count is only an estimate:
+      the box may have been refilled). A note says to refill; the count stays
+      at 0, the dose log gets stock_counted: false, Undo gives no pill back,
+      and the Worker skips a repeat "Out of stock" alert
 ```
 
 ---
+
+## Offline-first dose logging
+
+```
+A signed-in patient can log doses with no internet. Firestore keeps every
+write on the phone (surviving restarts) and sends it when back online.
+
+  App:    dose actions issue their writes and FirestoreService.settle() them:
+          wait up to 4 s for the server, else accept them as saved offline.
+          NEVER await a single Firestore write in a dose action: on Android
+          its Future only completes when the server confirms, so offline it
+          never does. Reads before a write use the phone's copy when offline
+          (getDoseLog). setDoseLog merges, so Worker-only fields survive.
+  Rules:  missed -> taken/skipped is allowed when the patient acted
+          (logged_at) before the sweep wrote the dose off (missed_at).
+          Undo passes by undone_at when it syncs after the 2-minute window.
+  Worker: the sweep stamps missed_at; such a dose arriving later is a
+          "correction" alert ("their phone was offline"); the backstop
+          queries caregiver_notified=false by synced_at (index deployed).
+  UI:     offline banner on the dashboard (ConnectivityService), "Waiting to
+          sync" on a dose with pending writes, "(saved offline, will sync)"
+          in the Undo toast.
+
+Limits: sync happens while the app is open; times come from the phone's
+clock; the first-ever launch needs internet. Sign-up, login, OTP redemption,
+adding/deleting patients and changing email stay online-only.
+```
 
 ## The box is optional (phone-only mode)
 
@@ -631,7 +698,8 @@ produced it.
 ## Firebase project
 
 ```
-Project ID:     healthsync-b8394
+Project ID:     healthsyncapp-b546b   (moved from healthsync-b8394, Oct 2026)
+Package:        com.healthsyncteam.app
 Plan:           Spark (free) — do NOT upgrade to Blaze
 Auth:           Email/Password + Custom Token (for managed patients)
 Firestore:      Test mode, asia-southeast1 region (lock rules before release)
@@ -648,6 +716,11 @@ Why:     Cloud Functions cannot deploy on the Spark plan. The Worker holds the
          and run the late (30 min) and missed (60 min) sweep on a cron.
 
 Secrets: FIREBASE_SA_KEY via `wrangler secret put` — NEVER in the repo or the APK
+         Upload from Git Bash or cmd with a redirect:
+           npx wrangler secret put FIREBASE_SA_KEY < key.json
+         NOT `Get-Content key.json | ...` in Windows PowerShell: it prepends a
+         byte-order mark, and every Firebase call then failed with "Something
+         went wrong" (Oct 2026). parseServiceAccount now strips it anyway.
 Cache:   KV namespace TOKEN_CACHE holds the OAuth access token for 55 min
 Limits:  free plan = 10ms CPU per invocation, 50 external subrequests, 100k req/day
 
@@ -655,7 +728,21 @@ Endpoints:
   POST /patients              caregiver creates a managed patient account
   POST /otp/redeem            code in → Firebase custom token out (rate-limited)
   POST /dose-events           dose confirmed/missed → caregiver FCM
-  cron */5 * * * *            materialise doses, running-late alerts, missed sweep, skip backstop
+  cron */5 * * * *            materialise doses (only on the :00 run, or when a schedule's
+                              updated_at is < 10 min old), missed sweep, running-late alerts, then a
+                              backstop that retries any taken/skipped/missed alert still
+                              caregiver_notified=false. 5 alerts per run, shared by all passes
+                              (50-subrequest limit). FCM channel: healthsync_alerts
+  POST /account/delete        caregiver deletes their account AND every managed
+                              patient (found via patient_profile.caregiver_ref,
+                              never via links). Needs a sign-in < 5 min old.
+                              Writes an account_deletions job first.
+  POST /patients/delete       caregiver deletes ONE patient and all their data (remove,
+                              or approve the patient's request). Same purge, same
+                              recent-sign-in rule, ownership via patient_profile.
+  cron */15 * * * *           finishes account_deletions jobs and re-purges for
+                              65 min (ID-token stragglers); at 19:00 UTC also
+                              queues caregivers deleted before this existed
   GET  /device/{serial}/schedule   ESP32 polls this instead of Firestore
   POST /device/{serial}/dose       ESP32 button press
 
@@ -677,6 +764,7 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
 ✅ Firebase project not showing in flutterfire configure — fixed by
    logging out and back in with correct Google account, then running:
    flutterfire configure --project=healthsync-b8394
+   (now healthsyncapp-b546b — see below)
 
 ── Phase 4.5 (Oct 2026) ──────────────────────────────────────────────
 
@@ -731,10 +819,48 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    creates a missing dose log under the Worker's own deterministic id, which
    stopped a duplicate pending copy from being swept as missed.
 
-⚠️ STILL OPEN: applicationId is "com.example.healthsync". Google Play REJECTS
-   com.example.* and the id cannot be changed after the first upload. Changing
-   it needs a new package registered in the Firebase console plus a re-run of
-   flutterfire configure, so it is left for whoever holds those credentials.
+✅ Caregiver alerts (Oct 2026, CAREGIVER_ALERTS_FIX.md): a missed dose whose
+   alert failed or overflowed the per-run cap was never retried; a lost Done
+   report never reached the caregiver; runs could exceed 50 subrequests; the
+   push channel did not exist on the caregiver phone; tokens were not
+   refreshed or cleared on sign-out (shared test phones got each other's
+   alerts); sweep alerts said "their medication". Needs the two new dose_logs
+   indexes deployed before the Worker.
+
+✅ Account deletion cascade (Oct 2026): deleting a caregiver only set their
+   users.is_active false and deleted their own Auth login. Their patients'
+   schedules stayed active, so the 5-minute cron kept materialising doses,
+   marking them missed and pushing to the deleted caregiver's still-stored FCM
+   token, burning Firestore quota. Now POST /account/delete deletes the
+   caregiver, every managed patient, and all of their data and Auth accounts;
+   the settings dialog lists the patients and asks for the password. Signing
+   out (or an account vanishing) now cancels the phone's local reminders.
+
+✅ OTP takeover closed (Oct 2026): any caregiver could write an otp_codes doc
+   naming any uid and redeem it to sign in as that account. Now the rules only
+   allow a code for isCaregiverOf(patient_ref), and otp.ts refuses a code unless
+   the patient's profile names the code's caregiver and the account is an
+   active managed patient. The patient's experience is unchanged.
+
+✅ Removing a patient is a real delete (Oct 2026): "Remove" and approving the
+   patient's deletion request both call POST /patients/delete, behind a dialog
+   with the consequences, the password and an "I understand" box. Approve used
+   to delete on one tap. deactivatePatient() is gone.
+
+✅ Mark treatment complete (Oct 2026): patient_detail_screen archives every
+   active medicine as a finished course in one step (schedules inactive, LEDs
+   off, future doses cancelled, history and adherence kept) and stamps
+   patient_profile.treatment_completed_at. Screens show "Treatment complete"
+   only while that is set AND no medicine is active.
+
+Every delete, remove or archive action must show what it takes with it and
+need an explicit confirm. Permanent deletes also need the password and an
+"I understand" checkbox (lib/widgets/caregiver/delete_patient_dialog.dart).
+
+✅ Moved to a new Firebase project (Oct 2026): healthsyncapp-b546b, package
+   com.healthsyncteam.app (com.example.* is rejected by Play). MainActivity
+   moved to kotlin/com/healthsyncteam/app. The Worker's token cache is now
+   keyed by service account, so swapping FIREBASE_SA_KEY takes effect at once.
 ```
 
 ---

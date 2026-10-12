@@ -3,6 +3,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 
+/// Registering with an email that already has an account. Most often an
+/// earlier sign-up that was never verified: Firebase creates the account at
+/// registration, and verifying only flips a flag.
+class EmailInUseException implements Exception {
+  const EmailInUseException();
+
+  @override
+  String toString() => 'An account already exists for this email.';
+}
+
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -70,7 +80,7 @@ class AuthService {
       if (normalizedRole != 'caregiver') {
         await _rollbackRegistration(user);
         throw Exception(
-          'Only caregiver accounts can be created here. If someone set '
+          'Only care partner accounts can be created here. If someone set '
           'HealthSync up for you, use the code they sent you instead.',
         );
       }
@@ -135,6 +145,9 @@ class AuthService {
 
       return userModel;
     } on FirebaseAuthException catch (e) {
+      // Usually someone who registered before and never verified: the
+      // account was created then. Typed, so the screen can offer Log in.
+      if (e.code == 'email-already-in-use') throw const EmailInUseException();
       throw _handleAuthException(e);
     } catch (e) {
       rethrow;
@@ -184,7 +197,10 @@ class AuthService {
 
       final user = credential.user;
       if (user != null) {
-        return await getUserProfile(user.uid);
+        final profile = await getUserProfile(user.uid);
+        // After an email change the profile still holds the old address.
+        await _syncProfileEmail(user, profile);
+        return profile;
       }
       return null;
     } on FirebaseAuthException catch (e) {
@@ -262,18 +278,88 @@ class AuthService {
     await firebaseUser.updatePassword(newPassword);
   }
 
-  Future<void> deleteCurrentUser() async {
+  /// Proves the password again before something irreversible, and refreshes
+  /// the ID token so the Worker sees the new sign-in time.
+  ///
+  /// Deleting is not done here. `user.delete()` removed only the caregiver's
+  /// own login, leaving their patients' schedules running in the Worker's cron
+  /// forever; the cascade needs the service account (ApiService.deleteAccount).
+  Future<void> reauthenticate(String password) async {
     final user = _auth.currentUser;
-    if (user == null) return;
-    await _firestore.collection('users').doc(user.uid).update({'is_active': false});
-    await user.delete();
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw Exception('You must be signed in to delete your account.');
+    }
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+      await user.getIdToken(true);
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthException(e);
+    }
   }
 
-  Future<bool> reloadAndCheckEmailVerification() async {
+  /// Errors meaning this phone's session is over, not that the check failed.
+  /// Confirming a changed email can end the session, so a reload after it
+  /// reports one of these.
+  static const _sessionEndedCodes = {
+    'user-token-expired',
+    'invalid-user-token',
+    'user-not-found',
+    'user-disabled',
+  };
+
+  /// Whether the signed-in user has verified their email: true, false, or
+  /// null when the session has ended (for example because the email was just
+  /// changed). On null the user is signed out and must sign in again.
+  Future<bool?> reloadAndCheckEmailVerification() async {
     final user = _auth.currentUser;
     if (user == null) return false;
-    await user.reload();
-    return _auth.currentUser?.emailVerified ?? false;
+    try {
+      await user.reload();
+    } on FirebaseAuthException catch (e) {
+      if (_sessionEndedCodes.contains(e.code)) {
+        await _auth.signOut();
+        return null;
+      }
+      rethrow;
+    }
+    final current = _auth.currentUser;
+    final verified = current?.emailVerified ?? false;
+    if (verified && current != null) await _syncProfileEmail(current);
+    return verified;
+  }
+
+  /// Sends a confirmation link to [newEmail]. Opening it changes the account's
+  /// email and verifies it in one step, for a caregiver who registered with a
+  /// mistyped address. Nothing changes until the link is opened.
+  Future<void> changeEmailBeforeVerification(String newEmail) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('You must be signed in to change your email.');
+    }
+    try {
+      await user.verifyBeforeUpdateEmail(newEmail.trim());
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthException(e);
+    }
+  }
+
+  /// Keeps users.email in step with the Auth account after an email change.
+  /// Best effort: a failure here must not block signing in.
+  Future<void> _syncProfileEmail(User user, [UserModel? profile]) async {
+    final email = user.email;
+    if (email == null || email.isEmpty) return;
+    if (profile != null && profile.email == email) return;
+    try {
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .update({'email': email});
+    } catch (e) {
+      debugPrint('Could not sync profile email: $e');
+    }
   }
 
   // Sign out
@@ -303,6 +389,8 @@ class AuthService {
         return 'This account has been disabled.';
       case 'too-many-requests':
         return 'Too many failed attempts. Please try again later.';
+      case 'requires-recent-login':
+        return 'For your security, sign in again before doing this.';
       default:
         return e.message ?? 'An authentication error occurred.';
     }

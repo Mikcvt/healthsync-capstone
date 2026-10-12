@@ -95,6 +95,52 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "caregiver_notified",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "logged_at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "caregiver_notified",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "scheduled_at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "dose_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "caregiver_notified",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "synced_at",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

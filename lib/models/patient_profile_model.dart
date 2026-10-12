@@ -13,6 +13,12 @@ class PatientProfileModel {
   final DateTime createdAt;
   final bool isActive;
 
+  /// When the caregiver marked the whole treatment finished. Read only: it is
+  /// written by FirestoreService.completeTreatment and deliberately left out
+  /// of [toMap], so a patient saving their own profile cannot clear it.
+  /// Screens treat it as current only while no medicine is active.
+  final DateTime? treatmentCompletedAt;
+
   const PatientProfileModel({
     required this.profileId,
     required this.userRef,
@@ -25,6 +31,7 @@ class PatientProfileModel {
     this.gender = '',
     required this.createdAt,
     this.isActive = true,
+    this.treatmentCompletedAt,
   });
 
   /// Reads a field that may be stored either as an array or as a single
@@ -76,6 +83,9 @@ class PatientProfileModel {
               ? DateTime.tryParse(map['created_at'].toString()) ?? DateTime.now()
               : DateTime.now()),
       isActive: map['is_active'] as bool? ?? true,
+      treatmentCompletedAt: map['treatment_completed_at'] is Timestamp
+          ? (map['treatment_completed_at'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -120,6 +130,7 @@ class PatientProfileModel {
       gender: gender ?? this.gender,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
+      treatmentCompletedAt: treatmentCompletedAt,
     );
   }
 }

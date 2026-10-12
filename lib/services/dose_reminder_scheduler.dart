@@ -72,6 +72,30 @@ class DoseReminderScheduler {
     return await android.canScheduleExactNotifications() ?? false;
   }
 
+  /// Whether the OS will show this app's notifications at all.
+  Future<bool> notificationsEnabled() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.areNotificationsEnabled() ?? false;
+  }
+
+  /// Asks for notification permission. Android only shows the prompt a couple
+  /// of times; after that the user must allow it in app settings.
+  Future<bool> requestNotificationPermission() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.requestNotificationsPermission() ?? false;
+  }
+
+  /// Opens the system screen that allows exact alarms (Android 12+).
+  Future<void> requestExactAlarmPermission() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.requestExactAlarmsPermission();
+  }
+
   /// A stable id for one dose instance.
   ///
   /// Derived from the schedule and the exact instant, so re-syncing replaces

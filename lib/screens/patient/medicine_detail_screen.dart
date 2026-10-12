@@ -61,7 +61,7 @@ class MedicineDetailScreen extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
-                decoration: AppStyles.gradientDecoration,
+                decoration: AppStyles.patientBannerDecoration,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -232,18 +232,19 @@ class MedicineDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: AppColors.missedRedBg,
+                    color: AppColors.pendingAmberBg,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Row(
+                  // A note, not a block: the dose below can still be logged.
+                  child: Row(
                     children: [
-                      Icon(Icons.inventory_2_outlined, color: AppColors.missedRed, size: 20),
-                      SizedBox(width: 10),
+                      const Icon(Icons.inventory_2_outlined, color: AppColors.pendingAmber, size: 20),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          AppStrings.outOfStockBadge,
-                          style: TextStyle(
-                            color: AppColors.missedRed,
+                          patientProvider.emptyStockNote(currentSchedule),
+                          style: const TextStyle(
+                            color: AppColors.pendingAmber,
                             fontWeight: FontWeight.w700,
                             fontSize: 13.5,
                           ),
@@ -259,10 +260,7 @@ class MedicineDetailScreen extends StatelessWidget {
               // dashboard: locked until 30 minutes before, an early-logging
               // prompt, Undo, and the missed-dose screen once it is missed.
               if (currentSchedule != null)
-                _TodayDoseAction(
-                  scheduleId: currentSchedule.scheduleId,
-                  outOfStock: outOfStock,
-                ),
+                _TodayDoseAction(scheduleId: currentSchedule.scheduleId),
             ],
           ),
         ),
@@ -314,9 +312,8 @@ class _DetailRow extends StatelessWidget {
 
 class _TodayDoseAction extends StatelessWidget {
   final String scheduleId;
-  final bool outOfStock;
 
-  const _TodayDoseAction({required this.scheduleId, required this.outOfStock});
+  const _TodayDoseAction({required this.scheduleId});
 
   @override
   Widget build(BuildContext context) {
@@ -363,16 +360,14 @@ class _TodayDoseAction extends StatelessWidget {
         SizedBox(
           height: 54,
           child: ElevatedButton.icon(
-            onPressed: outOfStock
-                ? null
-                : () async {
-                    final navigator = Navigator.of(context);
-                    final ok = await DoseActions.take(context, slot);
-                    if (ok) navigator.pop();
-                  },
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final ok = await DoseActions.take(context, slot);
+              if (ok) navigator.pop();
+            },
             icon: Icon(
               locked ? Icons.lock_outline_rounded : Icons.check_circle_outline,
-              color: outOfStock || locked ? AppColors.textMuted : Colors.white,
+              color: locked ? AppColors.textMuted : Colors.white,
             ),
             label: Text(
               'Mark ${DateFormatter.toClockLabel(slot.scheduledAt)} dose as taken',
@@ -380,7 +375,7 @@ class _TodayDoseAction extends StatelessWidget {
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor:
-                  locked ? AppColors.background : AppColors.caregiverGreen,
+                  locked ? AppColors.background : AppColors.patientBlue,
               foregroundColor: locked ? AppColors.textMuted : Colors.white,
               side: locked ? const BorderSide(color: AppColors.borderGray) : null,
               elevation: 0,

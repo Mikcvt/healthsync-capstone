@@ -112,7 +112,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                       label: Text('$h hours'),
                       selected: selected,
                       onSelected: (_) => setSheet(() => interval = h),
-                      selectedColor: AppColors.patientBlue,
+                      selectedColor: AppColors.caregiverGreen,
                       labelStyle: TextStyle(
                         color:
                             selected ? Colors.white : AppColors.textPrimary,
@@ -156,7 +156,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                   contentPadding: EdgeInsets.zero,
                   value: wakingOnly,
                   onChanged: (v) => setSheet(() => wakingOnly = v),
-                  activeThumbColor: AppColors.patientBlue,
+                  activeThumbColor: AppColors.caregiverGreen,
                   title: const Text(
                     'Only while awake',
                     style: TextStyle(
@@ -194,7 +194,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                         ? null
                         : () => Navigator.pop(sheetContext, preview),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.patientBlue,
+                      backgroundColor: AppColors.caregiverGreen,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -373,11 +373,11 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                       TextButton.icon(
                         onPressed: _openIntervalSheet,
                         icon: const Icon(Icons.repeat_rounded,
-                            size: 18, color: AppColors.patientBlue),
+                            size: 18, color: AppColors.caregiverGreen),
                         label: const Text(
                           'Every…',
                           style: TextStyle(
-                            color: AppColors.patientBlue,
+                            color: AppColors.caregiverGreen,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -385,11 +385,11 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                       TextButton.icon(
                         onPressed: _pickTime,
                         icon: const Icon(Icons.add_alarm_rounded,
-                            size: 18, color: AppColors.patientBlue),
+                            size: 18, color: AppColors.caregiverGreen),
                         label: const Text(
                           'Add Time',
                           style: TextStyle(
-                            color: AppColors.patientBlue,
+                            color: AppColors.caregiverGreen,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -406,19 +406,19 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                 children: _times.map((t) {
                   return Chip(
                     backgroundColor: AppColors.ledActiveBg,
-                    side: const BorderSide(color: AppColors.patientBlue),
-                    avatar: const Icon(Icons.access_time_rounded, size: 16, color: AppColors.patientBlue),
+                    side: const BorderSide(color: AppColors.caregiverGreen),
+                    avatar: const Icon(Icons.access_time_rounded, size: 16, color: AppColors.caregiverGreen),
                     label: Text(
                       t,
                       style: const TextStyle(
-                        color: AppColors.patientBlue,
+                        color: AppColors.caregiverGreen,
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         fontFamily: 'PlusJakartaSans',
                       ),
                     ),
                     deleteIcon: _times.length > 1
-                        ? const Icon(Icons.close_rounded, size: 16, color: AppColors.patientBlue)
+                        ? const Icon(Icons.close_rounded, size: 16, color: AppColors.caregiverGreen)
                         : null,
                     onDeleted: _times.length > 1
                         ? () => setState(() => _times.remove(t))
@@ -461,10 +461,10 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: isSelected ? AppColors.patientBlue : Colors.white,
+                        color: isSelected ? AppColors.caregiverGreen : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isSelected ? AppColors.patientBlue : AppColors.borderGray,
+                          color: isSelected ? AppColors.caregiverGreen : AppColors.borderGray,
                         ),
                       ),
                       alignment: Alignment.center,
@@ -500,6 +500,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                 decoration: AppStyles.inputDecoration(
                   'Instructions',
                   hint: 'e.g. Take after breakfast, avoid dairy',
+                  accent: AppColors.caregiverGreen,
                 ),
               ),
               const SizedBox(height: 36),
@@ -510,7 +511,7 @@ class _AddMedicineStep2ScreenState extends State<AddMedicineStep2Screen> {
                 child: ElevatedButton(
                   onPressed: _onNext,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
+                    backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
@@ -542,7 +543,7 @@ class _StepBar extends StatelessWidget {
       child: Container(
         height: 5,
         decoration: BoxDecoration(
-          color: active ? AppColors.patientBlue : AppColors.borderGray,
+          color: active ? AppColors.caregiverGreen : AppColors.borderGray,
           borderRadius: BorderRadius.circular(3),
         ),
       ),

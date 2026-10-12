@@ -60,7 +60,7 @@ class ScheduleScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Your caregiver has not added any medicines yet. They will appear here as soon as they do.',
+                        'Your care partner has not added any medicines yet. They will appear here as soon as they do.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
                       ),

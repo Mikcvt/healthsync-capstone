@@ -9,7 +9,11 @@ import 'role_select_screen.dart';
 import '../../utils/snackbar_helper.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Filled into the email field, e.g. when Register found the email already
+  /// has an account.
+  final String? initialEmail;
+
+  const LoginScreen({super.key, this.initialEmail});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,7 +21,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  late final _emailController =
+      TextEditingController(text: widget.initialEmail ?? '');
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 

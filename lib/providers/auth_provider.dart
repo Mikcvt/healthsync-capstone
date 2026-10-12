@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/dose_reminder_scheduler.dart';
 import '../services/notification_service.dart';
 
 /// What the app knows about the signed-in user right now.
@@ -83,6 +84,12 @@ class AuthProvider extends ChangeNotifier {
         _listenToUserProfile(user.uid);
       } else {
         _userProfileSubscription?.cancel();
+        // Reminders are scheduled on the phone, not in Firebase, so nothing
+        // server-side can stop them. Without this a patient whose account was
+        // deleted, or who signed out, kept getting alarms for up to a week.
+        DoseReminderScheduler().cancelAll().catchError((Object e) {
+          debugPrint('Could not clear reminders on sign-out: $e');
+        });
         _currentUserModel = null;
         _profileResolved = false;
         notifyListeners();
@@ -197,6 +204,12 @@ class AuthProvider extends ChangeNotifier {
   String? get lastOtpErrorCode => _lastOtpErrorCode;
 
   // Register
+  bool _emailInUse = false;
+
+  /// Whether the last [register] failed because the email already has an
+  /// account, so the screen can offer to log in instead.
+  bool get lastRegisterEmailInUse => _emailInUse;
+
   Future<bool> register({
     required String email,
     required String password,
@@ -207,6 +220,7 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     _setLoading(true);
     _errorMessage = null;
+    _emailInUse = false;
     try {
       final user = await _authService.registerWithEmailAndPassword(
         email: email,
@@ -219,6 +233,11 @@ class AuthProvider extends ChangeNotifier {
       _currentUserModel = user;
       _setLoading(false);
       return true;
+    } on EmailInUseException catch (e) {
+      _emailInUse = true;
+      _errorMessage = e.toString();
+      _setLoading(false);
+      return false;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _setLoading(false);
@@ -262,10 +281,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> reloadAndCheckEmailVerification() async {
+  /// True, false, or null when the session ended (the user was signed out,
+  /// typically after confirming a changed email) and must sign in again.
+  Future<bool?> reloadAndCheckEmailVerification() async {
     final verified = await _authService.reloadAndCheckEmailVerification();
     notifyListeners();
     return verified;
+  }
+
+  /// Sends a confirmation link to a corrected email address.
+  Future<bool> changeEmailBeforeVerification(String newEmail) async {
+    _errorMessage = null;
+    try {
+      await _authService.changeEmailBeforeVerification(newEmail);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<bool> updateProfile({
@@ -310,14 +344,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteAccount() async {
+  /// Deletes a caregiver's account together with every patient account they
+  /// manage. The Worker does the cascade; this proves the password, asks for
+  /// it, and signs this phone out.
+  Future<bool> deleteAccount({required String password}) async {
     _setLoading(true);
     _errorMessage = null;
     try {
-      await _authService.deleteCurrentUser();
+      await _authService.reauthenticate(password);
+      await _apiService.deleteAccount();
+      // The Auth account is already gone; this clears the local session.
+      await _authService.signOut();
       _currentUserModel = null;
       _setLoading(false);
       return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _setLoading(false);
+      return false;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _setLoading(false);
@@ -329,6 +373,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     _setLoading(true);
     try {
+      // While still signed in: the rules only let the owner clear the token.
+      final uid = currentUid;
+      if (uid != null) await NotificationService().clearTokenForUser(uid);
       await _authService.signOut();
       _currentUserModel = null;
     } finally {

@@ -7,6 +7,7 @@ import '../../models/dose_log_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
 import '../../utils/dose_status_display.dart';
+import '../../utils/snackbar_helper.dart';
 import 'patient_history_screen.dart';
 import 'patient_schedule_screen.dart';
 import 'reports_screen.dart';
@@ -314,12 +315,163 @@ class PatientDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              if (caregiver.selectedPatientMedications.isNotEmpty)
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _confirmCompleteTreatment(
+                      context,
+                      patientUid: caregiver.selectedPatientUid!,
+                      patientName: patientName,
+                    ),
+                    icon: const Icon(Icons.verified_rounded),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.caregiverGreen,
+                      side: const BorderSide(color: AppColors.caregiverGreen),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    label: const Text(
+                      'Mark treatment complete',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
+                    ),
+                  ),
+                )
+              else if (profile?.treatmentCompletedAt != null)
+                _TreatmentCompleteBanner(
+                  completedAt: profile!.treatmentCompletedAt!,
+                ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// Archives every active medicine as a finished course, after a confirmation
+/// that lists them and says plainly that the history stays.
+Future<void> _confirmCompleteTreatment(
+  BuildContext context, {
+  required String patientUid,
+  required String patientName,
+}) async {
+  final caregiver = context.read<CaregiverProvider>();
+  final names = caregiver.selectedPatientMedications
+      .map((m) => m.medicationName.trim())
+      .where((n) => n.isNotEmpty)
+      .toList();
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'Mark treatment complete?',
+        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Every medicine $patientName is taking will be archived as a '
+              'finished course:',
+              style: const TextStyle(
+                height: 1.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final name in names)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 2),
+                child: Text(
+                  '• $name',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 10),
+            const Text(
+              'Reminders and box lights stop, and doses not yet due are '
+              'cancelled. Every dose already recorded stays in the history and '
+              'adherence reports. You can restore a medicine or add a new one '
+              'later.',
+              style: TextStyle(height: 1.5, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text(
+            'Mark complete',
+            style: TextStyle(color: AppColors.caregiverGreen),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true || !context.mounted) return;
+  final ok = await caregiver.completeTreatment(patientUid);
+  if (!context.mounted) return;
+  ok
+      ? SnackbarHelper.showSuccess(
+          context, "$patientName's treatment is marked complete.")
+      : SnackbarHelper.showError(
+          context,
+          caregiver.errorMessage ?? 'Could not complete the treatment.',
+        );
+}
+
+class _TreatmentCompleteBanner extends StatelessWidget {
+  final DateTime completedAt;
+  const _TreatmentCompleteBanner({required this.completedAt});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.greenLight,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.verified_rounded, color: AppColors.caregiverGreen),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Treatment completed on '
+                '${DateFormatter.toShortDate(completedAt)}. Past doses stay '
+                'in the history.',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.greenDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _NoSelection extends StatelessWidget {

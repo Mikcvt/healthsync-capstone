@@ -21,6 +21,20 @@ class AppStyles {
     ],
   );
 
+  /// The patient's banner: solid patient blue. The patient side uses one
+  /// colour throughout; the blue-to-green gradient is caregiver branding.
+  static BoxDecoration patientBannerDecoration = BoxDecoration(
+    color: AppColors.patientBlue,
+    borderRadius: BorderRadius.circular(16),
+    boxShadow: [
+      BoxShadow(
+        color: AppColors.patientBlue.withValues(alpha: 0.28),
+        blurRadius: 20,
+        offset: const Offset(0, 6),
+      ),
+    ],
+  );
+
   // Gradient box decoration
   static BoxDecoration gradientDecoration = BoxDecoration(
     gradient: AppColors.primaryGradient,
@@ -35,10 +49,13 @@ class AppStyles {
   );
 
   // Input field decoration
+  /// [accent] colours the focused border: patient blue by default, caregiver
+  /// green on screens only a caregiver opens.
   static InputDecoration inputDecoration(
     String label, {
     String? hint,
     Widget? suffix,
+    Color accent = AppColors.patientBlue,
   }) {
     return InputDecoration(
       labelText: label,
@@ -61,7 +78,7 @@ class AppStyles {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.patientBlue, width: 1.5),
+        borderSide: BorderSide(color: accent, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),

@@ -260,6 +260,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                 decoration: AppStyles.inputDecoration(
                   _fitsInBox ? 'Pills on hand' : 'Doses on hand',
                   hint: '30',
+                  accent: AppColors.caregiverGreen,
                 ),
               ),
               const SizedBox(height: 16),
@@ -270,6 +271,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                 decoration: AppStyles.inputDecoration(
                   'Alert me when this many are left',
                   hint: '5',
+                  accent: AppColors.caregiverGreen,
                 ),
               ),
               const SizedBox(height: 36),
@@ -280,7 +282,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _onSave,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.patientBlue,
+                    backgroundColor: AppColors.caregiverGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
@@ -303,6 +305,8 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
   Widget _storageSection(_BoxContext box, String whose) {
     if (!box.hasBox) {
       return BoxInfoBanner(
+        color: AppColors.greenDark,
+        background: AppColors.greenLight,
         icon: Icons.phone_android_rounded,
         message: '$whose has no medicine box paired yet, so reminders will '
             'come on the phone only. Once a box is paired you can place this '
@@ -316,6 +320,8 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           BoxInfoBanner(
+            color: AppColors.greenDark,
+            background: AppColors.greenLight,
             message: 'A $form does not fit a pill compartment, so this '
                 'medicine stays outside the box and is reminded on the phone.',
           ),
@@ -349,6 +355,8 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
         const SizedBox(height: 14),
         if (allFull) ...[
           const BoxInfoBanner(
+            color: AppColors.greenDark,
+            background: AppColors.greenLight,
             message: 'All 8 compartments are in use. This medicine will be '
                 'reminded on the phone.',
           ),
@@ -356,6 +364,7 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
         ],
         CompartmentPicker(
           selected: _columnFor(box),
+          accent: AppColors.caregiverGreen,
           occupied: box.occupied,
           onChanged: (column) => setState(() {
             _picked = true;
@@ -377,7 +386,7 @@ class _StepBar extends StatelessWidget {
       child: Container(
         height: 5,
         decoration: BoxDecoration(
-          color: active ? AppColors.patientBlue : AppColors.borderGray,
+          color: active ? AppColors.caregiverGreen : AppColors.borderGray,
           borderRadius: BorderRadius.circular(3),
         ),
       ),

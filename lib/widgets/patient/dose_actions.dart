@@ -157,7 +157,7 @@ class DoseActions {
             child: Text(
               skipping ? 'Yes, skip it now' : 'Yes, I took it now',
               style: const TextStyle(
-                color: AppColors.caregiverGreen,
+                color: AppColors.patientBlue,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -189,7 +189,9 @@ class DoseActions {
         if (undo == null) return true;
         SnackbarHelper.showUndo(
           context,
-          message: successMessage,
+          message: outcome.savedOffline
+              ? '$successMessage ${AppStrings.savedOfflineSuffix}'
+              : successMessage,
           duration: DoseTiming.undoWindow,
           onUndo: () async {
             final ok = await patient.undoDoseAction(undo);

@@ -11,6 +11,7 @@ import '../models/notification_model.dart';
 import '../models/patient_medication_model.dart';
 import '../models/otp_code_model.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/device_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/adherence.dart';
@@ -371,25 +372,48 @@ class CaregiverProvider extends ChangeNotifier {
     }
   }
 
-  /// Retires a medicine and every schedule attached to it. Dose history is
-  /// deliberately left intact — adherence records are evidence, not clutter.
-  /// Approves a patient's deletion request, or removes a patient directly.
-  Future<bool> removePatient(String patientUid) async {
+  /// Permanently deletes a patient and everything recorded for them, whether
+  /// the caregiver is removing them or approving the patient's own request.
+  ///
+  /// "Removing" used to only switch the patient off: the login, medicines and
+  /// every dose log stayed forever. The Worker now does the full delete; it
+  /// needs a fresh sign-in, so the password is checked first.
+  Future<bool> deletePatient(
+    String patientUid, {
+    required String password,
+  }) async {
     if (_caregiverUid == null) return false;
     _errorMessage = null;
     try {
-      await _firestoreService.deactivatePatient(
-        patientUid: patientUid,
-        caregiverUid: _caregiverUid!,
-      );
+      await AuthService().reauthenticate(password);
+      await _apiService.deletePatient(patientUid);
       if (_selectedPatientUid == patientUid) {
         _selectedPatientUid = null;
         _selectedPatientUser = null;
       }
       notifyListeners();
       return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Marks the patient's whole treatment finished. See
+  /// FirestoreService.completeTreatment.
+  Future<bool> completeTreatment(String patientUid) async {
+    _errorMessage = null;
+    try {
+      await _firestoreService.completeTreatment(patientUid);
+      return true;
+    } catch (e) {
+      debugPrint('completeTreatment failed: $e');
+      _errorMessage = AppStrings.genericError;
       notifyListeners();
       return false;
     }
@@ -399,7 +423,7 @@ class CaregiverProvider extends ChangeNotifier {
   Future<bool> declineDeletionRequest(String patientUid) async {
     _errorMessage = null;
     try {
-      await _firestoreService.cancelAccountDeletionRequest(patientUid);
+      await _firestoreService.declineAccountDeletionRequest(patientUid);
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');

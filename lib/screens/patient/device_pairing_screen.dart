@@ -50,7 +50,7 @@ class _DevicePairingScreenState extends State<DevicePairingScreen> {
       // patient change only the LED flag and stock count on a schedule.
       SnackbarHelper.showSuccess(
         context,
-        '${AppStrings.devicePaired} Your caregiver will choose a compartment '
+        '${AppStrings.devicePaired} Your care partner will choose a compartment '
         'for each medicine.',
       );
     } else {

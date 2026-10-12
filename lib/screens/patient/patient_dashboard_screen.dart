@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../../widgets/shared/floating_nav_bar.dart';
 import '../../widgets/shared/medicine_badge.dart';
+import '../../widgets/shared/reminder_check_card.dart';
 import '../../widgets/patient/dose_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
+import '../../services/connectivity_service.dart';
 import 'analytics_screen.dart';
 import 'medicine_box_status_screen.dart';
 import 'medicine_detail_screen.dart';
@@ -115,7 +117,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
-                decoration: AppStyles.gradientDecoration,
+                decoration: AppStyles.patientBannerDecoration,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -210,7 +212,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'No Caregiver Linked',
+                              'No Care Partner Linked',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
@@ -245,21 +247,23 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: AppColors.ledDoneBg,
+                    color: AppColors.blueLight,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.caregiverGreen.withValues(alpha: 0.3)),
+                    border: Border.all(color: AppColors.patientBlue.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: AppColors.caregiverGreen, size: 20),
+                      const Icon(Icons.check_circle_rounded, color: AppColors.patientBlue, size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Caregiver ${caregiver != null ? caregiver.firstName : "Connected"} is monitoring',
+                          caregiver != null && caregiver.firstName.isNotEmpty
+                              ? '${caregiver.firstName}, your care partner, is following your doses'
+                              : 'Your care partner is following your doses',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.caregiverGreen,
+                            color: AppColors.patientBlue,
                             fontFamily: 'PlusJakartaSans',
                           ),
                         ),
@@ -284,11 +288,28 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
               ),
               const SizedBox(height: 10),
 
-              if (!hasSchedules)
+              const _OfflineBanner(),
+              // Silent while the phone is fine; it also reports the result
+              // so the caregiver can see when reminders cannot ring.
+              ReminderCheckCard(
+                onlyWhenProblem: true,
+                onChecked: patientProvider.reportReminderHealth,
+              ),
+              if (!hasSchedules &&
+                  patientProvider.profile?.treatmentCompletedAt != null)
+                _EmptyCard(
+                  icon: Icons.verified_rounded,
+                  title: 'Treatment complete',
+                  message: 'Your care partner marked your treatment finished on '
+                      '${DateFormatter.toShortDate(patientProvider.profile!.treatmentCompletedAt!)}. '
+                      'No medicines are scheduled. Your history is still in '
+                      'Analytics.',
+                )
+              else if (!hasSchedules)
                 const _EmptyCard(
                   icon: Icons.medication_outlined,
                   title: 'No medications scheduled yet',
-                  message: 'Your caregiver has not added any medicines yet. '
+                  message: 'Your care partner has not added any medicines yet. '
                       'They will appear here as soon as they do.',
                 )
               else if (today.isEmpty)
@@ -364,7 +385,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                       title: 'Dose History',
                       subtitle: 'Past intake logs',
                       icon: Icons.history_rounded,
-                      color: AppColors.caregiverGreen,
+                      color: AppColors.patientBlue,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
@@ -504,6 +525,78 @@ class _CollapsibleGroupState extends State<_CollapsibleGroup> {
 
 /// One dose: name, date and time, status, and — while it is still open — the
 /// Done and Skip buttons.
+/// Shown while the phone has no connection. Doses can still be logged:
+/// Firestore keeps them on the phone and syncs them when it reconnects.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ConnectivityService().online,
+      builder: (context, online, _) {
+        if (online) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.blueLight,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.patientBlue.withValues(alpha: 0.25),
+            ),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.cloud_off_rounded,
+                  size: 20, color: AppColors.blueDark),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  AppStrings.offlineBanner,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.blueDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// On a dose changed on this phone that the server has not received yet.
+/// Clears itself when the dose syncs.
+class _WaitingToSync extends StatelessWidget {
+  const _WaitingToSync();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_upload_outlined,
+            size: 14, color: AppColors.textSecondary),
+        SizedBox(width: 4),
+        Text(
+          AppStrings.waitingToSync,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _DoseCard extends StatelessWidget {
   final DoseSlot slot;
   final DateTime now;
@@ -536,7 +629,10 @@ class _DoseCard extends StatelessWidget {
     final detail = [
       DateFormatter.doseDayTime(slot.scheduledAt, now: now),
       provider.doseInstructionFor(schedule),
-      if (open) '${schedule.pillsRemaining} left',
+      if (open)
+        schedule.pillsRemaining > 0
+            ? '${schedule.pillsRemaining} left'
+            : 'Empty · refill',
     ].join(' · ');
 
     // Tomorrow: Done only, and only once the early window has opened.
@@ -607,6 +703,8 @@ class _DoseCard extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           _BadgeChip(badge),
+                          if (slot.log?.pendingSync ?? false)
+                            const _WaitingToSync(),
                           if (slot.isOpen && phase != DosePhase.missed)
                             Text(
                               DoseTiming.countdown(slot.scheduledAt, now),
@@ -712,7 +810,7 @@ class _DoseButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final doneColor = locked ? AppColors.textMuted : AppColors.caregiverGreen;
+    final doneColor = locked ? AppColors.textMuted : AppColors.patientBlue;
     final skipColor = locked ? AppColors.textMuted : AppColors.missedRed;
 
     return Column(
@@ -733,7 +831,7 @@ class _DoseButtons extends StatelessWidget {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                      locked ? AppColors.background : AppColors.caregiverGreen,
+                      locked ? AppColors.background : AppColors.patientBlue,
                   foregroundColor: locked ? doneColor : Colors.white,
                   elevation: 0,
                   minimumSize: const Size(0, 44),

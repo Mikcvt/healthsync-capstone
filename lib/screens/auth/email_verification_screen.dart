@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../caregiver/caregiver_welcome_screen.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../utils/validators.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({super.key});
@@ -18,6 +20,15 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   Timer? _resendTimer;
   int _resendSeconds = 0;
   bool _isChecking = false;
+
+  /// A corrected address awaiting confirmation, shown instead of the old one.
+  String? _pendingEmail;
+
+  /// Whether the secondary options (resend, change email, other account) are
+  /// shown. Closed at first so the main button stands alone.
+  bool _showMoreOptions = false;
+
+  bool get _moreOptionsOpen => _showMoreOptions || _resendSeconds > 0;
 
   @override
   void initState() {
@@ -34,11 +45,64 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     super.dispose();
   }
 
+  /// Signs out and returns to the welcome screen.
+  ///
+  /// Signing out alone looked like a dead button: Register and Login push this
+  /// screen on top of AuthGate, so AuthGate switched to WelcomeScreen
+  /// underneath while this screen stayed in front. Popping back to the first
+  /// route reveals it. When AuthGate itself shows this screen, there is
+  /// nothing to pop and AuthGate rebuilds on its own.
+  Future<void> _useDifferentAccount() async {
+    _pollTimer?.cancel();
+    _resendTimer?.cancel();
+    final navigator = Navigator.of(context);
+    await context.read<AuthProvider>().signOut();
+    if (!mounted) return;
+    navigator.popUntil((route) => route.isFirst);
+  }
+
+  /// For a caregiver who registered with a mistyped address: sends the link
+  /// to the corrected one. Opening it changes and verifies the email at once,
+  /// and the 4-second check above then moves on by itself.
+  Future<void> _changeEmail() async {
+    final newEmail = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ChangeEmailDialog(),
+    );
+    if (newEmail == null || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    final ok = await auth.changeEmailBeforeVerification(newEmail);
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _pendingEmail = newEmail);
+      SnackbarHelper.showSuccess(
+        context,
+        'We sent a link to $newEmail. Open it to confirm your new email.',
+      );
+    } else {
+      SnackbarHelper.showError(
+        context,
+        auth.errorMessage ?? 'Could not change your email. Try again.',
+      );
+    }
+  }
+
   Future<void> _checkVerification({required bool showErrors}) async {
     if (_isChecking) return;
     setState(() => _isChecking = true);
     try {
+      final navigator = Navigator.of(context);
       final verified = await context.read<AuthProvider>().reloadAndCheckEmailVerification();
+      if (verified == null) {
+        // Confirming a changed email ended this session: sign in again with
+        // the new address, from the welcome screen.
+        _pollTimer?.cancel();
+        _resendTimer?.cancel();
+        if (!mounted) return;
+        _showMessage('Your email was changed. Sign in with your new email address.');
+        navigator.popUntil((route) => route.isFirst);
+        return;
+      }
       if (verified && mounted) {
         _pollTimer?.cancel();
         _continueToOnboarding();
@@ -89,7 +153,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    final email = authProvider.currentUserModel?.email ?? 'your email address';
+    final email = _pendingEmail ??
+        authProvider.currentUserModel?.email ??
+        'your email address';
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -134,13 +200,45 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                         : const Text('I verified my email'),
                   ),
                 ),
-                TextButton(
-                  onPressed: _resendSeconds == 0 ? _resendVerification : null,
-                  child: Text(_resendSeconds == 0 ? 'Resend verification email' : 'Resend in ${_resendSeconds}s'),
+                // One quiet toggle instead of three links competing with the
+                // main button. It stays open while a resend countdown runs,
+                // so the countdown is not hidden.
+                TextButton.icon(
+                  onPressed: () =>
+                      setState(() => _showMoreOptions = !_showMoreOptions),
+                  iconAlignment: IconAlignment.end,
+                  icon: AnimatedRotation(
+                    turns: _moreOptionsOpen ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.expand_more_rounded),
+                  ),
+                  label: const Text("Didn't get it? More options"),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                  ),
                 ),
-                TextButton(
-                  onPressed: () => authProvider.signOut(),
-                  child: const Text('Use a different account'),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: !_moreOptionsOpen
+                      ? const SizedBox(width: double.infinity)
+                      : Column(
+                          children: [
+                            TextButton(
+                              onPressed: _resendSeconds == 0 ? _resendVerification : null,
+                              child: Text(_resendSeconds == 0 ? 'Resend verification email' : 'Resend in ${_resendSeconds}s'),
+                            ),
+                            TextButton(
+                              onPressed: _changeEmail,
+                              child: const Text('Wrong email? Change it'),
+                            ),
+                            TextButton(
+                              onPressed: _useDifferentAccount,
+                              child: const Text('Use a different account'),
+                            ),
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -149,4 +247,72 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       ),
     );
   }
+}
+
+class _ChangeEmailDialog extends StatefulWidget {
+  const _ChangeEmailDialog();
+
+  @override
+  State<_ChangeEmailDialog> createState() => _ChangeEmailDialogState();
+}
+
+class _ChangeEmailDialogState extends State<_ChangeEmailDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _email = TextEditingController();
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, _email.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Change your email',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
+        content: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'We will send a new verification link to this address. Your '
+                'email changes when you open it.',
+                style: TextStyle(height: 1.5, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _email,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: AppStyles.inputDecoration('New email address'),
+                validator: Validators.email,
+                onFieldSubmitted: (_) => _submit(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _submit,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.caregiverGreen,
+            ),
+            child: const Text('Send link'),
+          ),
+        ],
+      );
 }

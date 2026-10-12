@@ -55,9 +55,15 @@ service cloud.firestore {
       // caregiver signup, or by the Worker for managed patients) and are
       // immutable thereafter from the client. Admin SDK writes bypass rules, so
       // the Worker can still change them.
-      allow update: if isOwner(userId)
+      allow update: if (isOwner(userId)
         && request.resource.data.account_type == resource.data.account_type
-        && request.resource.data.can_edit_medications == resource.data.can_edit_medications;
+        && request.resource.data.can_edit_medications == resource.data.can_edit_medications)
+        // The patient's own caregiver may answer a deletion request, and touch
+        // nothing else. Without this, Decline was refused every time.
+        || (isCaregiverOf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['deletion_requested_at', 'deletion_reason',
+                        'deletion_declined_at']));
       allow delete: if isOwner(userId);
     }
 
@@ -132,15 +138,36 @@ service cloud.firestore {
           && to in ['taken', 'skipped', 'snoozed', 'missed'])
         || (from == 'missed' && to == 'taken'
           && request.resource.data.get('timing', '') == 'logged_late')
+        // Offline-first: the patient acted while offline, BEFORE the Worker
+        // wrote the dose off (missed_at), and the phone synced afterwards.
+        // Without this the rules refused the sync and the dose was lost.
+        || (from == 'missed' && to in ['taken', 'skipped']
+          && resource.data.get('missed_at', null) is timestamp
+          && request.resource.data.get('logged_at', null) is timestamp
+          && request.resource.data.logged_at < resource.data.missed_at)
+        // Undo within 2 minutes of the action: judged by the server's clock
+        // when online, or by when Undo was tapped (undone_at) when the change
+        // was queued offline and reaches the server much later.
         || (from in ['taken', 'skipped'] && to in ['pending', 'snoozed']
           && resource.data.get('logged_at', null) is timestamp
-          && request.time < resource.data.logged_at + duration.value(2, 'm'));
+          && (request.time < resource.data.logged_at + duration.value(2, 'm')
+            || (request.resource.data.get('undone_at', null) is timestamp
+              && request.resource.data.undone_at >= resource.data.logged_at
+              && request.resource.data.undone_at
+                < resource.data.logged_at + duration.value(2, 'm'))));
     }
 
     // Dose Logs — deliberately NOT gated on can_edit_medications. Confirming a
     // dose is exactly what a managed patient is for.
     match /dose_logs/{doseLogId} {
-      allow read: if isOwner(resource.data.patient_ref)
+      // `resource == null` lets a signed-in user look up a dose log that does
+      // not exist yet. Done, Skip and Snooze read the log first and create it
+      // under its deterministic id when it is missing; without this clause
+      // that read dereferenced null.data, the rule errored, and every action
+      // on a not-yet-materialised dose failed with "Could not record this
+      // dose". Only absence is revealed, never another patient's data.
+      allow read: if (isAuthenticated() && resource == null)
+        || isOwner(resource.data.patient_ref)
         || isCaregiverOf(resource.data.patient_ref);
       allow create: if isOwner(request.resource.data.patient_ref)
         || isCaregiverOf(request.resource.data.patient_ref);
@@ -166,6 +193,10 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read, write: if isOwner(resource.data.user_ref)
         || request.resource.data.user_ref == request.auth.uid;
+      // A caregiver may tell their own patient that a deletion request was
+      // declined. Only that one kind, so this cannot become a spam channel.
+      allow create: if isCaregiverOf(request.resource.data.user_ref)
+        && request.resource.data.notification_type == 'request_declined';
     }
 
     // OTP codes — the patient NEVER touches this collection. They are not even
@@ -177,10 +208,16 @@ service cloud.firestore {
     match /otp_codes/{code} {
       allow read: if isOwner(resource.data.caregiver_ref);
 
-      // The caregiver may only issue codes in their own name, and may never
-      // create one already marked used.
+      // The caregiver may only issue codes in their own name, for their own
+      // patient, and may never create one already marked used.
+      //
+      // isCaregiverOf(patient_ref) is what stops an account takeover: without
+      // it a caregiver could write a code naming any uid — another caregiver's
+      // patient, or another caregiver — and redeem it to sign in as them. The
+      // Worker re-checks the same thing when the code is redeemed.
       allow create: if isCaregiverAccount()
         && isOwner(request.resource.data.caregiver_ref)
+        && isCaregiverOf(request.resource.data.patient_ref)
         && request.resource.data.used == false
         && request.resource.data.patient_ref is string
         && request.resource.data.expires_at is timestamp;

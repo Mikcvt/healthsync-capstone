@@ -32,7 +32,7 @@ class RoleSelectScreen extends StatelessWidget {
               // patient never reaches this screen — they enter a code on the
               // welcome screen, and their account already exists.
               _RoleCard(
-                title: 'Caregiver',
+                title: 'Care Partner',
                 subtitle: 'Set up medicines for someone you care for, monitor their doses, and get alerts when one is missed.',
                 icon: Icons.groups_2_outlined,
                 color: AppColors.caregiverGreen,

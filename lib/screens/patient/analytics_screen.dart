@@ -46,7 +46,7 @@ class AnalyticsScreen extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
-                decoration: AppStyles.gradientDecoration,
+                decoration: AppStyles.patientBannerDecoration,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -97,7 +97,8 @@ class AnalyticsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Today: ${todayAdherence.toStringAsFixed(0)}% · $totalTaken doses successfully taken',
+                      'Today: ${todayAdherence.toStringAsFixed(0)}% · '
+                      '$totalTaken ${totalTaken == 1 ? 'dose' : 'doses'} taken in total',
                       style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ],
@@ -163,48 +164,6 @@ class AnalyticsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // Caregiver Sync Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: AppStyles.cardDecoration,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.patientBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.share_outlined, color: AppColors.patientBlue),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Shared with Guardian',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            patientProvider.isLinkedToCaregiver
-                                ? 'Caregiver is receiving weekly reports'
-                                : 'Link caregiver to share adherence reports',
-                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),

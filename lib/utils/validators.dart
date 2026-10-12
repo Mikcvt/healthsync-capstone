@@ -60,7 +60,7 @@ class Validators {
   /// are forgiven here because the patient is copying from a text message.
   static String? otpCode(String? value) {
     final text = (value ?? '').trim().toUpperCase().replaceAll('-', '');
-    if (text.isEmpty) return 'Enter the code your caregiver sent you';
+    if (text.isEmpty) return 'Enter the code your care partner sent you';
     if (text.length != 8) return 'The code is 8 characters long';
     if (!RegExp(r'^HS[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$').hasMatch(text)) {
       return 'That does not look like a HealthSync code';

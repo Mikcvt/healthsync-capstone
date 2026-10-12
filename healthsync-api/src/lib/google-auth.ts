@@ -32,7 +32,11 @@ export function parseServiceAccount(raw: string | undefined): ServiceAccount {
 	if (!raw) {
 		throw new Error('FIREBASE_SA_KEY is not set. Run: wrangler secret put FIREBASE_SA_KEY');
 	}
-	const parsed = JSON.parse(raw) as ServiceAccount;
+	// Windows PowerShell 5.1 prefixes piped text with a byte-order mark, so
+	// `Get-Content key.json | wrangler secret put` stored "﻿{...". JSON.parse
+	// rejects that, and every Firebase call — patient creation and the cron —
+	// failed until the key was re-uploaded.
+	const parsed = JSON.parse(raw.replace(/^﻿/, '')) as ServiceAccount;
 	if (!parsed.private_key || !parsed.client_email || !parsed.project_id) {
 		throw new Error('FIREBASE_SA_KEY is missing project_id, client_email or private_key.');
 	}
@@ -46,7 +50,10 @@ export function parseServiceAccount(raw: string | undefined): ServiceAccount {
  * every request would pay for an RSA signature plus a round trip to Google.
  */
 export async function getAccessToken(sa: ServiceAccount, cache: KVNamespace): Promise<string> {
-	const cached = await cache.get(ACCESS_TOKEN_CACHE_KEY);
+	// Keyed by service account: after FIREBASE_SA_KEY moves to another project,
+	// a fixed key served the old project's token for up to 55 minutes.
+	const cacheKey = `${ACCESS_TOKEN_CACHE_KEY}:${sa.client_email}`;
+	const cached = await cache.get(cacheKey);
 	if (cached) return cached;
 
 	const now = Math.floor(Date.now() / 1000);
@@ -75,7 +82,7 @@ export async function getAccessToken(sa: ServiceAccount, cache: KVNamespace): Pr
 	}
 
 	const { access_token: accessToken } = (await response.json()) as { access_token: string };
-	await cache.put(ACCESS_TOKEN_CACHE_KEY, accessToken, { expirationTtl: ACCESS_TOKEN_TTL_SECONDS });
+	await cache.put(cacheKey, accessToken, { expirationTtl: ACCESS_TOKEN_TTL_SECONDS });
 	return accessToken;
 }
 
@@ -139,6 +146,8 @@ async function getGooglePublicKey(kid: string): Promise<CryptoKey | null> {
 export interface VerifiedToken {
 	uid: string;
 	email?: string;
+	/** When the user last proved who they are (seconds), not when this token was refreshed. */
+	authTime?: number;
 }
 
 /**
@@ -159,6 +168,7 @@ export async function verifyIdToken(idToken: string, projectId: string): Promise
 		iss?: string;
 		exp?: number;
 		email?: string;
+		auth_time?: number;
 	};
 
 	if (header.alg !== 'RS256') throw new Error('Unexpected token algorithm');
@@ -180,7 +190,7 @@ export async function verifyIdToken(idToken: string, projectId: string): Promise
 	);
 	if (!valid) throw new Error('Invalid token signature');
 
-	return { uid: payload.sub, email: payload.email };
+	return { uid: payload.sub, email: payload.email, authTime: payload.auth_time };
 }
 
 /**
@@ -218,6 +228,57 @@ export async function createAuthUser(
 
 	const { localId } = (await response.json()) as { localId: string };
 	return localId;
+}
+
+/**
+ * Deletes Firebase Auth accounts (at most 1000) via the Identity Toolkit admin
+ * API. Their refresh tokens stop working at once, so each phone is signed out
+ * the next time it asks for a token — within the hour at most.
+ *
+ * `force` deletes enabled accounts too; without it the call refuses them.
+ * An account that is already gone is reported per uid, not as a failure.
+ */
+export async function deleteAuthUsers(accessToken: string, projectId: string, uids: string[]): Promise<void> {
+	if (uids.length === 0) return;
+
+	const response = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:batchDelete`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ localIds: uids, force: true }),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Could not delete accounts (${response.status}): ${await response.text()}`);
+	}
+
+	const { errors } = (await response.json()) as { errors?: Array<{ localId?: string; message?: string }> };
+	for (const e of errors ?? []) {
+		console.warn(`Auth delete skipped ${e.localId}: ${e.message}`);
+	}
+}
+
+/** Which of [uids] still have an Auth account. Unknown uids are simply absent. */
+export async function lookupAuthUsers(accessToken: string, projectId: string, uids: string[]): Promise<Set<string>> {
+	if (uids.length === 0) return new Set();
+
+	const response = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ localId: uids }),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Could not look up accounts (${response.status}): ${await response.text()}`);
+	}
+
+	const { users } = (await response.json()) as { users?: Array<{ localId: string }> };
+	return new Set((users ?? []).map((u) => u.localId));
 }
 
 /** A password nobody records, for an account nobody logs into with a password. */

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_colors.dart';
 import '../../providers/caregiver_provider.dart';
+import '../../utils/main_tab_signal.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
 import 'caregiver_alerts_screen.dart';
 import 'caregiver_dashboard_screen.dart';
@@ -20,6 +21,22 @@ class CaregiverMainScreen extends StatefulWidget {
 class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    MainTabSignal.homeRequests.addListener(_goHome);
+  }
+
+  @override
+  void dispose() {
+    MainTabSignal.homeRequests.removeListener(_goHome);
+    super.dispose();
+  }
+
+  void _goHome() {
+    if (mounted && _selectedIndex != 0) setState(() => _selectedIndex = 0);
+  }
+
   // Five tabs, matching the spec. Alerts was missing entirely, so missed-dose
   // notifications had nowhere to surface.
   static const List<Widget> _screens = [
@@ -34,7 +51,14 @@ class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
   Widget build(BuildContext context) {
     final unread = context.watch<CaregiverProvider>().unreadNotificationCount;
 
-    return Scaffold(
+    // Back on any tab but Home returns to Home; only Back on Home leaves the
+    // app. Without this, Back on Profile or Alerts closed the app at once.
+    return PopScope(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goHome();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       // extendBody lets the content scroll underneath the floating bar instead
       // of stopping short of it.
@@ -73,6 +97,7 @@ class _CaregiverMainScreenState extends State<CaregiverMainScreen> {
             isAvatar: true,
           ),
         ],
+      ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../models/notification_model.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
+import 'patient_detail_screen.dart';
 
 /// The caregiver's alert feed.
 ///
@@ -15,8 +16,28 @@ import '../../widgets/shared/floating_nav_bar.dart';
 /// sweep; confirmations, skips, corrections and low stock from `/dose-events`.
 /// The previous version listed five invented alerts, two of which reported
 /// heart rates from a sensor this build does not have.
+///
+/// Tapping an alert marks it read and opens the patient it is about. Alerts
+/// written before the Worker recorded `patient_ref` only mark read.
 class CaregiverAlertsScreen extends StatelessWidget {
   const CaregiverAlertsScreen({super.key});
+
+  Future<void> _open(BuildContext context, NotificationModel alert) async {
+    final caregiver = context.read<CaregiverProvider>();
+    if (!alert.isRead) caregiver.markNotificationRead(alert.notifId);
+
+    final patientUid = alert.patientRef;
+    final linked = patientUid != null &&
+        caregiver.patientLinks.any((l) => l.patientRef == patientUid);
+    // An alert about a patient no longer linked has nowhere to go.
+    if (!linked) return;
+
+    await caregiver.selectPatient(patientUid);
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PatientDetailScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,10 +103,10 @@ class CaregiverAlertsScreen extends StatelessWidget {
                     for (final alert in entry.value) ...[
                       _AlertCard(
                         alert: alert,
-                        onTap: alert.isRead
-                            ? null
-                            : () => caregiver
-                                .markNotificationRead(alert.notifId),
+                        opensPatient: alert.patientRef != null &&
+                            caregiver.patientLinks
+                                .any((l) => l.patientRef == alert.patientRef),
+                        onTap: () => _open(context, alert),
                       ),
                       const SizedBox(height: 10),
                     ],
@@ -174,9 +195,14 @@ class _SectionHeader extends StatelessWidget {
 
 class _AlertCard extends StatelessWidget {
   final NotificationModel alert;
+  final bool opensPatient;
   final VoidCallback? onTap;
 
-  const _AlertCard({required this.alert, this.onTap});
+  const _AlertCard({
+    required this.alert,
+    required this.opensPatient,
+    this.onTap,
+  });
 
   (IconData, Color, Color) get _appearance {
     switch (alert.notificationType) {
@@ -302,6 +328,11 @@ class _AlertCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (opensPatient) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.textMuted, size: 22),
+            ],
           ],
         ),
       ),

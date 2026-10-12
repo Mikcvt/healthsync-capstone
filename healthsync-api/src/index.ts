@@ -7,8 +7,13 @@
  *   POST /patients      caregiver creates a managed patient's Auth account
  *   POST /otp/redeem    code in, Firebase custom token out (no password login)
  *   POST /dose-events   dose outcome fans out to the caregiver over FCM
- *   cron every 5 min    materialises upcoming doses, then marks unconfirmed
- *                       ones missed after 30 minutes
+ *   POST /account/delete caregiver deletes their account, their patients'
+ *                       accounts and all of their data
+ *   POST /patients/delete caregiver deletes one patient and all their data
+ *   cron every 5 min    marks unconfirmed doses late and missed; creates
+ *                       upcoming doses hourly, or at once after an edit
+ *   cron every 15 min   finishes account deletions; once a day, finds
+ *                       caregivers deleted before /account/delete existed
  *
  * Everything else the app does — every read and every write a user is permitted
  * to make — goes straight from Flutter to Firestore under the security rules.
@@ -17,8 +22,9 @@
 import { handleCreatePatient } from './handlers/patients';
 import { handleRedeemOtp } from './handlers/otp';
 import { handleDoseEvent } from './handlers/dose-events';
-import { runMaterialize } from './handlers/materialize';
+import { runMaterialize, shouldMaterialize } from './handlers/materialize';
 import { runSweep } from './handlers/sweep';
+import { enqueueOrphanedCaregivers, handleDeleteAccount, handleDeletePatient, runAccountPurge } from './handlers/account';
 import { Firestore } from './lib/firestore';
 import { getAccessToken, parseServiceAccount } from './lib/google-auth';
 import { error, json } from './lib/http';
@@ -49,6 +55,12 @@ export default {
 				case 'POST /dose-events':
 					return await handleDoseEvent(request, env);
 
+				case 'POST /account/delete':
+					return await handleDeleteAccount(request, env);
+
+				case 'POST /patients/delete':
+					return await handleDeletePatient(request, env);
+
 				default:
 					return error('Not found.', 404, 'not_found');
 			}
@@ -61,9 +73,43 @@ export default {
 	},
 
 	async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-		ctx.waitUntil(runCron(env));
+		// Separate triggers are separate invocations, each with its own 50
+		// subrequests. A large deletion must not starve the dose sweep.
+		if (event.cron === PURGE_CRON) {
+			ctx.waitUntil(runPurgeCron(env, new Date(event.scheduledTime)));
+		} else {
+			ctx.waitUntil(runCron(env, new Date(event.scheduledTime)));
+		}
 	},
 } satisfies ExportedHandler<Env>;
+
+/** Must match the second entry under triggers.crons in wrangler.jsonc. */
+const PURGE_CRON = '*/15 * * * *';
+
+/** The orphan scan runs on the 03:00 Manila purge run (19:00 UTC). */
+const ORPHAN_SCAN_HOUR_UTC = 19;
+
+async function runPurgeCron(env: Env, at: Date): Promise<void> {
+	const sa = parseServiceAccount(env.FIREBASE_SA_KEY);
+	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
+	const db = new Firestore(sa.project_id, accessToken);
+
+	if (at.getUTCHours() === ORPHAN_SCAN_HOUR_UTC && at.getUTCMinutes() < 15) {
+		try {
+			const queued = await enqueueOrphanedCaregivers(db, accessToken, sa.project_id);
+			if (queued > 0) console.log(`Purge: queued ${queued} orphaned caregiver account(s).`);
+		} catch (err) {
+			console.error('Orphan scan failed:', err);
+		}
+	}
+
+	try {
+		const { finished } = await runAccountPurge(db, accessToken, sa.project_id);
+		if (finished > 0) console.log(`Purge: finished ${finished} account deletion(s).`);
+	} catch (err) {
+		console.error('Account purge failed:', err);
+	}
+}
 
 /**
  * The 5-minute cron, in order: create the dose logs that are coming, then mark
@@ -76,7 +122,7 @@ export default {
  * Materialising runs first so a dose created this minute is eligible for the
  * sweep in 30 minutes rather than 35.
  */
-async function runCron(env: Env): Promise<void> {
+async function runCron(env: Env, at: Date): Promise<void> {
 	const sa = parseServiceAccount(env.FIREBASE_SA_KEY);
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
@@ -84,24 +130,26 @@ async function runCron(env: Env): Promise<void> {
 	// A failure in one job must not cancel the other: an unreachable caregiver
 	// should never stop tomorrow's doses from being created.
 	try {
-		const { created } = await runMaterialize(db);
-		if (created > 0) {
-			console.log(`Materialise: created ${created} pending dose log(s).`);
+		if (await shouldMaterialize(db, at)) {
+			const { created } = await runMaterialize(db);
+			if (created > 0) {
+				console.log(`Materialise: created ${created} pending dose log(s).`);
+			}
 		}
 	} catch (err) {
 		console.error('Materialise failed:', err);
 	}
 
 	try {
-		const { late, missed, notified, skipsRecovered } = await runSweep(db, accessToken, sa.project_id);
+		const { late, missed, notified, recovered } = await runSweep(db, accessToken, sa.project_id);
 		if (late > 0) {
 			console.log(`Sweep: ${late} running-late alert(s) sent.`);
 		}
 		if (missed > 0) {
 			console.log(`Sweep: ${missed} dose(s) marked missed, ${notified} caregiver(s) notified.`);
 		}
-		if (skipsRecovered > 0) {
-			console.log(`Sweep: ${skipsRecovered} skip alert(s) sent by the backstop.`);
+		if (recovered > 0) {
+			console.log(`Sweep: ${recovered} dropped alert(s) re-sent by the backstop.`);
 		}
 	} catch (err) {
 		console.error('Sweep failed:', err);

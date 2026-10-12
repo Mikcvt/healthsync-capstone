@@ -285,15 +285,17 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.missedRed.withValues(alpha: 0.35),
+                    color: AppColors.pendingAmber.withValues(alpha: 0.45),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    AppStrings.outOfStockBadge,
-                    style: TextStyle(
+                  // A note, not a block: the dose can still be taken.
+                  child: Text(
+                    context.read<PatientProvider>().emptyStockNote(schedule),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       fontFamily: AppStyles.fontFamily,
                     ),
                   ),
@@ -325,9 +327,8 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: _isBusy || outOfStock
-                      ? null
-                      : () => _onTake(slot, medicineName),
+                  onPressed:
+                      _isBusy ? null : () => _onTake(slot, medicineName),
                   icon: _isBusy
                       ? const SizedBox(
                           width: 20,
@@ -348,10 +349,9 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.caregiverGreen,
+                    backgroundColor: AppColors.patientBlue,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        outOfStock ? Colors.white12 : AppColors.greenDark,
+                    disabledBackgroundColor: AppColors.greenDark,
                     disabledForegroundColor: Colors.white38,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),

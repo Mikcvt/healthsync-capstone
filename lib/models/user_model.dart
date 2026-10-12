@@ -29,6 +29,24 @@ class UserModel {
   /// must approve before anything is removed.
   final DateTime? deletionRequestedAt;
 
+  /// Set when the caregiver declined the patient's last deletion request.
+  /// Cleared when the patient asks again.
+  final DateTime? deletionDeclinedAt;
+
+  /// What the patient's phone last reported about whether reminders can fire
+  /// (ReminderHealthService). Null until the patient app has reported. The
+  /// caregiver dashboard warns when one is false: a patient whose phone blocks
+  /// notifications gets no reminders at all, and nobody would otherwise know.
+  final bool? remindersNotificationsOk;
+  final bool? remindersExactAlarmsOk;
+  final bool? remindersBatteryOk;
+
+  /// When the patient app was last opened (reported with the checks above).
+  final DateTime? appLastOpenedAt;
+
+  // The fields above are written by targeted updates and deliberately left out
+  // of toMap(), so saving a profile can never overwrite them.
+
   const UserModel({
     required this.uid,
     required this.role,
@@ -41,6 +59,11 @@ class UserModel {
     required this.createdAt,
     this.isActive = true,
     this.deletionRequestedAt,
+    this.deletionDeclinedAt,
+    this.remindersNotificationsOk,
+    this.remindersExactAlarmsOk,
+    this.remindersBatteryOk,
+    this.appLastOpenedAt,
   });
 
   String get fullName => '$firstName $lastName'.trim();
@@ -51,6 +74,17 @@ class UserModel {
 
   /// Whether this patient is waiting on their caregiver to approve deletion.
   bool get hasPendingDeletion => deletionRequestedAt != null;
+
+  /// Whether the last deletion request was declined, and none is pending.
+  bool get deletionWasDeclined =>
+      deletionDeclinedAt != null && deletionRequestedAt == null;
+
+  /// False when the patient's phone reported something that stops reminders.
+  /// Null (unknown) counts as fine: older app versions never report.
+  bool get remindersLookHealthy =>
+      remindersNotificationsOk != false &&
+      remindersExactAlarmsOk != false &&
+      remindersBatteryOk != false;
 
   /// A managed patient has no real email address — their account was created by
   /// a caregiver and they sign in with an OTP-minted custom token. Used to skip
@@ -107,6 +141,15 @@ class UserModel {
       deletionRequestedAt: map['deletion_requested_at'] is Timestamp
           ? (map['deletion_requested_at'] as Timestamp).toDate()
           : null,
+      deletionDeclinedAt: map['deletion_declined_at'] is Timestamp
+          ? (map['deletion_declined_at'] as Timestamp).toDate()
+          : null,
+      remindersNotificationsOk: map['reminders_notifications_ok'] as bool?,
+      remindersExactAlarmsOk: map['reminders_exact_alarms_ok'] as bool?,
+      remindersBatteryOk: map['reminders_battery_ok'] as bool?,
+      appLastOpenedAt: map['app_last_opened_at'] is Timestamp
+          ? (map['app_last_opened_at'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -150,6 +193,11 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       deletionRequestedAt: deletionRequestedAt ?? this.deletionRequestedAt,
+      deletionDeclinedAt: deletionDeclinedAt,
+      remindersNotificationsOk: remindersNotificationsOk,
+      remindersExactAlarmsOk: remindersExactAlarmsOk,
+      remindersBatteryOk: remindersBatteryOk,
+      appLastOpenedAt: appLastOpenedAt,
     );
   }
 }

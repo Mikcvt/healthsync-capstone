@@ -48,18 +48,38 @@ export async function handleRedeemOtp(request: Request, env: Env): Promise<Respo
 
 	if (otp.used === true) {
 		await recordFailure(env.TOKEN_CACHE, ip);
-		return error('That code has already been used. Ask your caregiver for a new one.', 409, 'code_used');
+		return error('That code has already been used. Ask your care partner for a new one.', 409, 'code_used');
 	}
 
 	const expiresAt = otp.expires_at instanceof Date ? otp.expires_at : new Date(String(otp.expires_at));
 	if (!(expiresAt instanceof Date) || Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
 		await recordFailure(env.TOKEN_CACHE, ip);
-		return error('That code has expired. Ask your caregiver for a new one.', 410, 'code_expired');
+		return error('That code has expired. Ask your care partner for a new one.', 410, 'code_expired');
 	}
 
 	const patientUid = typeof otp.patient_ref === 'string' ? otp.patient_ref : '';
 	if (!patientUid) {
-		return error('This code is not linked to an account. Contact your caregiver.', 500, 'code_corrupt');
+		return error('This code is not linked to an account. Contact your care partner.', 500, 'code_corrupt');
+	}
+
+	// The code's patient_ref was written by a caregiver's phone, and the rules
+	// used to check only that the caregiver named themselves on it, not whose
+	// account it opened. A caregiver could write a code for another caregiver's
+	// patient, or for another caregiver, and sign in as them. The patient's
+	// profile is written by the Worker alone, so it decides whose patient this
+	// is. Every refusal reads as an invalid code and counts toward the limit.
+	const [profile, patientUser] = await Promise.all([db.get('patient_profile', patientUid), db.get('users', patientUid)]);
+	const caregiverUid = typeof otp.caregiver_ref === 'string' ? otp.caregiver_ref : '';
+	const legitimate =
+		!!caregiverUid &&
+		profile?.caregiver_ref === caregiverUid &&
+		patientUser?.account_type === 'managed' &&
+		patientUser.is_active !== false &&
+		!(patientUser.deleted_at instanceof Date);
+	if (!legitimate) {
+		console.warn(`OTP ${code} refused: it does not belong to a managed patient of ${caregiverUid || 'nobody'}.`);
+		await recordFailure(env.TOKEN_CACHE, ip);
+		return error('That code is not valid. Check it and try again.', 404, 'invalid_code');
 	}
 
 	// Burn the code before handing out the token. If the token mint failed after
@@ -69,12 +89,10 @@ export async function handleRedeemOtp(request: Request, env: Env): Promise<Respo
 
 	const customToken = await createCustomToken(sa, patientUid);
 
-	const patient = await db.get('users', patientUid);
-
 	return json({
 		token: customToken,
 		uid: patientUid,
-		first_name: patient?.first_name ?? '',
-		last_name: patient?.last_name ?? '',
+		first_name: patientUser.first_name ?? '',
+		last_name: patientUser.last_name ?? '',
 	});
 }

@@ -52,6 +52,19 @@ export function spanInWords(milliseconds: number): string {
 }
 
 /**
+ * A dose the patient acted on while offline, BEFORE the sweep wrote it off,
+ * that only reached the server afterwards. The caregiver has already been told
+ * "Missed dose", so this must arrive as a correction, not a plain update.
+ * logged_at is when the patient acted (their phone's clock); missed_at is when
+ * the sweep marked it missed.
+ */
+export function syncedAfterMissed(log: Record<string, unknown> | null): boolean {
+	const loggedAt = asDate(log?.logged_at);
+	const missedAt = asDate(log?.missed_at);
+	return !!loggedAt && !!missedAt && loggedAt.getTime() < missedAt.getTime();
+}
+
+/**
  * Which alert a reported dose status becomes. A dose taken with timing
  * `logged_late` was missed and then corrected, so the caregiver — who has
  * already been told it was missed — gets a correction, not "Dose taken".
@@ -59,6 +72,7 @@ export function spanInWords(milliseconds: number): string {
 export function alertKindFor(status: string, log: Record<string, unknown> | null): AlertKind {
 	if (status === 'late') return 'late';
 	if (status === 'missed') return 'missed';
+	if ((status === 'taken' || status === 'skipped') && syncedAfterMissed(log)) return 'correction';
 	if (status === 'skipped') return 'skipped';
 	if (log?.timing === 'logged_late') return 'correction';
 	return 'confirmed';
@@ -94,6 +108,15 @@ export function caregiverCopy(
 			};
 		}
 		case 'correction':
+			if (syncedAfterMissed(log)) {
+				const actedAt = asDate(log?.taken_at) ?? asDate(log?.logged_at);
+				const when = actedAt ? ` at ${manilaClock(actedAt)}` : '';
+				const what = log?.status === 'skipped' ? 'skipped' : 'took';
+				return {
+					title: 'Dose update',
+					body: `Update: ${patientName} ${what} ${medicationName}${when}. Their phone was offline, so it reached HealthSync late.`,
+				};
+			}
 			return {
 				title: 'Dose update',
 				body: takenAt

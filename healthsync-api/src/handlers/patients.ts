@@ -72,7 +72,7 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 	// otherwise call this endpoint and create accounts of their own.
 	const caregiver = await db.get('users', caregiverUid);
 	if (!caregiver || caregiver.account_type !== 'caregiver') {
-		return error('Only caregivers can add patients.', 403, 'forbidden');
+		return error('Only care partners can add patients.', 403, 'forbidden');
 	}
 
 	const seed = crypto.randomUUID().split('-')[0];

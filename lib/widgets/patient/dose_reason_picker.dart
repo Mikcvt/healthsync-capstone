@@ -179,7 +179,7 @@ class _SkipReasonSheetState extends State<_SkipReasonSheet> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Your caregiver will see this reason.',
+                'Your care partner will see this reason.',
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.textSecondary,

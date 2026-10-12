@@ -122,6 +122,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   decoration: AppStyles.inputDecoration(
                     'Medication Name *',
                     hint: 'e.g., Metformin, Amoxicillin',
+                    accent: AppColors.caregiverGreen,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -132,6 +133,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   decoration: AppStyles.inputDecoration(
                     'Generic Name (Optional)',
                     hint: 'e.g., Metformin Hydrochloride',
+                    accent: AppColors.caregiverGreen,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -158,7 +160,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                       onSelected: (val) {
                         if (val) setState(() => _dosageForm = f);
                       },
-                      selectedColor: AppColors.patientBlue,
+                      selectedColor: AppColors.caregiverGreen,
                       labelStyle: TextStyle(
                         color: selected ? Colors.white : AppColors.textPrimary,
                         fontWeight: FontWeight.w700,
@@ -166,7 +168,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                       ),
                       backgroundColor: Colors.white,
                       side: BorderSide(
-                        color: selected ? AppColors.patientBlue : AppColors.borderGray,
+                        color: selected ? AppColors.caregiverGreen : AppColors.borderGray,
                       ),
                     );
                   }).toList(),
@@ -180,6 +182,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   decoration: AppStyles.inputDecoration(
                     'Dosage Strength *',
                     hint: 'e.g., 500mg, 10ml, 1 puff',
+                    accent: AppColors.caregiverGreen,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -190,6 +193,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   decoration: AppStyles.inputDecoration(
                     'Treatment Purpose (Optional)',
                     hint: 'e.g., Blood sugar regulation, Hypertension',
+                    accent: AppColors.caregiverGreen,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -200,6 +204,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   decoration: AppStyles.inputDecoration(
                     'Prescribing Doctor (Optional)',
                     hint: 'e.g., Dr. Santos',
+                    accent: AppColors.caregiverGreen,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -210,7 +215,7 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                   child: ElevatedButton(
                     onPressed: _onNext,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.patientBlue,
+                      backgroundColor: AppColors.caregiverGreen,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       elevation: 2,
@@ -245,7 +250,7 @@ class _StepBar extends StatelessWidget {
       child: Container(
         height: 5,
         decoration: BoxDecoration(
-          color: active ? AppColors.patientBlue : AppColors.borderGray,
+          color: active ? AppColors.caregiverGreen : AppColors.borderGray,
           borderRadius: BorderRadius.circular(3),
         ),
       ),

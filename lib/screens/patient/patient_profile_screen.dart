@@ -10,11 +10,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../services/preferences_service.dart';
 import '../../utils/date_formatter.dart';
-import 'change_password_screen.dart';
 import 'device_pairing_screen.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
 import '../../widgets/shared/about_healthsync_sheet.dart';
+import '../../widgets/shared/confirm_dialog.dart';
 
 class PatientProfileScreen extends StatefulWidget {
   const PatientProfileScreen({super.key});
@@ -104,17 +104,6 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     _ProfileOption(
-                      label: 'Change password',
-                      subtitle: 'Secure your account',
-                      icon: Icons.lock_outline,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ChangePasswordScreen(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ProfileOption(
                       label: 'Settings',
                       subtitle: 'App preferences',
                       icon: Icons.settings,
@@ -142,18 +131,20 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     const SizedBox(height: 12),
                     Builder(
                       builder: (context) {
-                        final pending = context
-                                .watch<AuthProvider>()
-                                .currentUserModel
-                                ?.hasPendingDeletion ??
-                            false;
+                        final me =
+                            context.watch<AuthProvider>().currentUserModel;
+                        final pending = me?.hasPendingDeletion ?? false;
+                        final declined = me?.deletionWasDeclined ?? false;
                         return _ProfileOption(
                           label: pending
                               ? 'Deletion requested'
                               : 'Delete my account',
                           subtitle: pending
-                              ? 'Waiting for your caregiver to approve'
-                              : 'Your caregiver must approve this',
+                              ? 'Waiting for your care partner to approve'
+                              : declined
+                                  ? 'Your care partner declined your last '
+                                      'request'
+                                  : 'Your care partner must approve this',
                           icon: pending
                               ? Icons.hourglass_top_rounded
                               : Icons.delete_outline,
@@ -227,7 +218,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Your caregiver will be asked to approve this. Nothing is '
+              'Your care partner will be asked to approve this. Nothing is '
               'deleted until they do, and you can withdraw the request at any '
               'time.',
               style: TextStyle(height: 1.5, color: AppColors.textSecondary),
@@ -264,34 +255,21 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     if (!mounted) return;
     ok
         ? SnackbarHelper.showSuccess(
-            context, 'Your caregiver has been asked to approve this.')
+            context, 'Your care partner has been asked to approve this.')
         : SnackbarHelper.showError(context, AppStrings.genericError);
   }
 
   Future<void> _handleSignOut() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('Are you sure you want to sign out of HealthSync?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.missedRed,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Sign out'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Sign out?',
+      message: 'Are you sure you want to sign out of HealthSync? Dose '
+          'reminders stop on this phone until you sign in again with a new '
+          'code from your care partner.',
+      confirmLabel: 'Sign out',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await context.read<AuthProvider>().signOut();
     if (!mounted) return;
     // Pop back to AuthGate rather than pushing WelcomeScreen over it.
@@ -311,7 +289,7 @@ class _ProfileHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        color: AppColors.patientBlue,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
@@ -363,11 +341,11 @@ class _ProfileCard extends StatelessWidget {
       if (user?.email.trim().isNotEmpty == true) user!.email.trim(),
       if (user?.phone.trim().isNotEmpty == true) user!.phone.trim(),
     ];
-    return parts.isEmpty ? 'Managed by your caregiver' : parts.join(' · ');
+    return parts.isEmpty ? 'Managed by your care partner' : parts.join(' · ');
   }
 
   static String _roleLabel(UserModel? user) =>
-      user == null ? 'Patient' : 'Patient · managed by caregiver';
+      user == null ? 'Patient' : 'Patient · managed by your care partner';
 
   static String _initials(String name) {
     final parts = name.split(' ').where((p) => p.isNotEmpty).take(2);
@@ -391,7 +369,7 @@ class _ProfileCard extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  gradient: AppColors.blueGradient,
+                  color: AppColors.patientBlue,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 alignment: Alignment.center,

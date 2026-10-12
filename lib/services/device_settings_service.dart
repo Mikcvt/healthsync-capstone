@@ -56,4 +56,35 @@ class DeviceSettingsService {
       return false;
     }
   }
+
+  /// Whether battery optimisation is off for HealthSync. Unknown counts as
+  /// fine, so a failed check never nags the user.
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'isIgnoringBatteryOptimizations',
+          ) ??
+          true;
+    } catch (e) {
+      debugPrint('DeviceSettingsService.isIgnoringBatteryOptimizations: $e');
+      return true;
+    }
+  }
+
+  /// Opens the system list for turning battery optimisation off.
+  Future<bool> openBatteryOptimizationSettings() => _invoke(
+        'openBatteryOptimizationSettings',
+      );
+
+  /// Opens this app's system settings page.
+  Future<bool> openAppSettings() => _invoke('openAppSettings');
+
+  Future<bool> _invoke(String method) async {
+    try {
+      return await _channel.invokeMethod<bool>(method) ?? false;
+    } catch (e) {
+      debugPrint('DeviceSettingsService.$method failed: $e');
+      return false;
+    }
+  }
 }

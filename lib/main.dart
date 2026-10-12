@@ -8,10 +8,12 @@ import 'providers/auth_provider.dart';
 import 'providers/patient_provider.dart';
 import 'providers/caregiver_provider.dart';
 import 'providers/schedule_provider.dart';
+import 'screens/auth/splash_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/auth/email_verification_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
+import 'services/connectivity_service.dart';
 import 'services/dose_reminder_scheduler.dart';
 import 'services/notification_service.dart';
 
@@ -21,6 +23,9 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    // Before any screen: dose actions decide from this whether to wait for the
+    // server.
+    await ConnectivityService().initialize();
     await NotificationService().initialize();
     // Load the timezone database before any screen can schedule a dose.
     await DoseReminderScheduler().initialize();
@@ -66,6 +71,20 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status = context.watch<AuthProvider>().status;
+    final loading =
+        status == AuthStatus.checking || status == AuthStatus.loadingProfile;
+
+    // At launch the animated splash covers this while it loads, and hands
+    // over to whatever it resolves to (see StartupSplash).
+    return StartupSplash(
+      ready: !loading,
+      toWelcome: status == AuthStatus.signedOut,
+      child: _route(context),
+    );
+  }
+
+  Widget _route(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
 
     switch (authProvider.status) {
@@ -74,7 +93,7 @@ class AuthGate extends StatelessWidget {
       // every launch, and stranded a signed-in user there when offline.
       case AuthStatus.checking:
       case AuthStatus.loadingProfile:
-        return const _SplashScreen();
+        return const _LoadingScreen();
 
       case AuthStatus.signedOut:
         return const WelcomeScreen();
@@ -109,10 +128,11 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-/// Shown while the session and profile resolve. Deliberately plain: it is on
-/// screen for a few hundred milliseconds and must not look like a failure.
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
+/// Shown while the profile loads after the first time, e.g. right after
+/// signing in. At launch the animated StartupSplash covers it instead.
+/// Deliberately plain: it is on screen for a few hundred milliseconds.
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
 
   @override
   Widget build(BuildContext context) {

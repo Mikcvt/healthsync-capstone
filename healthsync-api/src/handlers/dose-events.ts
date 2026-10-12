@@ -4,7 +4,7 @@
  * This stands in for the Firestore trigger that Cloud Functions would have
  * given us. The app writes the dose log to Firestore directly and *then* calls
  * this, fire-and-forget: a failure here must never cost the patient their
- * confirmation. The cron sweep is the backstop.
+ * confirmation. The cron sweep's backstop retries any alert that did not land.
  */
 
 import type { Env } from '../index';
@@ -12,6 +12,7 @@ import { getAccessToken, parseServiceAccount, verifyIdToken } from '../lib/googl
 import { Firestore } from '../lib/firestore';
 import { sendPush } from '../lib/fcm';
 import { error, getBearerToken, json } from '../lib/http';
+import { ReadCache } from '../lib/read-cache';
 import { alertKindFor, caregiverCopy, MISSED_SWITCH_KINDS } from '../lib/dose-copy';
 
 interface DoseEventBody {
@@ -19,6 +20,21 @@ interface DoseEventBody {
 	status?: string;
 	medication_name?: string;
 }
+
+/** Used only when the dose's medicine cannot be found at all. */
+const FALLBACK_MEDICATION_NAME = 'their medication';
+
+/**
+ * What became of one caregiver alert.
+ *
+ *   delivered   the caregiver has it: pushed, or recorded in their Alerts tab
+ *   suppressed  nobody to tell (no linked caregiver) or the caregiver switched
+ *               this kind of alert off
+ *
+ * A failure is thrown, not returned, so callers can tell "do not retry" from
+ * "retry later".
+ */
+export type AlertOutcome = 'delivered' | 'suppressed';
 
 export async function handleDoseEvent(request: Request, env: Env): Promise<Response> {
 	const idToken = getBearerToken(request);
@@ -43,6 +59,7 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
 	const status = body.status ?? 'taken';
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
+	const reads = new ReadCache(db);
 
 	// The dose log is the authority on whose dose this is — never the caller's
 	// own uid, and never a field in the request body.
@@ -69,7 +86,7 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
 
 		// The caller must be the patient, or that patient's caregiver.
 		if (logPatient !== callerUid) {
-			const profile = await db.get('patient_profile', logPatient);
+			const profile = await reads.get('patient_profile', logPatient);
 			if (profile?.caregiver_ref !== callerUid) {
 				return error('You cannot report this dose.', 403, 'forbidden');
 			}
@@ -78,12 +95,17 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
 		scheduleId = typeof log.schedule_ref === 'string' ? log.schedule_ref : '';
 	}
 
-	const notified = await notifyCaregiver(db, accessToken, sa.project_id, {
+	const medicationName = body.medication_name?.trim() || (await medicationNameFor(reads, log));
+
+	const outcome = await notifyCaregiver(db, accessToken, sa.project_id, {
 		patientUid,
 		status,
-		medicationName: body.medication_name ?? 'their medication',
+		medicationName,
 		log,
+		doseLogId: body.dose_log_id,
+		reads,
 	});
+	const notified = outcome === 'delivered';
 
 	if (body.dose_log_id && notified) {
 		await db.set('dose_logs', body.dose_log_id, { caregiver_notified: true });
@@ -91,15 +113,40 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
 
 	// The app has already decremented stock before calling this, so the
 	// schedule holds the post-dose count.
-	if (status === 'taken' && scheduleId) {
+	// stock_counted false: taken while the count read 0. The care partner was
+	// told "Out of stock" when it reached 0; saying it again on every such
+	// dose would only repeat it.
+	if (status === 'taken' && scheduleId && log?.stock_counted !== false) {
 		await notifyLowStockIfCrossed(db, accessToken, sa.project_id, {
 			patientUid,
 			scheduleId,
-			medicationName: body.medication_name ?? 'their medication',
+			medicationName,
+			reads,
 		});
 	}
 
 	return json({ notified });
+}
+
+/**
+ * The medicine a dose log belongs to, by name: dose log → schedule →
+ * patient_medications. The sweep has no app to tell it the name, and every
+ * alert it sent used to read "has not taken their medication".
+ */
+export async function medicationNameFor(
+	reads: ReadCache,
+	log: Record<string, unknown> | null | undefined,
+): Promise<string> {
+	const scheduleId = typeof log?.schedule_ref === 'string' ? log.schedule_ref : '';
+	if (!scheduleId) return FALLBACK_MEDICATION_NAME;
+
+	const schedule = await reads.get('schedules', scheduleId);
+	const patMedId = typeof schedule?.pat_med_ref === 'string' ? schedule.pat_med_ref : '';
+	if (!patMedId) return FALLBACK_MEDICATION_NAME;
+
+	const medication = await reads.get('patient_medications', patMedId);
+	const name = typeof medication?.medication_name === 'string' ? medication.medication_name.trim() : '';
+	return name || FALLBACK_MEDICATION_NAME;
 }
 
 /**
@@ -108,60 +155,47 @@ export async function handleDoseEvent(request: Request, env: Env): Promise<Respo
  * crossings, rather than on every dose below the threshold, keeps it from
  * repeating with each remaining pill.
  */
-async function notifyLowStockIfCrossed(
+export async function notifyLowStockIfCrossed(
 	db: Firestore,
 	accessToken: string,
 	projectId: string,
-	params: { patientUid: string; scheduleId: string; medicationName: string },
+	params: { patientUid: string; scheduleId: string; medicationName?: string; reads?: ReadCache },
 ): Promise<void> {
-	const schedule = await db.get('schedules', params.scheduleId);
+	const reads = params.reads ?? new ReadCache(db);
+	const schedule = await reads.get('schedules', params.scheduleId);
 	if (!schedule || schedule.patient_ref !== params.patientUid) return;
 
 	const remaining = typeof schedule.pills_remaining === 'number' ? schedule.pills_remaining : NaN;
 	const threshold = typeof schedule.low_stock_threshold === 'number' ? schedule.low_stock_threshold : 5;
 	if (remaining !== threshold && remaining !== 0) return;
 
-	const profile = await db.get('patient_profile', params.patientUid);
+	const profile = await reads.get('patient_profile', params.patientUid);
 	const caregiverUid = typeof profile?.caregiver_ref === 'string' ? profile.caregiver_ref : '';
 	if (!caregiverUid) return;
 
-	const prefs = await db.get('caregiver_profile', caregiverUid);
+	const prefs = await reads.get('caregiver_profile', caregiverUid);
 	if (prefs?.alert_pref_low_stock === false) return;
 
-	const patient = await db.get('users', params.patientUid);
+	const patient = await reads.get('users', params.patientUid);
 	const patientName = [patient?.first_name, patient?.last_name].filter(Boolean).join(' ') || 'Your patient';
 	const column = typeof schedule.mat_box_column === 'number' ? schedule.mat_box_column : null;
 	const where = column ? ` in compartment ${column}` : '';
 
+	const medicationName =
+		params.medicationName || (await medicationNameFor(reads, { schedule_ref: params.scheduleId }));
+
 	const title = remaining === 0 ? 'Out of stock' : 'Low medicine stock';
 	const message =
 		remaining === 0
-			? `${patientName}'s ${params.medicationName}${where} is empty. Please refill it.`
-			: `${patientName}'s ${params.medicationName}${where} is running low (${remaining} left).`;
+			? `${patientName}'s ${medicationName}${where} is empty. Please refill it.`
+			: `${patientName}'s ${medicationName}${where} is running low (${remaining} left).`;
 
-	const caregiver = await db.get('users', caregiverUid);
-	const fcmToken = typeof caregiver?.fcm_token === 'string' ? caregiver.fcm_token : '';
-	const sent = fcmToken
-		? await sendPush(accessToken, projectId, {
-				token: fcmToken,
-				title,
-				body: message,
-				data: { type: 'low_stock', patient_ref: params.patientUid },
-			})
-		: false;
-
-	// Recorded even when the push could not be sent, so the alert still shows
-	// in the caregiver's Alerts tab.
-	const notifId = crypto.randomUUID();
-	await db.set('notifications', notifId, {
-		notif_id: notifId,
-		user_ref: caregiverUid,
-		notification_type: 'low_stock',
+	await deliver(db, accessToken, projectId, reads, {
+		caregiverUid,
+		patientUid: params.patientUid,
+		kind: 'low_stock',
 		title,
 		message,
-		sent_at: new Date(),
-		channel: sent ? 'fcm' : 'in_app',
-		is_active: true,
 	});
 }
 
@@ -172,8 +206,7 @@ async function notifyLowStockIfCrossed(
  *
  * [status] is the reported dose status, or 'late' for the sweep's 30-minute
  * running-late pass; [log] supplies times, timing and reason for the wording.
- * Returns true when the caregiver has the alert (pushed or recorded), which is
- * what `caregiver_notified` means.
+ * When [medicationName] is not given it is looked up from the dose log.
  */
 export async function notifyCaregiver(
 	db: Firestore,
@@ -182,51 +215,92 @@ export async function notifyCaregiver(
 	params: {
 		patientUid: string;
 		status: string;
-		medicationName: string;
+		medicationName?: string;
 		log?: Record<string, unknown> | null;
+		doseLogId?: string;
+		reads?: ReadCache;
 	},
-): Promise<boolean> {
-	const profile = await db.get('patient_profile', params.patientUid);
+): Promise<AlertOutcome> {
+	const reads = params.reads ?? new ReadCache(db);
+	const profile = await reads.get('patient_profile', params.patientUid);
 	const caregiverUid = typeof profile?.caregiver_ref === 'string' ? profile.caregiver_ref : '';
-	if (!caregiverUid) return false;
+	if (!caregiverUid) return 'suppressed';
 
 	const kind = alertKindFor(params.status, params.log ?? null);
 
 	// The "Missed dose alerts" switch in caregiver settings covers late,
 	// missed, skipped and corrections. Absent means on.
 	if (MISSED_SWITCH_KINDS.has(kind)) {
-		const prefs = await db.get('caregiver_profile', caregiverUid);
-		if (prefs?.alert_pref_missed === false) return false;
+		const prefs = await reads.get('caregiver_profile', caregiverUid);
+		if (prefs?.alert_pref_missed === false) return 'suppressed';
 	}
 
-	const patient = await db.get('users', params.patientUid);
+	const patient = await reads.get('users', params.patientUid);
 	const patientName = [patient?.first_name, patient?.last_name].filter(Boolean).join(' ') || 'Your patient';
-	const copy = caregiverCopy(kind, patientName, params.medicationName, params.log ?? null);
+	const medicationName = params.medicationName || (await medicationNameFor(reads, params.log));
+	const copy = caregiverCopy(kind, patientName, medicationName, params.log ?? null);
 
-	const caregiver = await db.get('users', caregiverUid);
+	await deliver(db, accessToken, projectId, reads, {
+		caregiverUid,
+		patientUid: params.patientUid,
+		doseLogId: params.doseLogId,
+		kind,
+		title: copy.title,
+		message: copy.body,
+	});
+	return 'delivered';
+}
+
+/**
+ * Pushes one alert to the caregiver's phone and records it in their Alerts
+ * tab. The record is written even when the push cannot be sent, so the alert
+ * is never lost just because the phone had no token.
+ *
+ * patient_ref and dose_log_ref let the Alerts tab open the patient the alert
+ * is about; without them a caregiver with two patients had only the wording
+ * to go on.
+ */
+async function deliver(
+	db: Firestore,
+	accessToken: string,
+	projectId: string,
+	reads: ReadCache,
+	alert: {
+		caregiverUid: string;
+		patientUid: string;
+		doseLogId?: string;
+		kind: string;
+		title: string;
+		message: string;
+	},
+): Promise<void> {
+	const caregiver = await reads.get('users', alert.caregiverUid);
 	const fcmToken = typeof caregiver?.fcm_token === 'string' ? caregiver.fcm_token : '';
 	const sent = fcmToken
 		? await sendPush(accessToken, projectId, {
 				token: fcmToken,
-				title: copy.title,
-				body: copy.body,
-				data: { type: kind, patient_ref: params.patientUid },
+				title: alert.title,
+				body: alert.message,
+				data: {
+					type: alert.kind,
+					patient_ref: alert.patientUid,
+					...(alert.doseLogId ? { dose_log_ref: alert.doseLogId } : {}),
+				},
 			})
 		: false;
 
-	// Recorded even when the push could not be sent, so the alert still shows
-	// in the caregiver's Alerts tab.
 	const notifId = crypto.randomUUID();
 	await db.set('notifications', notifId, {
 		notif_id: notifId,
-		user_ref: caregiverUid,
-		notification_type: kind,
-		title: copy.title,
-		message: copy.body,
+		user_ref: alert.caregiverUid,
+		patient_ref: alert.patientUid,
+		dose_log_ref: alert.doseLogId ?? null,
+		notification_type: alert.kind,
+		title: alert.title,
+		message: alert.message,
 		sent_at: new Date(),
+		read_at: null,
 		channel: sent ? 'fcm' : 'in_app',
 		is_active: true,
 	});
-
-	return true;
 }

@@ -9,11 +9,19 @@ class AppStrings {
 
   // Identity
   static const String appName = 'HealthSync';
-  static const String appTagline = 'Never miss a dose';
+
+  // Legal pages (Cloudflare Pages). This is the deployment-specific address
+  // chosen by the team; the permanent one is https://healthsync-site.pages.dev
+  // and would also pick up later edits to the policy.
+  static const String termsUrl =
+      'https://5f45d49d.healthsync-site.pages.dev/terms/';
+  static const String privacyUrl =
+      'https://5f45d49d.healthsync-site.pages.dev/privacy/';
+  static const String appTagline = 'Stay on top of every dose';
 
   // Empty states — patient
   static const String noMedications =
-      'No medications yet. Your caregiver will add them for you.';
+      'No medications yet. Your care partner will add them for you.';
   static const String noSchedulesToday = 'Nothing scheduled for today.';
   static const String noDoseHistory =
       'No dose history yet. Your record builds as you confirm doses.';
@@ -21,7 +29,7 @@ class AppStrings {
   static const String noDevicePaired =
       'That is fine. HealthSync reminds you on this phone at every dose '
       'time, and you confirm each dose here. When you get a HealthSync box, '
-      'pair it and your caregiver will choose a compartment for each medicine.';
+      'pair it and your care partner will choose a compartment for each medicine.';
   static const String noAnalyticsYet =
       'Adherence appears here once you have confirmed or missed a dose.';
 
@@ -42,11 +50,12 @@ class AppStrings {
       'That was your third snooze, so this dose is marked missed.';
   static const String doseMissed = 'Dose marked as missed.';
   static const String doseAlreadyTaken = 'This dose is already confirmed.';
+  static const String savedOfflineSuffix = '(saved offline, will sync)';
+  static const String offlineBanner = "You're offline. Doses you log are "
+      'saved on this phone and sync when you are back online.';
+  static const String waitingToSync = 'Waiting to sync';
   static const String doseConfirmFailed =
       'Could not record this dose. Please try again.';
-  static const String doseOutOfStock =
-      'No pills remaining. Please refill the compartment.';
-  static const String outOfStockBadge = 'Out of stock · Refill required';
   static String snoozeActiveUntil(String time) =>
       'Snooze active — reminding at $time.';
   static const String doseAlreadyResolved =
@@ -89,7 +98,7 @@ class AppStrings {
   // Permissions — a managed patient is read-only by design, so this is a
   // normal state to explain rather than an error to apologise for.
   static const String readOnlyMedications =
-      'Only your caregiver can change your medications.';
+      'Only your care partner can change your medications.';
 
   // Connectivity
   static const String offlineGeneric =
@@ -108,9 +117,9 @@ class AppStrings {
   // OTP
   static const String otpInvalid = 'That code is not valid. Check it and try again.';
   static const String otpUsed =
-      'That code has already been used. Ask your caregiver for a new one.';
+      'That code has already been used. Ask your care partner for a new one.';
   static const String otpExpired =
-      'That code has expired. Ask your caregiver for a new one.';
+      'That code has expired. Ask your care partner for a new one.';
   static const String otpRateLimited =
       'Too many attempts. Please wait a few minutes and try again.';
 }

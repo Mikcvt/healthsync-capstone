@@ -183,5 +183,25 @@ class ApiService {
     }
   }
 
+  /// Deletes the signed-in caregiver's account, every patient account they
+  /// manage, and all of their data. The Worker refuses a sign-in older than
+  /// five minutes, so re-authenticate first.
+  ///
+  /// Returns how many patient accounts were deleted.
+  Future<int> deleteAccount() async {
+    final data = await _post('/account/delete', {}, authenticated: true);
+    return (data['patients_deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Permanently deletes one of the caregiver's patients and all of their
+  /// data. Like [deleteAccount], it needs a sign-in under five minutes old.
+  Future<void> deletePatient(String patientUid) async {
+    await _post(
+      '/patients/delete',
+      {'patient_uid': patientUid},
+      authenticated: true,
+    );
+  }
+
   void dispose() => _client.close();
 }

@@ -25,7 +25,7 @@ class _CaregiverWelcomeScreenState extends State<CaregiverWelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUserModel;
-    final name = user?.firstName.isNotEmpty == true ? user!.firstName : 'Caregiver';
+    final name = user?.firstName.isNotEmpty == true ? user!.firstName : 'Care Partner';
     final hasPatients = context.watch<CaregiverProvider>().hasLinkedPatients;
 
     return Scaffold(
@@ -72,14 +72,14 @@ class _CaregiverWelcomeScreenState extends State<CaregiverWelcomeScreen> {
               const SizedBox(height: 28),
               _StepRow(
                 number: '1',
-                title: 'Ask for an invite code',
-                subtitle: 'The patient can find it in Guardian Link.',
+                title: 'Add your patient',
+                subtitle: 'Enter their name and details. HealthSync creates their account.',
               ),
               const SizedBox(height: 18),
               _StepRow(
                 number: '2',
-                title: 'Link their account',
-                subtitle: 'Enter the code to start monitoring securely.',
+                title: 'Send them their code',
+                subtitle: 'They type it in the app. No sign-up or password needed.',
               ),
               const SizedBox(height: 18),
               _StepRow(

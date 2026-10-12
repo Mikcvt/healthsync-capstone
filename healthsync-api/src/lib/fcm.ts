@@ -32,7 +32,7 @@ export async function sendPush(accessToken: string, projectId: string, message: 
 				data: message.data ?? {},
 				android: {
 					priority: 'HIGH',
-					notification: { channel_id: 'healthsync_doses' },
+					notification: { channel_id: 'healthsync_alerts' },
 				},
 			},
 		}),

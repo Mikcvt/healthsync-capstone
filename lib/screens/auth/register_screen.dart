@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../widgets/shared/confirm_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
   /// The account this form creates. Caregiver is the only self-registering
@@ -63,10 +64,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
           settings: RouteSettings(arguments: widget.role),
         ),
       );
+    } else if (authProvider.lastRegisterEmailInUse) {
+      await _offerLogin(_emailController.text.trim());
     } else {
       final errorMsg = authProvider.errorMessage ?? 'Registration failed. Please try again.';
       SnackbarHelper.showError(context, errorMsg);
     }
+  }
+
+  /// The email already has an account, most often an earlier sign-up that was
+  /// never verified. Registering again can never work, so say why and offer
+  /// the way forward: log in, which leads back to the verify screen.
+  Future<void> _offerLogin(String email) async {
+    final logIn = await showConfirmDialog(
+      context,
+      title: 'This email already has an account',
+      message: "If you signed up before and didn't finish verifying, log in to "
+          'continue. You can resend the verification link from there.',
+      confirmLabel: 'Log in',
+      destructive: false,
+    );
+    if (!logIn || !mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => LoginScreen(initialEmail: email)),
+    );
   }
 
   @override
@@ -143,7 +164,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          isCaregiver ? 'Caregiver account' : 'Patient account',
+                          isCaregiver ? 'Care Partner account' : 'Patient account',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../services/preferences_service.dart';
+import '../../widgets/shared/reminder_check_card.dart';
+import '../../widgets/shared/legal_links.dart';
 
 /// App preferences for a patient.
 ///
@@ -66,6 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     const _SectionHeader(label: 'REMINDERS ON THIS PHONE'),
                     const SizedBox(height: 12),
+                    const ReminderCheckCard(),
                     _SettingsCard(
                       children: [
                         _SettingsToggleRow(
@@ -112,7 +115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Your caregiver manages which alerts they '
+                              'Your care partner manages which alerts they '
                               'receive about your doses.',
                               style: TextStyle(
                                 fontSize: 12.5,
@@ -124,6 +127,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ],
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    const _SectionHeader(label: 'LEGAL'),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () =>
+                              openLegalPage(context, privacy: false),
+                          child: const Text('Terms of Service'),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              openLegalPage(context, privacy: true),
+                          child: const Text('Privacy Policy'),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],

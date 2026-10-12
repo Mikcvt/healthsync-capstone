@@ -32,16 +32,35 @@ class AppColors {
     colors: [Color(0xFF1B5FD4), Color(0xFF2D7BF5)],
   );
 
-  /// The softer blue-to-teal wash behind the welcome screen. Lighter than
-  /// [primaryGradient], which is for headers and primary buttons.
-  static const Color brandBlueSoft = Color(0xFF4A90D9);
   static const Color brandTeal = Color(0xFF2BB5A0);
 
-  static const LinearGradient welcomeGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [brandBlueSoft, brandTeal],
-  );
+  /// Welcome screen backdrop, top to bottom: misty sage behind the mascot,
+  /// deepening to emerald behind the text and buttons. The welcome
+  /// screen positions these stops from the bottom of the screen so the dark
+  /// part always sits behind the white text.
+  ///
+  /// The third colour (#9FC2AC) is also the system splash background
+  /// (pubspec.yaml, flutter_native_splash); keep the two in step.
+  static const List<Color> welcomeBackdrop = [
+    Color(0xFFC4DCC6),
+    Color(0xFFAED0B0),
+    Color(0xFF9FC2AC),
+    Color(0xFF78A38F),
+    Color(0xFF4F876E),
+    Color(0xFF307055),
+    Color(0xFF135F43),
+    Color(0xFF06573B),
+    Color(0xFF06553A),
+  ];
+
+  /// Paler mint light in the top right of the welcome backdrop.
+  static const Color welcomeMist = Color(0xFFE3F1EA);
+
+  /// Darkest welcome green: the system navigation bar under the backdrop.
+  static const Color welcomeForest = Color(0xFF06553A);
+
+  /// Accent for highlighted words on the dark welcome backdrop.
+  static const Color welcomeMint = Color(0xFF5FBDA2);
 
   static const LinearGradient greenGradient = LinearGradient(
     begin: Alignment.topLeft,

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'connectivity_service.dart';
 import '../models/user_model.dart';
 import '../models/patient_profile_model.dart';
 import '../models/caregiver_profile_model.dart';
@@ -172,6 +176,56 @@ class FirestoreService {
     await _db.collection('users').doc(patientUid).update({
       'deletion_requested_at': Timestamp.now(),
       'deletion_reason': reason.trim(),
+      // A new request replaces the answer to the last one.
+      'deletion_declined_at': null,
+    });
+  }
+
+  /// The caregiver declines a patient's deletion request, and the patient is
+  /// told.
+  ///
+  /// This used to call [cancelAccountDeletionRequest], which writes the
+  /// patient's users document — and the rules only let a user update their
+  /// own, so every Decline failed. The rules now let the patient's caregiver
+  /// touch these three fields and create this one kind of notification.
+  Future<void> declineAccountDeletionRequest(String patientUid) async {
+    final now = Timestamp.now();
+    final notification = _db.collection('notifications').doc();
+    final batch = _db.batch()
+      ..update(_db.collection('users').doc(patientUid), {
+        'deletion_requested_at': null,
+        'deletion_reason': null,
+        'deletion_declined_at': now,
+      })
+      ..set(notification, {
+        'notif_id': notification.id,
+        'user_ref': patientUid,
+        'patient_ref': patientUid,
+        'notification_type': 'request_declined',
+        'title': 'Deletion request declined',
+        'message': 'Your care partner declined your request to delete your '
+            'account. Your account and reminders stay as they are.',
+        'sent_at': now,
+        'read_at': null,
+        'channel': 'in_app',
+        'is_active': true,
+      });
+    await batch.commit();
+  }
+
+  /// What the patient's phone found when it checked whether reminders can
+  /// fire, plus when the app was opened. Read by the caregiver dashboard.
+  Future<void> reportReminderHealth(
+    String uid, {
+    required bool notificationsOk,
+    required bool exactAlarmsOk,
+    required bool batteryOk,
+  }) async {
+    await _db.collection('users').doc(uid).update({
+      'reminders_notifications_ok': notificationsOk,
+      'reminders_exact_alarms_ok': exactAlarmsOk,
+      'reminders_battery_ok': batteryOk,
+      'app_last_opened_at': Timestamp.now(),
     });
   }
 
@@ -183,42 +237,55 @@ class FirestoreService {
     });
   }
 
-  /// Caregiver-side removal of a patient.
+  /// Ends a patient's treatment: every active medicine is archived as a
+  /// finished course, in one step.
   ///
-  /// Deactivates rather than erases: dose history is the record of care given,
-  /// and a caregiver may need it long after the patient stops using the app.
-  /// The Auth account is left alone so the uid can never be reused.
-  Future<void> deactivatePatient({
-    required String patientUid,
-    required String caregiverUid,
-  }) async {
-    final batch = _db.batch();
-
-    batch.update(_db.collection('users').doc(patientUid), {
-      'is_active': false,
-      'deactivated_at': Timestamp.now(),
-      'deletion_requested_at': null,
-    });
-
+  /// The same outcome as "Course finished" on each medicine: schedules go
+  /// inactive (so the Worker creates no more doses and the patient's phone
+  /// drops their reminders), LEDs go off, and doses not yet due are cancelled.
+  /// Past doses are untouched and keep counting in adherence. The patient's
+  /// account stays, and a medicine added or restored later resumes normally.
+  ///
+  /// Returns how many medicines were archived.
+  Future<int> completeTreatment(String patientUid) async {
+    final medications = await _db
+        .collection('patient_medications')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .get();
     final schedules = await _db
         .collection('schedules')
         .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
         .get();
+
+    final now = Timestamp.now();
+    final batch = _db.batch();
+    for (final doc in medications.docs) {
+      batch.update(doc.reference, {
+        'is_active': false,
+        'archived_at': now,
+        'archived_reason': 'completed',
+        'updated_at': now,
+      });
+    }
     for (final doc in schedules.docs) {
-      batch.update(doc.reference, {'is_active': false, 'led_active': false});
+      batch.update(doc.reference, {
+        'is_active': false,
+        'led_active': false,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
     }
-
-    final links = await _db
-        .collection('caregiver_patient_links')
-        .where('caregiver_ref', isEqualTo: caregiverUid)
-        .get();
-    for (final doc in links.docs) {
-      if (doc.data()['patient_ref'] == patientUid) {
-        batch.update(doc.reference, {'is_active': false, 'status': 'removed'});
-      }
-    }
-
+    batch.update(_db.collection('patient_profile').doc(patientUid), {
+      'treatment_completed_at': now,
+    });
     await batch.commit();
+
+    await _cancelFutureDoseLogs(
+      patientUid: patientUid,
+      scheduleIds: schedules.docs.map((doc) => doc.id).toList(),
+    );
+    return medications.docs.length;
   }
 
   /// Marks a missed dose as seen by the patient, which removes it from the
@@ -273,7 +340,10 @@ class FirestoreService {
     final scheduleIds = <String>{};
     for (final doc in schedules.docs) {
       scheduleIds.add(doc.id);
-      batch.update(doc.reference, {'is_active': true});
+      batch.update(doc.reference, {
+        'is_active': true,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
     }
     await batch.commit();
 
@@ -428,7 +498,11 @@ class FirestoreService {
     final scheduleIds = <String>[];
     for (final doc in schedules.docs) {
       scheduleIds.add(doc.id);
-      batch.update(doc.reference, {'is_active': false, 'led_active': false});
+      batch.update(doc.reference, {
+        'is_active': false,
+        'led_active': false,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
     }
 
     await batch.commit();
@@ -466,11 +540,21 @@ class FirestoreService {
     await _db.collection('schedules').doc(scheduleId).update({
       'is_active': false,
       'led_active': false,
+      'updated_at': FieldValue.serverTimestamp(),
     });
   }
 
   // ==========================================
   // SCHEDULES
+  //
+  // Every caregiver write that changes which doses exist (adding, editing,
+  // archiving, restoring, deactivating) stamps updated_at with the server's
+  // clock. The Worker creates doses hourly, and runs early only when it finds
+  // a schedule stamped in the last 10 minutes; an unstamped edit would wait up
+  // to an hour, long enough for a moved dose time to be swept as missed.
+  //
+  // Patient writes (led_active, pills_remaining) never stamp it: the rules
+  // allow a patient to change those two fields and nothing else.
   // ==========================================
   Stream<List<ScheduleModel>> streamPatientSchedules(String patientUid) {
     return _db
@@ -488,7 +572,10 @@ class FirestoreService {
   Future<String> addSchedule(ScheduleModel schedule) async {
     final docRef = _db.collection('schedules').doc();
     final newSchedule = schedule.copyWith(scheduleId: docRef.id);
-    await docRef.set(newSchedule.toMap());
+    await docRef.set({
+      ...newSchedule.toMap(),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
     return docRef.id;
   }
 
@@ -496,7 +583,10 @@ class FirestoreService {
     await _db
         .collection('schedules')
         .doc(schedule.scheduleId)
-        .update(schedule.toMap());
+        .update({
+          ...schedule.toMap(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
   }
 
   Future<void> updateScheduleLed(String scheduleId, bool ledActive) async {
@@ -549,7 +639,11 @@ class FirestoreService {
     // Cancelled doses (archived medicine, moved dose time) are kept in
     // Firestore for the record but never shown or counted anywhere, so they
     // are dropped here once rather than on every screen.
-    return query.limit(limit).snapshots().map(
+    //
+    // includeMetadataChanges: a dose saved offline arrives with
+    // hasPendingWrites and comes again once the server has it, which is what
+    // clears its "waiting to sync" mark.
+    return query.limit(limit).snapshots(includeMetadataChanges: true).map(
       (snapshot) => snapshot.docs
           .map((doc) => DoseLogModel.fromFirestore(doc))
           .where((log) => !log.isCancelled)
@@ -557,12 +651,80 @@ class FirestoreService {
     );
   }
 
+  // ==========================================
+  // OFFLINE
+  //
+  // Firestore applies every write to the phone's copy at once and sends it
+  // when it can, even after a restart. But on Android a write's Future only
+  // completes when the SERVER confirms it — never, while offline. Awaiting
+  // each write left every dose button spinning forever without internet.
+  // Dose actions now issue their writes and [settle] them instead.
+  // ==========================================
+
+  /// How long a dose action waits for the server before treating its writes
+  /// as saved on the phone.
+  static const Duration _ackWait = Duration(seconds: 4);
+
+  /// Waits briefly for [writes] to reach the server. True: the server has
+  /// them. False: they are saved on this phone and will sync later (offline,
+  /// or a connection too slow to answer). Throws if the server refused one,
+  /// which can only be learned while online.
+  Future<bool> settle(Iterable<Future<void>> writes) async {
+    final all = Future.wait(writes);
+    if (!ConnectivityService().online.value) {
+      _logLateFailure(all);
+      return false;
+    }
+    try {
+      await all.timeout(_ackWait);
+      return true;
+    } on TimeoutException {
+      _logLateFailure(all);
+      return false;
+    }
+  }
+
+  void _logLateFailure(Future<Object?> pending) {
+    // A refusal that arrives after the action returned. Firestore has already
+    // rolled the phone's copy back, which the dose stream shows.
+    unawaited(pending.then<void>((_) {}, onError: (Object e) {
+      debugPrint('A write saved offline was refused when it synced: $e');
+    }));
+  }
+
+  /// One dose log. Online: the server's copy, falling back to the phone's if
+  /// the server is slow to answer. Offline: the phone's copy only. Null when
+  /// it does not exist (or is not on this phone), so the caller creates it
+  /// under its deterministic id.
   Future<DoseLogModel?> getDoseLog(String doseLogId) async {
-    final doc = await _db.collection('dose_logs').doc(doseLogId).get();
-    if (doc.exists && doc.data() != null) {
+    final ref = _db.collection('dose_logs').doc(doseLogId);
+    DocumentSnapshot<Map<String, dynamic>>? doc;
+    if (ConnectivityService().online.value) {
+      try {
+        doc = await ref.get().timeout(_ackWait);
+      } on TimeoutException {
+        doc = await _cached(ref);
+      } on FirebaseException {
+        doc = await _cached(ref);
+      }
+    } else {
+      doc = await _cached(ref);
+    }
+    if (doc != null && doc.exists && doc.data() != null) {
       return DoseLogModel.fromFirestore(doc);
     }
     return null;
+  }
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _cached(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    try {
+      return await ref.get(const GetOptions(source: Source.cache));
+    } on FirebaseException {
+      // Not on this phone.
+      return null;
+    }
   }
 
   Future<String> recordDoseLog(DoseLogModel log) async {
@@ -576,7 +738,16 @@ class FirestoreService {
   /// Used with the deterministic id, so a log the app creates before the
   /// Worker's materialiser runs is the same document it would have created.
   Future<void> setDoseLog(DoseLogModel log) async {
-    await _db.collection('dose_logs').doc(log.doseLogId).set(log.toMap());
+    // merge: a log created offline may land on one the Worker made in the
+    // meantime; fields the app does not model (missed_at, late_notified)
+    // must survive.
+    await _db
+        .collection('dose_logs')
+        .doc(log.doseLogId)
+        .set({
+          ...log.toMap(),
+          'synced_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 
   /// Writes [fields] onto a dose log. [DateTime] values become Timestamps and
@@ -589,7 +760,12 @@ class FirestoreService {
       (key, value) =>
           MapEntry(key, value is DateTime ? Timestamp.fromDate(value) : value),
     );
-    await _db.collection('dose_logs').doc(doseLogId).update(converted);
+    await _db.collection('dose_logs').doc(doseLogId).update({
+      ...converted,
+      // When this change reached the SERVER. A dose logged offline arrives
+      // hours after its logged_at; the Worker's alert backstop goes by this.
+      'synced_at': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> updateDoseLogStatus({

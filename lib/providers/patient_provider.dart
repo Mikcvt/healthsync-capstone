@@ -17,6 +17,7 @@ import '../services/notification_service.dart';
 import '../utils/adherence.dart';
 import '../utils/date_formatter.dart';
 import '../utils/dose_timing.dart';
+import '../services/reminder_health_service.dart';
 
 /// How far back the history stream reaches.
 ///
@@ -86,7 +87,11 @@ class DoseOutcome {
   final DoseActionResult result;
   final DoseUndo? undo;
 
-  const DoseOutcome(this.result, [this.undo]);
+  /// Saved on this phone only, for now: it reaches the server, and the care
+  /// partner, when the internet returns.
+  final bool savedOffline;
+
+  const DoseOutcome(this.result, [this.undo, this.savedOffline = false]);
 }
 
 class PatientProvider extends ChangeNotifier {
@@ -164,6 +169,39 @@ class PatientProvider extends ChangeNotifier {
   bool _isLiveSchedule(DoseLogModel log) {
     if (log.scheduleRef.isEmpty) return true;
     return _schedules.any((s) => s.scheduleId == log.scheduleRef);
+  }
+
+  ReminderHealth? _reportedHealth;
+  DateTime? _reportedAt;
+
+  /// Tells the caregiver whether this phone lets reminders ring, and that the
+  /// app was opened. Written when the result changes, or at most every six
+  /// hours otherwise — about one write per app launch.
+  Future<void> reportReminderHealth(ReminderHealth health) async {
+    final uid = _patientUid;
+    if (uid == null) return;
+    final last = _reportedHealth;
+    final unchanged = last != null &&
+        last.notifications == health.notifications &&
+        last.exactAlarms == health.exactAlarms &&
+        last.battery == health.battery;
+    final recent = _reportedAt != null &&
+        DateTime.now().difference(_reportedAt!) < const Duration(hours: 6);
+    if (unchanged && recent) return;
+    try {
+      await _firestoreService.reportReminderHealth(
+        uid,
+        notificationsOk: health.notifications,
+        exactAlarmsOk: health.exactAlarms,
+        batteryOk: health.battery,
+      );
+      _reportedHealth = health;
+      _reportedAt = DateTime.now();
+    } catch (e) {
+      // Reporting is for the caregiver's information; never bother the
+      // patient with it.
+      debugPrint('reportReminderHealth failed: $e');
+    }
   }
 
   /// Asks the caregiver to delete this account.
@@ -275,6 +313,21 @@ class PatientProvider extends ChangeNotifier {
   bool showsCompartment(ScheduleModel schedule) =>
       hasBox && schedule.matBoxColumn != null;
 
+  /// The note shown instead of blocking a dose whose stock count is 0.
+  String emptyStockNote(ScheduleModel schedule) => showsCompartment(schedule)
+      ? 'Compartment ${schedule.matBoxColumn} is empty. Refill it; your care '
+          'partner can update the count after refilling.'
+      : 'Your stock count is at 0. Ask your care partner to update it after '
+          'refilling.';
+
+  /// Records on the dose log whether it took a pill off the count. The Worker
+  /// reads `stock_counted: false` to skip a repeat "Out of stock" alert: the
+  /// care partner was told when the count reached 0.
+  Future<void> _markStockCounted(String doseLogId, bool counted) =>
+      _firestoreService.updateDoseLogFields(doseLogId, {
+        'stock_counted': counted,
+      });
+
   /// What to take, in words: "Compartment 3" with a box, "1 tablet" without.
   String doseInstructionFor(ScheduleModel schedule) {
     if (showsCompartment(schedule)) {
@@ -371,10 +424,18 @@ class PatientProvider extends ChangeNotifier {
       final at =
           DateFormatter.parseScheduleTime(schedule.scheduledTime, onDate: day);
       if (at == null) continue;
-      final log = logs
-          .where((l) =>
-              l.scheduleRef == schedule.scheduleId && _sameMinute(l, at))
-          .firstOrNull;
+      // Matched by the deterministic id first. The id is built from the
+      // wall-clock label ("2026-10-09_15:39") on both the Worker and the app,
+      // so it agrees on any phone whose clock reads Manila time. Comparing
+      // instants failed on a phone set to another time zone: "3:39 PM" there
+      // is a different instant from the Worker's 3:39 PM Manila, so the card
+      // never found its log and kept offering Done for a dose already taken.
+      final expectedId = DoseLogModel.idFor(schedule.scheduleId, at);
+      final log = logs.where((l) => l.doseLogId == expectedId).firstOrNull ??
+          logs
+              .where((l) =>
+                  l.scheduleRef == schedule.scheduleId && _sameMinute(l, at))
+              .firstOrNull;
       // A dose time that had already passed when the medicine was added (an
       // 8 AM dose for a medicine added at 11 AM) never existed, unless
       // something was recorded for it. Same 15-minute grace as the Worker.
@@ -393,8 +454,10 @@ class PatientProvider extends ChangeNotifier {
       if (used.contains(log.doseLogId) || !log.isResolved) continue;
       final schedule = scheduleById(log.scheduleRef);
       if (schedule == null) continue;
-      final at = log.scheduledAt ??
-          DateFormatter.parseScheduleTime(log.scheduledTime, onDate: day);
+      // The label first, for the same time-zone reason as above.
+      final at =
+          DateFormatter.parseScheduleTime(log.scheduledTime, onDate: day) ??
+              log.scheduledAt;
       if (at == null) continue;
       slots.add(DoseSlot(schedule: schedule, scheduledAt: at, log: log));
     }
@@ -537,6 +600,11 @@ class PatientProvider extends ChangeNotifier {
   // Every action writes Firestore first. Done and Skip then wait for the Undo
   // window before the Worker is told (finalizeDoseAction), so an undone tap
   // never notifies the caregiver. Everything else reports straight away.
+  //
+  // Offline-first: actions issue their writes and [FirestoreService.settle]
+  // them rather than awaiting each one. Firestore keeps them on the phone and
+  // sends them when the internet returns; awaiting them left every button
+  // spinning forever offline.
 
   /// A fresh pending log for [slot] under its deterministic id.
   DoseLogModel _newLog(String uid, DoseSlot slot, DateTime now) => DoseLogModel(
@@ -580,11 +648,11 @@ class PatientProvider extends ChangeNotifier {
       if (existing != null && !existing.isOpen) {
         return _fail(AppStrings.doseAlreadyResolved);
       }
-      // An empty compartment means the patient cannot have taken this dose.
-      // Recording it anyway told the caregiver they had.
-      if (schedule.pillsRemaining <= 0) {
-        return _fail(AppStrings.doseOutOfStock);
-      }
+      // A count of 0 no longer blocks the dose. The count is only what the
+      // app thinks is left: the patient may have refilled the box or bought a
+      // new pack. Blocking lost a real dose and pushed it toward "missed".
+      // The count simply stays at 0 (see below).
+      final hasStock = schedule.pillsRemaining > 0;
 
       final now = DateTime.now();
       final timing = DoseTiming.timingFor(
@@ -593,6 +661,7 @@ class PatientProvider extends ChangeNotifier {
         early: early,
       );
 
+      final writes = <Future<void>>[];
       final Map<String, dynamic> restore;
       if (existing != null) {
         restore = {
@@ -603,7 +672,7 @@ class PatientProvider extends ChangeNotifier {
           'logged_at': existing.loggedAt,
           'caregiver_notified': existing.caregiverNotified,
         };
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+        writes.add(_firestoreService.updateDoseLogFields(slot.doseLogId, {
           'status': DoseStatus.taken,
           'taken_at': now,
           'timing': timing,
@@ -612,7 +681,8 @@ class PatientProvider extends ChangeNotifier {
           // Left false on purpose: only the Worker knows whether a push
           // actually left.
           'caregiver_notified': false,
-        });
+          'stock_counted': hasStock,
+        }));
       } else {
         // Not materialised yet. Written under the Worker's own id, so the
         // materialiser sees it and does not create a second, pending copy
@@ -625,23 +695,29 @@ class PatientProvider extends ChangeNotifier {
           'logged_at': null,
           'caregiver_notified': false,
         };
-        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+        writes.add(_firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
           status: DoseStatus.taken,
           takenAt: now,
           timing: timing,
           confirmedVia: 'app',
           loggedAt: now,
-        ));
+        )));
+        writes.add(_markStockCounted(slot.doseLogId, hasStock));
       }
 
       // Switch the box LED off and count the stock down. Two separate writes
       // because the security rules allow a managed patient to touch exactly
       // these two fields on a schedule.
       final ledWasActive = schedule.ledActive;
-      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
-      await _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1);
-      final notifId =
-          await _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+      writes.add(
+          _firestoreService.updateScheduleLed(schedule.scheduleId, false));
+      String? notifId;
+      if (hasStock) {
+        writes.add(
+            _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1));
+        notifId = _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+      }
+      final synced = await _firestoreService.settle(writes);
 
       notifyListeners();
       return DoseOutcome(
@@ -651,10 +727,12 @@ class PatientProvider extends ChangeNotifier {
           scheduleId: schedule.scheduleId,
           restore: restore,
           reportStatus: DoseStatus.taken,
-          decremented: true,
+          // Undo gives a pill back only if this dose took one.
+          decremented: hasStock,
           lowStockNotifId: notifId,
           ledWasActive: ledWasActive,
         ),
+        !synced,
       );
     } catch (e) {
       debugPrint('takeDose failed: $e');
@@ -679,6 +757,7 @@ class PatientProvider extends ChangeNotifier {
       }
 
       final now = DateTime.now();
+      final writes = <Future<void>>[];
       final Map<String, dynamic> restore;
       if (existing != null) {
         restore = {
@@ -688,13 +767,13 @@ class PatientProvider extends ChangeNotifier {
           'logged_at': existing.loggedAt,
           'caregiver_notified': existing.caregiverNotified,
         };
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
+        writes.add(_firestoreService.updateDoseLogFields(slot.doseLogId, {
           'status': DoseStatus.skipped,
           'skipped_reason': reason,
           'acknowledged_at': now,
           'logged_at': now,
           'caregiver_notified': false,
-        });
+        }));
       } else {
         restore = {
           'status': DoseStatus.pending,
@@ -703,16 +782,18 @@ class PatientProvider extends ChangeNotifier {
           'logged_at': null,
           'caregiver_notified': false,
         };
-        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+        writes.add(_firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
           status: DoseStatus.skipped,
           skippedReason: reason,
           acknowledgedAt: now,
           loggedAt: now,
-        ));
+        )));
       }
 
       final ledWasActive = schedule.ledActive;
-      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
+      writes.add(
+          _firestoreService.updateScheduleLed(schedule.scheduleId, false));
+      final synced = await _firestoreService.settle(writes);
 
       notifyListeners();
       return DoseOutcome(
@@ -724,6 +805,7 @@ class PatientProvider extends ChangeNotifier {
           reportStatus: DoseStatus.skipped,
           ledWasActive: ledWasActive,
         ),
+        !synced,
       );
     } catch (e) {
       debugPrint('skipDose failed: $e');
@@ -739,17 +821,21 @@ class PatientProvider extends ChangeNotifier {
     undo._settled = true;
     _errorMessage = null;
     try {
-      await _firestoreService.updateDoseLogFields(undo.doseLogId, undo.restore);
-      if (undo.decremented) {
-        await _firestoreService.incrementPillsRemaining(undo.scheduleId, 1);
-      }
       final notifId = undo.lowStockNotifId;
-      if (notifId != null) {
-        await _firestoreService.deactivateNotification(notifId);
-      }
-      if (undo.ledWasActive) {
-        await _firestoreService.updateScheduleLed(undo.scheduleId, true);
-      }
+      await _firestoreService.settle([
+        // undone_at: when Undo was tapped. Offline, this reaches the server
+        // long after the 2-minute Undo window, judged by the server's clock;
+        // the rules accept it when undone_at is within 2 minutes of the action.
+        _firestoreService.updateDoseLogFields(undo.doseLogId, {
+          ...undo.restore,
+          'undone_at': DateTime.now(),
+        }),
+        if (undo.decremented)
+          _firestoreService.incrementPillsRemaining(undo.scheduleId, 1),
+        if (notifId != null) _firestoreService.deactivateNotification(notifId),
+        if (undo.ledWasActive)
+          _firestoreService.updateScheduleLed(undo.scheduleId, true),
+      ]);
       notifyListeners();
       return true;
     } catch (e) {
@@ -783,14 +869,14 @@ class PatientProvider extends ChangeNotifier {
   ///
   /// The caregiver's copy is sent by the Worker from `/dose-events`: security
   /// rules only let a client write notifications addressed to itself.
-  Future<String?> _alertIfStockLow(
+  String? _alertIfStockLow(
     String uid,
     ScheduleModel schedule,
     int remaining,
-  ) async {
+  ) {
     if (remaining != schedule.lowStockThreshold && remaining != 0) return null;
     try {
-      return await NotificationService().sendLowStockAlert(
+      return NotificationService().sendLowStockAlert(
         userUid: uid,
         medicationName: medicationNameFor(schedule),
         remainingCount: remaining,
@@ -850,19 +936,20 @@ class PatientProvider extends ChangeNotifier {
 
       final now = DateTime.now();
       final until = now.add(snoozeDuration);
-      if (existing == null) {
-        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
-          status: DoseStatus.snoozed,
-          snoozeCount: 1,
-          snoozedUntil: until,
-        ));
-      } else {
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
-          'status': DoseStatus.snoozed,
-          'snooze_count': count + 1,
-          'snoozed_until': until,
-        });
-      }
+      await _firestoreService.settle([
+        if (existing == null)
+          _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+            status: DoseStatus.snoozed,
+            snoozeCount: 1,
+            snoozedUntil: until,
+          ))
+        else
+          _firestoreService.updateDoseLogFields(slot.doseLogId, {
+            'status': DoseStatus.snoozed,
+            'snooze_count': count + 1,
+            'snoozed_until': until,
+          }),
+      ]);
 
       // Re-fire locally in ten minutes. Without this the snooze only changes a
       // database field and the patient is never prompted again.
@@ -892,15 +979,18 @@ class PatientProvider extends ChangeNotifier {
   }) async {
     _errorMessage = null;
     try {
-      await _firestoreService.updateDoseLogFields(doseLogId, {
-        'status': DoseStatus.missed,
-        'skipped_reason': reason,
-        'caregiver_notified': false,
-        'logged_at': DateTime.now(),
-      });
-      if (scheduleId != null && scheduleId.isNotEmpty) {
-        await _firestoreService.updateScheduleLed(scheduleId, false);
-      }
+      final now = DateTime.now();
+      await _firestoreService.settle([
+        _firestoreService.updateDoseLogFields(doseLogId, {
+          'status': DoseStatus.missed,
+          'skipped_reason': reason,
+          'caregiver_notified': false,
+          'logged_at': now,
+          'missed_at': now,
+        }),
+        if (scheduleId != null && scheduleId.isNotEmpty)
+          _firestoreService.updateScheduleLed(scheduleId, false),
+      ]);
       notifyListeners();
       _reportDoseEvent(
         doseLogId: doseLogId,
@@ -939,10 +1029,8 @@ class PatientProvider extends ChangeNotifier {
       return DoseActionResult.failed;
     }
     final schedule = _liveSchedule(slot);
-    if (schedule.pillsRemaining <= 0) {
-      _fail(AppStrings.doseOutOfStock);
-      return DoseActionResult.failed;
-    }
+    // As with Done: an empty count does not block a dose the patient took.
+    final hasStock = schedule.pillsRemaining > 0;
 
     try {
       final existing = await _firestoreService.getDoseLog(slot.doseLogId);
@@ -971,22 +1059,27 @@ class PatientProvider extends ChangeNotifier {
         'skipped_reason': '',
         'caregiver_notified': false,
       };
-      if (existing == null) {
-        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
-          status: DoseStatus.taken,
-          timing: DoseTimingTag.loggedLate,
-          takenAt: takenAt,
-          loggedAt: now,
-          acknowledgedAt: now,
-          confirmedVia: 'app',
-        ));
-      } else {
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, fields);
+      final writes = <Future<void>>[
+        if (existing == null)
+          _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+            status: DoseStatus.taken,
+            timing: DoseTimingTag.loggedLate,
+            takenAt: takenAt,
+            loggedAt: now,
+            acknowledgedAt: now,
+            confirmedVia: 'app',
+          ))
+        else
+          _firestoreService.updateDoseLogFields(slot.doseLogId, fields),
+        _firestoreService.updateScheduleLed(schedule.scheduleId, false),
+        if (hasStock)
+          _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1),
+        _markStockCounted(slot.doseLogId, hasStock),
+      ];
+      if (hasStock) {
+        _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
       }
-
-      await _firestoreService.updateScheduleLed(schedule.scheduleId, false);
-      await _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1);
-      await _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+      await _firestoreService.settle(writes);
 
       notifyListeners();
       // The Worker reads timing `logged_late` and sends the caregiver a
@@ -1017,10 +1110,12 @@ class PatientProvider extends ChangeNotifier {
       final existing = await _firestoreService.getDoseLog(slot.doseLogId);
 
       if (existing != null && existing.isMissed) {
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
-          'skipped_reason': reason,
-          'acknowledged_at': now,
-        });
+        await _firestoreService.settle([
+          _firestoreService.updateDoseLogFields(slot.doseLogId, {
+            'skipped_reason': reason,
+            'acknowledged_at': now,
+          }),
+        ]);
         notifyListeners();
         return DoseActionResult.success;
       }
@@ -1029,23 +1124,25 @@ class PatientProvider extends ChangeNotifier {
         return DoseActionResult.failed;
       }
 
-      if (existing == null) {
-        await _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
-          status: DoseStatus.missed,
-          skippedReason: reason,
-          acknowledgedAt: now,
-          loggedAt: now,
-        ));
-      } else {
-        await _firestoreService.updateDoseLogFields(slot.doseLogId, {
-          'status': DoseStatus.missed,
-          'skipped_reason': reason,
-          'acknowledged_at': now,
-          'logged_at': now,
-          'caregiver_notified': false,
-        });
-      }
-      await _firestoreService.updateScheduleLed(slot.schedule.scheduleId, false);
+      await _firestoreService.settle([
+        if (existing == null)
+          _firestoreService.setDoseLog(_newLog(uid, slot, now).copyWith(
+            status: DoseStatus.missed,
+            skippedReason: reason,
+            acknowledgedAt: now,
+            loggedAt: now,
+          ))
+        else
+          _firestoreService.updateDoseLogFields(slot.doseLogId, {
+            'status': DoseStatus.missed,
+            'skipped_reason': reason,
+            'acknowledged_at': now,
+            'logged_at': now,
+            'missed_at': now,
+            'caregiver_notified': false,
+          }),
+        _firestoreService.updateScheduleLed(slot.schedule.scheduleId, false),
+      ]);
       notifyListeners();
       _reportDoseEvent(
         doseLogId: slot.doseLogId,
@@ -1072,8 +1169,8 @@ class PatientProvider extends ChangeNotifier {
     _apiService.reportDoseEvent(
       doseLogId: doseLogId,
       status: status,
-      medicationName:
-          schedule == null ? 'their medication' : medicationNameFor(schedule),
+      // Empty when unknown: the Worker then looks the name up itself.
+      medicationName: schedule == null ? '' : medicationNameFor(schedule),
     );
   }
 

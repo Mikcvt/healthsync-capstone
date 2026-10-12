@@ -206,4 +206,27 @@ export class Firestore {
 			throw new Error(`Firestore commit failed (${response.status}): ${await response.text()}`);
 		}
 	}
+
+	/**
+	 * Deletes many documents as one request (at most 500). A document that is
+	 * already gone is not an error, so a purge interrupted halfway can simply
+	 * be run again.
+	 */
+	async deleteMany(refs: Array<{ collection: string; id: string }>): Promise<void> {
+		if (refs.length === 0) return;
+
+		const response = await fetch(`${BASE}/projects/${this.projectId}/databases/(default)/documents:commit`, {
+			method: 'POST',
+			headers: this.headers(),
+			body: JSON.stringify({
+				writes: refs.map((r) => ({
+					delete: `projects/${this.projectId}/databases/(default)/documents/${r.collection}/${r.id}`,
+				})),
+			}),
+		});
+
+		if (!response.ok) {
+			throw new Error(`Firestore delete failed (${response.status}): ${await response.text()}`);
+		}
+	}
 }

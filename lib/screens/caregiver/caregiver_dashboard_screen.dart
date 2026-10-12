@@ -3,13 +3,17 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/device_model.dart';
 import '../../models/dose_log_model.dart';
+import '../../models/notification_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
+import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/date_formatter.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
+import '../../widgets/shared/reminder_check_card.dart';
 import 'add_patient_screen.dart';
 import 'patient_detail_screen.dart';
 
@@ -29,7 +33,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
     final links = provider.patientLinks;
     final firstName = user?.firstName.isNotEmpty == true
         ? user!.firstName
-        : 'Caregiver';
+        : 'Care Partner';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -47,7 +51,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Guardian Dashboard',
+                        'Care Partner Dashboard',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.textSecondary,
@@ -80,6 +84,12 @@ class CaregiverDashboardScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
+
+            // Silent unless this phone would hide the caregiver's alerts.
+            const ReminderCheckCard(
+              onlyWhenProblem: true,
+              forCaregiverAlerts: true,
+            ),
 
             if (links.isNotEmpty) ...[
               _OverviewCard(links: links),
@@ -258,6 +268,10 @@ class _PatientTodayCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    _PatientStatusLines(
+                      patientUid: patientUid,
+                      patient: userSnapshot.data,
+                    ),
                   ],
                 ),
               ),
@@ -275,6 +289,136 @@ class _PatientTodayCard extends StatelessWidget {
       .map((p) => p[0])
       .join()
       .toUpperCase();
+}
+
+/// What else a caregiver should know about one patient, under their dose
+/// summary: whether their phone can ring reminders, when they last opened the
+/// app, their latest alert, and their medicine box. Each line appears only when
+/// it has something to say.
+class _PatientStatusLines extends StatelessWidget {
+  final String patientUid;
+  final UserModel? patient;
+
+  const _PatientStatusLines({required this.patientUid, required this.patient});
+
+  /// An app not opened for this long is worth a mention.
+  static const _quietAfter = Duration(days: 2);
+
+  /// Alert kinds worth repeating on the dashboard, newest within a day.
+  static const _alertTypes = {'missed', 'late', 'skipped', 'low_stock'};
+
+  @override
+  Widget build(BuildContext context) {
+    final p = patient;
+    final now = DateTime.now();
+
+    final blocked = <String>[
+      if (p?.remindersNotificationsOk == false) 'notifications are off',
+      if (p?.remindersExactAlarmsOk == false) 'alarms may ring late',
+      if (p?.remindersBatteryOk == false) 'battery saver can delay them',
+    ];
+    final lastOpened = p?.appLastOpenedAt;
+
+    final latestAlert = context
+        .watch<CaregiverProvider>()
+        .notifications
+        .where((n) =>
+            n.patientRef == patientUid &&
+            _alertTypes.contains(n.notificationType) &&
+            now.difference(n.sentAt) < const Duration(hours: 24))
+        .fold<NotificationModel?>(
+          null,
+          (latest, n) =>
+              latest == null || n.sentAt.isAfter(latest.sentAt) ? n : latest,
+        );
+
+    return StreamBuilder<DeviceModel?>(
+      stream: DeviceService().streamDeviceForPatient(patientUid),
+      builder: (context, deviceSnapshot) {
+        final box = deviceSnapshot.data;
+        final lines = <Widget>[
+          if (blocked.isNotEmpty)
+            _StatusLine(
+              icon: Icons.notifications_off_outlined,
+              color: AppColors.missedRed,
+              text: 'Reminders may not ring on their phone: '
+                  '${blocked.join(', ')}',
+            ),
+          if (lastOpened != null && now.difference(lastOpened) > _quietAfter)
+            _StatusLine(
+              icon: Icons.phone_android_rounded,
+              color: AppColors.pendingAmber,
+              text: 'App last opened '
+                  '${DateFormatter.toRelativeTime(lastOpened)}',
+            ),
+          if (latestAlert != null)
+            _StatusLine(
+              icon: Icons.notification_important_outlined,
+              color: AppColors.textSecondary,
+              text: '${latestAlert.title} · '
+                  '${DateFormatter.toRelativeTime(latestAlert.sentAt)}',
+            ),
+          if (box != null)
+            _StatusLine(
+              icon: Icons.inventory_2_outlined,
+              color: box.status == 'online'
+                  ? AppColors.takenGreen
+                  : AppColors.textSecondary,
+              text: box.status == 'online'
+                  ? 'Medicine box online'
+                  : 'Medicine box last synced '
+                      '${DateFormatter.toRelativeTime(box.lastSync)}',
+            ),
+        ];
+        if (lines.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Divider(height: 1, color: AppColors.borderGray),
+              const SizedBox(height: 10),
+              ...lines,
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatusLine extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  const _StatusLine({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _Pill extends StatelessWidget {

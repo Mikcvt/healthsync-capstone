@@ -1,4 +1,5 @@
 import '../../utils/snackbar_helper.dart';
+import '../../widgets/caregiver/delete_patient_dialog.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -141,7 +142,11 @@ class _PatientCardState extends State<_PatientCard> {
           onTap: widget.onTap,
           onLongPress: patient == null
               ? null
-              : () => _confirmRemove(context, patient, displayName),
+              : () => _confirmRemove(
+                    context,
+                    patientUid: patient.uid,
+                    displayName: displayName,
+                  ),
           borderRadius: BorderRadius.circular(16),
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -327,51 +332,29 @@ class _EmptyPatients extends StatelessWidget {
   }
 }
 
-/// Removes a patient from the caregiver's care.
+/// Permanently deletes a patient, behind a dialog that spells out what goes
+/// with them and asks for the password.
 ///
-/// Deactivates rather than erases: the dose history is the record of care
-/// given, and a caregiver may need it long after the patient stops using the
-/// app. The Auth account is left intact so the uid can never be reused.
+/// Removing used to only deactivate the patient, keeping their login and data
+/// forever. [requestedByPatient] words the dialog as approving their request.
 Future<void> _confirmRemove(
-  BuildContext context,
-  UserModel patient,
-  String displayName,
-) async {
-  final confirmed = await showDialog<bool>(
+  BuildContext context, {
+  required String patientUid,
+  required String displayName,
+  bool requestedByPatient = false,
+}) async {
+  final deleted = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('Remove this patient?',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-      content: Text(
-        '$displayName will no longer appear in your list and their reminders '
-        'will stop. Their dose history is kept, and they can be added again '
-        'later with a new code.',
-        style: const TextStyle(height: 1.5, color: AppColors.textSecondary),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Keep'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Remove',
-              style: TextStyle(color: AppColors.missedRed)),
-        ),
-      ],
+    barrierDismissible: false,
+    builder: (_) => DeletePatientDialog(
+      patientUid: patientUid,
+      patientName: displayName,
+      requestedByPatient: requestedByPatient,
     ),
   );
-
-  if (confirmed != true || !context.mounted) return;
-
-  final caregiver = context.read<CaregiverProvider>();
-  final ok = await caregiver.removePatient(patient.uid);
-  if (!context.mounted) return;
-  ok
-      ? SnackbarHelper.showSuccess(context, '$displayName removed.')
-      : SnackbarHelper.showError(
-          context, caregiver.errorMessage ?? 'Could not remove this patient.');
+  if (deleted == true && context.mounted) {
+    SnackbarHelper.showSuccess(context, '$displayName was deleted.');
+  }
 }
 
 /// Surfaces a patient's own request to be deleted, with both answers.
@@ -409,14 +392,12 @@ class _DeletionRequestBanner extends StatelessWidget {
           Row(
             children: [
               TextButton(
-                onPressed: () async {
-                  final ok = await caregiver.removePatient(patientUid);
-                  if (!context.mounted) return;
-                  ok
-                      ? SnackbarHelper.showSuccess(context, '$name removed.')
-                      : SnackbarHelper.showError(
-                          context, 'Could not remove $name.');
-                },
+                onPressed: () => _confirmRemove(
+                  context,
+                  patientUid: patientUid,
+                  displayName: name,
+                  requestedByPatient: true,
+                ),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   minimumSize: const Size(0, 30),

@@ -75,7 +75,7 @@ class _OtpSuccessScreenState extends State<OtpSuccessScreen> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Your caregiver has already set up your medicines. '
+                'Your care partner has already set up your medicines. '
                 'You just need to confirm each dose when the box lights up.',
                 style: TextStyle(
                   fontSize: 14,
@@ -271,7 +271,7 @@ class _EmptySchedule extends StatelessWidget {
           ),
           SizedBox(height: 6),
           Text(
-            'Your caregiver will add them shortly. '
+            'Your care partner will add them shortly. '
             'You will get a reminder when it is time for a dose.',
             textAlign: TextAlign.center,
             style: TextStyle(
