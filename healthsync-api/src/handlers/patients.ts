@@ -74,6 +74,11 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 	if (!caregiver || caregiver.account_type !== 'caregiver') {
 		return error('Only care partners can add patients.', 403, 'forbidden');
 	}
+	// An account scheduled for deletion is paused; a patient added now would
+	// be left out of it and outlive their care partner.
+	if (caregiver.is_active === false) {
+		return error('Restore your account before adding patients.', 403, 'account_paused');
+	}
 
 	const seed = crypto.randomUUID().split('-')[0];
 	const patientUid = await createAuthUser(accessToken, sa.project_id, {

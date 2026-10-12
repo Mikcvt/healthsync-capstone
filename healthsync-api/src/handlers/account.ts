@@ -1,48 +1,50 @@
 /**
- * POST /account/delete — a caregiver deletes their account and every patient
- * account they manage, with all of the data behind them.
+ * Account deletion, with a 30-day window to change your mind.
  *
- * POST /patients/delete — a caregiver deletes one patient account (removing
- * the patient, or approving the patient's own deletion request). Same purge,
- * one uid.
+ * POST /account/delete — the caller deletes their own account.
+ *   A care partner: their account and every patient account they manage. Needs
+ *   a sign-in under five minutes old (the app asks for the password first).
+ *   A managed patient: their own account, no approval needed. They have no
+ *   password to re-enter, so no recent sign-in is asked for; the 30 days are
+ *   the safety net instead. Their care partner is told at once.
  *
- * Deleting used to be done by the app alone: it set the caregiver's
- * users.is_active to false and deleted their Auth account. Nothing else was
- * touched, and a client could not have done more — the rules forbid deleting
- * dose logs, and only the service account can delete another user's Auth
- * account. So the patients' schedules stayed is_active: true, and the 5-minute
- * cron kept materialising their doses, marking them missed, and alerting a
- * caregiver who no longer existed (whose users doc still held an FCM token).
- * Every orphaned schedule cost Firestore reads and writes, around the clock.
+ * POST /patients/delete — a care partner deletes one of their patients.
  *
- * The delete runs in three stages:
+ * POST /account/restore — undoes a deletion within the 30 days. Restores the
+ *   caller's own account (and the patients deleted with it), or, with a
+ *   patient_uid, one of the caller's patients.
  *
- *   1. An `account_deletions` job is written first. If anything after it
- *      fails, or the request runs out of subrequests, the purge cron finishes
- *      the job.
- *   2. The bleeding stops: push tokens cleared, patient_profile.caregiver_ref
- *      blanked (the sweep finds nobody to alert), Auth accounts deleted.
- *   3. Everything is purged, schedules first so the materialiser stops, then
- *      dose logs so the sweep stops, then the rest.
+ * A deletion runs in two stages:
  *
- * The job is kept for an hour after the request. A deleted account's ID token
- * stays valid for up to an hour, and a patient's phone can write with it in
- * that time (its push token, for one). The cron re-runs the purge until the
- * hour is up, which catches those writes.
+ *   1. At once: an `account_deletions` job is written, then the accounts are
+ *      paused — marked inactive with the purge date, push tokens cleared,
+ *      schedules switched off (flagged, so a restore revives exactly those),
+ *      and doses already created but not yet taken cancelled. No reminder,
+ *      late or missed alert goes out for a paused account, and patient phones
+ *      sign themselves out when they see the mark.
+ *   2. After 30 days, the purge cron deletes everything, schedules first so
+ *      the materialiser stops, then dose logs so the sweep stops, then the
+ *      rest, then the Auth accounts. It re-runs the purge for another hour: a
+ *      deleted account's ID token stays valid that long, and a phone can
+ *      write with it in that time.
  *
  * Dose logs are never deleted anywhere else. Removing them here is what account
  * deletion means, and Google Play's data deletion policy requires it.
  */
 
 import type { Env } from '../index';
+import { sendPush } from '../lib/fcm';
 import { deleteAuthUsers, getAccessToken, lookupAuthUsers, parseServiceAccount, verifyIdToken } from '../lib/google-auth';
 import { Firestore } from '../lib/firestore';
 import { error, getBearerToken, json } from '../lib/http';
 
-/** The app re-enters the password right before calling; anything older is refused. */
+/** How long a deleted account can still be restored. */
+const GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** A care partner re-enters the password right before deleting; anything older is refused. */
 const RECENT_AUTH_SECONDS = 5 * 60;
 
-/** Outlasts the one-hour life of an ID token issued before the delete. */
+/** Outlasts the one-hour life of an ID token issued before the purge. */
 const STRAGGLER_WINDOW_MS = 65 * 60 * 1000;
 
 /** Firestore's limit on values in one `IN` filter. */
@@ -55,12 +57,14 @@ const PAGE = 400;
 const MAX_PATIENTS = 90;
 
 /**
- * Free plan: 50 external subrequests per invocation. The request spends about
- * eight before the purge starts, the cron about three.
+ * Free plan: 50 external subrequests per invocation. The cron spends about
+ * three before the purge starts.
  */
-const REQUEST_PURGE_BUDGET = 36;
 const CRON_PURGE_BUDGET = 44;
 const MAX_JOBS_PER_RUN = 3;
+
+/** Doses in these states are still open, so a paused account must not keep them. */
+const OPEN_DOSE_STATUSES = ['pending', 'snoozed'];
 
 /**
  * Where each account's data lives, in the order it is removed. Schedules come
@@ -94,108 +98,145 @@ interface Budget {
 	left: number;
 }
 
+type Caller = { uid: string; authTime?: number; sa: ReturnType<typeof parseServiceAccount> };
+
 function chunks<T>(items: T[], size: number): T[][] {
 	const out: T[][] = [];
 	for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
 	return out;
 }
 
-/**
- * The verified caller of a delete, or the response refusing them. A phone left
- * unlocked must not be enough to erase a patient's record, so the sign-in must
- * be under five minutes old: the app asks for the password right before.
- */
-async function recentCaller(
-	request: Request,
-	env: Env,
-): Promise<{ uid: string; sa: ReturnType<typeof parseServiceAccount> } | Response> {
+/** The verified caller, or the response refusing them. */
+async function verifiedCaller(request: Request, env: Env): Promise<Caller | Response> {
 	const idToken = getBearerToken(request);
 	if (!idToken) return error('Sign in required.', 401, 'unauthenticated');
 
 	const sa = parseServiceAccount(env.FIREBASE_SA_KEY);
-
-	let uid: string;
-	let authTime: number | undefined;
 	try {
-		({ uid, authTime } = await verifyIdToken(idToken, sa.project_id));
+		const { uid, authTime } = await verifyIdToken(idToken, sa.project_id);
+		return { uid, authTime, sa };
 	} catch {
 		return error('Your session has expired. Please sign in again.', 401, 'invalid_token');
 	}
+}
 
-	if (!authTime || Date.now() / 1000 - authTime > RECENT_AUTH_SECONDS) {
+/**
+ * A phone left unlocked must not be enough to delete a care partner's patients,
+ * so their sign-in must be under five minutes old.
+ */
+function needsReauth(caller: Caller): Response | null {
+	if (!caller.authTime || Date.now() / 1000 - caller.authTime > RECENT_AUTH_SECONDS) {
 		return error('Please enter your password again to confirm.', 401, 'reauth_required');
 	}
-	return { uid, sa };
+	return null;
+}
+
+function asDate(value: unknown): Date | null {
+	return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+}
+
+function readBody(request: Request): Promise<{ patient_uid?: string } | null> {
+	return request.json().then(
+		(body) => (body && typeof body === 'object' ? (body as { patient_uid?: string }) : {}),
+		() => null,
+	);
 }
 
 export async function handleDeleteAccount(request: Request, env: Env): Promise<Response> {
-	const caller = await recentCaller(request, env);
+	const caller = await verifiedCaller(request, env);
 	if (caller instanceof Response) return caller;
 	const { uid: callerUid, sa } = caller;
 
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
-
-	// A missing users doc is a half-finished signup: still deletable.
 	const callerDoc = await db.get('users', callerUid);
-	if (callerDoc && callerDoc.account_type !== 'caregiver') {
-		return error('Patient accounts are deleted by their care partner.', 403, 'forbidden');
+	const now = new Date();
+
+	// Already on its way out: say when, rather than restarting the 30 days.
+	const scheduled = asDate(callerDoc?.deletion_scheduled_for);
+	if (scheduled) return json({ deleted: true, purge_after: scheduled.toISOString() });
+
+	if (callerDoc?.account_type === 'managed') {
+		return deleteManagedPatient(db, accessToken, sa.project_id, callerUid, callerDoc, now);
+	}
+
+	const stale = needsReauth(caller);
+	if (stale) return stale;
+
+	// No users doc: a half-finished signup with nothing to restore. Purged by
+	// the next cron run.
+	if (!callerDoc) {
+		await writeJob(db, callerUid, [callerUid], callerUid, now, now);
+		await deleteAuthUsers(accessToken, sa.project_id, [callerUid]);
+		return json({ deleted: true, patients_deleted: 0, purge_after: now.toISOString() });
 	}
 
 	const patientUids = await patientsOf(db, callerUid);
 	const uids = [callerUid, ...patientUids];
-	const now = new Date();
+	const purgeAfter = new Date(now.getTime() + GRACE_MS);
 
-	// 1. The job, before anything is touched.
-	await db.set('account_deletions', callerUid, {
-		uids,
-		requested_by: callerUid,
-		requested_at: now,
-		finalize_after: new Date(now.getTime() + STRAGGLER_WINDOW_MS),
-		passes: 0,
-	});
+	await writeJob(db, callerUid, uids, callerUid, now, purgeAfter);
+	await pauseAccounts(db, uids, callerUid, now, purgeAfter);
 
-	// 2. Stop alerts and sign-ins. Each step is retried by the cron if it fails.
-	try {
-		await stopTheBleeding(db, uids, patientUids, now);
-		await deleteAuthUsers(accessToken, sa.project_id, uids);
-	} catch (err) {
-		console.error(`Account ${callerUid}: early shutdown failed, the cron will retry:`, err);
-	}
-
-	// 3. As much of the purge as fits; the cron does the rest.
-	let complete = false;
-	try {
-		complete = await purgeAccounts(db, accessToken, sa.project_id, uids, { left: REQUEST_PURGE_BUDGET });
-	} catch (err) {
-		console.error(`Account ${callerUid}: purge interrupted, the cron will finish it:`, err);
-	}
-
-	console.log(`Account ${callerUid} deleted with ${patientUids.length} patient(s); purge complete: ${complete}.`);
-	return json({ deleted: true, patients_deleted: patientUids.length, purge_complete: complete });
+	console.log(`Account ${callerUid} scheduled for deletion with ${patientUids.length} patient(s) on ${purgeAfter.toISOString()}.`);
+	return json({ deleted: true, patients_deleted: patientUids.length, purge_after: purgeAfter.toISOString() });
 }
 
 /**
- * Deletes one managed patient and everything recorded for them. Used both when
- * the caregiver removes a patient and when they approve the patient's own
- * request; "removing" used to only switch the patient off, keeping the login,
- * the medicines and every dose log indefinitely.
- *
- * Only the caregiver named on the patient's profile may do this. That field is
- * written by the Worker alone; a caregiver_patient_links document can be
- * created by any caregiver for any uid, so it is never consulted.
+ * A managed patient deletes their own account. Their care partner is told but
+ * cannot stop it: Google Play requires that the person who asks for deletion
+ * gets it. The care partner can restore it within the 30 days if it was a
+ * mistake.
+ */
+async function deleteManagedPatient(
+	db: Firestore,
+	accessToken: string,
+	projectId: string,
+	patientUid: string,
+	patient: Record<string, unknown>,
+	now: Date,
+): Promise<Response> {
+	const purgeAfter = new Date(now.getTime() + GRACE_MS);
+	await writeJob(db, patientUid, [patientUid], patientUid, now, purgeAfter);
+	await pauseAccounts(db, [patientUid], patientUid, now, purgeAfter);
+
+	try {
+		const profile = await db.get('patient_profile', patientUid);
+		const caregiverUid = typeof profile?.caregiver_ref === 'string' ? profile.caregiver_ref : '';
+		if (caregiverUid) {
+			const name = String(patient.first_name ?? '').trim() || 'Your patient';
+			await tellCaregiver(db, accessToken, projectId, caregiverUid, patientUid, {
+				title: `${name} is deleting their account`,
+				message:
+					`${name} asked to delete their HealthSync account. Their reminders have stopped, and ` +
+					`everything will be permanently deleted on ${manilaDate(purgeAfter)}. ` +
+					`You can restore it from My Patients until then.`,
+			});
+		}
+	} catch (err) {
+		// The deletion stands; the care partner still sees it on the patient card.
+		console.error(`Patient ${patientUid}: could not tell the care partner:`, err);
+	}
+
+	console.log(`Patient ${patientUid} scheduled their own deletion on ${purgeAfter.toISOString()}.`);
+	return json({ deleted: true, purge_after: purgeAfter.toISOString() });
+}
+
+/**
+ * A care partner deletes one managed patient. Only the care partner named on
+ * the patient's profile may: that field is written by the Worker alone,
+ * whereas a caregiver_patient_links document can be created by any caregiver
+ * for any uid, so it is never consulted.
  */
 export async function handleDeletePatient(request: Request, env: Env): Promise<Response> {
-	const caller = await recentCaller(request, env);
+	const caller = await verifiedCaller(request, env);
 	if (caller instanceof Response) return caller;
+	const stale = needsReauth(caller);
+	if (stale) return stale;
 	const { uid: callerUid, sa } = caller;
 
-	let body: { patient_uid?: string };
-	try {
-		body = (await request.json()) as { patient_uid?: string };
-	} catch {
-		return error('Invalid request body.', 400, 'bad_request');
-	}
+	const body = await readBody(request);
+	if (!body) return error('Invalid request body.', 400, 'bad_request');
 	const patientUid = body.patient_uid?.trim() ?? '';
 	if (!patientUid || patientUid === callerUid) {
 		return error('Choose a patient to delete.', 400, 'bad_request');
@@ -204,77 +245,249 @@ export async function handleDeletePatient(request: Request, env: Env): Promise<R
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
 
-	const [profile, patient] = await Promise.all([db.get('patient_profile', patientUid), db.get('users', patientUid)]);
-	// One answer for "not yours" and "not there": neither tells the caller
-	// anything about another caregiver's patients.
-	if (profile?.caregiver_ref !== callerUid || (patient && patient.account_type !== 'managed')) {
-		return error('That patient could not be found.', 404, 'patient_not_found');
-	}
+	const patient = await ownedPatient(db, callerUid, patientUid);
+	if (patient instanceof Response) return patient;
+
+	const scheduled = asDate(patient.deletion_scheduled_for);
+	if (scheduled) return json({ deleted: true, purge_after: scheduled.toISOString() });
 
 	const now = new Date();
-	await db.set('account_deletions', patientUid, {
-		uids: [patientUid],
-		requested_by: callerUid,
-		requested_at: now,
-		finalize_after: new Date(now.getTime() + STRAGGLER_WINDOW_MS),
-		passes: 0,
-	});
+	const purgeAfter = new Date(now.getTime() + GRACE_MS);
+	await writeJob(db, patientUid, [patientUid], callerUid, now, purgeAfter);
+	await pauseAccounts(db, [patientUid], callerUid, now, purgeAfter);
 
-	try {
-		await stopTheBleeding(db, [patientUid], [patientUid], now);
-		await deleteAuthUsers(accessToken, sa.project_id, [patientUid]);
-	} catch (err) {
-		console.error(`Patient ${patientUid}: early shutdown failed, the cron will retry:`, err);
+	console.log(`Patient ${patientUid} scheduled for deletion by ${callerUid} on ${purgeAfter.toISOString()}.`);
+	return json({ deleted: true, purge_after: purgeAfter.toISOString() });
+}
+
+/**
+ * Undoes a deletion inside the 30 days. Without patient_uid it restores the
+ * caller's own account and every patient deleted with it; with one, it restores
+ * that patient, who must be the caller's own.
+ */
+export async function handleRestoreAccount(request: Request, env: Env): Promise<Response> {
+	const caller = await verifiedCaller(request, env);
+	if (caller instanceof Response) return caller;
+	const { uid: callerUid, sa } = caller;
+
+	const body = await readBody(request);
+	if (!body) return error('Invalid request body.', 400, 'bad_request');
+	const patientUid = body.patient_uid?.trim() ?? '';
+
+	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
+	const db = new Firestore(sa.project_id, accessToken);
+
+	let jobId = callerUid;
+	if (patientUid && patientUid !== callerUid) {
+		const patient = await ownedPatient(db, callerUid, patientUid);
+		if (patient instanceof Response) return patient;
+		jobId = patientUid;
 	}
 
-	let complete = false;
-	try {
-		complete = await purgeAccounts(db, accessToken, sa.project_id, [patientUid], { left: REQUEST_PURGE_BUDGET });
-	} catch (err) {
-		console.error(`Patient ${patientUid}: purge interrupted, the cron will finish it:`, err);
+	const job = await db.get('account_deletions', jobId);
+	const purgeAfter = asDate(job?.purge_after);
+	if (!job || !purgeAfter) {
+		return error('This account is not scheduled for deletion.', 404, 'not_scheduled');
+	}
+	if (purgeAfter.getTime() <= Date.now()) {
+		return error('The 30 days have passed and this account has been deleted.', 410, 'already_deleted');
 	}
 
-	console.log(`Patient ${patientUid} deleted by ${callerUid}; purge complete: ${complete}.`);
-	return json({ deleted: true, purge_complete: complete });
+	const uids = Array.isArray(job.uids) ? job.uids.filter((u): u is string => typeof u === 'string') : [];
+	await restoreAccounts(db, uids, new Date());
+	// Last, so a restore that fails halfway can simply be tried again.
+	await db.deleteMany([{ collection: 'account_deletions', id: jobId }]);
+
+	console.log(`Deletion ${jobId} restored by ${callerUid} (${uids.length} account(s)).`);
+	return json({ restored: true, accounts: uids.length });
+}
+
+/**
+ * The patient's users doc when [caregiverUid] owns them, or a refusal. One
+ * answer for "not yours" and "not there": neither tells the caller anything
+ * about another caregiver's patients.
+ */
+async function ownedPatient(
+	db: Firestore,
+	caregiverUid: string,
+	patientUid: string,
+): Promise<Record<string, unknown> | Response> {
+	const [profile, patient] = await Promise.all([db.get('patient_profile', patientUid), db.get('users', patientUid)]);
+	if (profile?.caregiver_ref !== caregiverUid || !patient || patient.account_type !== 'managed') {
+		return error('That patient could not be found.', 404, 'patient_not_found');
+	}
+	return patient;
 }
 
 /**
  * The managed patients a caregiver owns: those whose patient_profile names them
  * and whose users doc is a managed account. Another caregiver's account is
  * never included, whatever a profile says.
+ *
+ * A patient already being deleted on their own job is left out, so restoring
+ * the care partner never brings back a patient who asked to leave.
  */
 async function patientsOf(db: Firestore, caregiverUid: string): Promise<string[]> {
 	const profiles = await db.query('patient_profile', [{ field: 'caregiver_ref', value: caregiverUid }], MAX_PATIENTS);
 	const candidates = profiles.map((p) => p.id).filter((id) => id !== caregiverUid);
 	if (candidates.length === 0) return [];
 
-	const notManaged = new Set<string>();
+	const excluded = new Set<string>();
 	for (const chunk of chunks(candidates, IN_LIMIT)) {
 		const users = await db.query('users', [{ field: 'uid', op: 'IN', value: chunk }], IN_LIMIT);
 		for (const u of users) {
-			if (u.data.account_type !== 'managed') notManaged.add(u.id);
+			if (u.data.account_type !== 'managed' || asDate(u.data.deletion_scheduled_for)) excluded.add(u.id);
 		}
 	}
-	return candidates.filter((id) => !notManaged.has(id));
+	return candidates.filter((id) => !excluded.has(id));
+}
+
+function writeJob(db: Firestore, jobId: string, uids: string[], requestedBy: string, now: Date, purgeAfter: Date): Promise<void> {
+	return db.set('account_deletions', jobId, {
+		uids,
+		requested_by: requestedBy,
+		requested_at: now,
+		purge_after: purgeAfter,
+		finalize_after: new Date(purgeAfter.getTime() + STRAGGLER_WINDOW_MS),
+		passes: 0,
+	});
 }
 
 /**
- * One commit that makes every account inert before the slow part: no push
- * token to send to, and no caregiver_ref for the sweep to alert.
+ * Makes [uids] inert for the 30 days without losing anything: no reminders, no
+ * alerts, no sign-in by code, and phones sign themselves out.
  */
-async function stopTheBleeding(db: Firestore, uids: string[], patientUids: string[], now: Date): Promise<void> {
-	await db.commit([
-		...uids.map((uid) => ({
+async function pauseAccounts(db: Firestore, uids: string[], requestedBy: string, now: Date, purgeAfter: Date): Promise<void> {
+	await db.commit(
+		uids.map((uid) => ({
 			collection: 'users',
 			id: uid,
-			data: { is_active: false, fcm_token: null, deleted_at: now },
+			data: {
+				is_active: false,
+				fcm_token: null,
+				deletion_requested_at: now,
+				deletion_requested_by: requestedBy,
+				deletion_scheduled_for: purgeAfter,
+			},
 		})),
-		...patientUids.map((uid) => ({
-			collection: 'patient_profile',
+	);
+
+	for (const chunk of chunks(uids, IN_LIMIT)) {
+		// Filtered here rather than in the query: patient_ref alone needs no
+		// composite index. updated_at makes the materialiser run within five
+		// minutes and cancel any future dose these schedules had.
+		const schedules = await db.query('schedules', [{ field: 'patient_ref', op: 'IN', value: chunk }], PAGE);
+		await db.commit(
+			schedules
+				.filter((s) => s.data.is_active === true)
+				.map((s) => ({
+					collection: 'schedules',
+					id: s.id,
+					data: { is_active: false, led_active: false, paused_for_deletion: true, updated_at: now },
+				})),
+		);
+
+		// Doses already due would otherwise be swept as missed and alerted on.
+		for (const status of OPEN_DOSE_STATUSES) {
+			try {
+				const open = await db.query(
+					'dose_logs',
+					[
+						{ field: 'patient_ref', op: 'IN', value: chunk },
+						{ field: 'status', value: status },
+					],
+					PAGE,
+				);
+				await db.commit(
+					open.map((d) => ({
+						collection: 'dose_logs',
+						id: d.id,
+						data: { status: 'cancelled', cancelled_reason: 'account_deleted' },
+					})),
+				);
+			} catch (err) {
+				// Future doses are still cancelled by the materialiser; at worst
+				// one already due is reported missed.
+				console.error(`Could not cancel ${status} doses while pausing:`, err);
+			}
+		}
+	}
+}
+
+/**
+ * Reverses [pauseAccounts]. Only schedules it switched off come back on; a
+ * medicine archived before the deletion stays archived. Future doses it
+ * cancelled are revived by the materialiser, which the updated_at stamp runs
+ * within five minutes. Patients need a new code from their care partner to
+ * sign back in, since their phones signed out.
+ */
+async function restoreAccounts(db: Firestore, uids: string[], now: Date): Promise<void> {
+	await db.commit(
+		uids.map((uid) => ({
+			collection: 'users',
 			id: uid,
-			data: { caregiver_ref: '' },
+			data: {
+				is_active: true,
+				deletion_requested_at: null,
+				deletion_requested_by: null,
+				deletion_scheduled_for: null,
+			},
 		})),
-	]);
+	);
+
+	for (const chunk of chunks(uids, IN_LIMIT)) {
+		const schedules = await db.query('schedules', [{ field: 'patient_ref', op: 'IN', value: chunk }], PAGE);
+		await db.commit(
+			schedules
+				.filter((s) => s.data.paused_for_deletion === true)
+				.map((s) => ({
+					collection: 'schedules',
+					id: s.id,
+					data: { is_active: true, paused_for_deletion: false, updated_at: now },
+				})),
+		);
+	}
+}
+
+/** Pushes one alert to the care partner and records it in their Alerts tab. */
+async function tellCaregiver(
+	db: Firestore,
+	accessToken: string,
+	projectId: string,
+	caregiverUid: string,
+	patientUid: string,
+	alert: { title: string; message: string },
+): Promise<void> {
+	const caregiver = await db.get('users', caregiverUid);
+	const fcmToken = typeof caregiver?.fcm_token === 'string' ? caregiver.fcm_token : '';
+	const sent = fcmToken
+		? await sendPush(accessToken, projectId, {
+				token: fcmToken,
+				title: alert.title,
+				body: alert.message,
+				data: { type: 'account_deletion', patient_ref: patientUid },
+			})
+		: false;
+
+	const notifId = crypto.randomUUID();
+	await db.set('notifications', notifId, {
+		notif_id: notifId,
+		user_ref: caregiverUid,
+		patient_ref: patientUid,
+		dose_log_ref: null,
+		notification_type: 'account_deletion',
+		title: alert.title,
+		message: alert.message,
+		sent_at: new Date(),
+		read_at: null,
+		channel: sent ? 'fcm' : 'in_app',
+		is_active: true,
+	});
+}
+
+/** "Nov 12, 2026", in Manila time, for messages. */
+function manilaDate(at: Date): string {
+	return at.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**
@@ -303,7 +516,7 @@ async function purgeAccounts(
 		}
 	}
 
-	// Identity documents last, then Auth again in case the early delete failed.
+	// Identity documents last, then the Auth accounts.
 	const identity = uids.flatMap((uid) => IDENTITY_COLLECTIONS.map((collection) => ({ collection, id: uid })));
 	for (const refs of chunks(identity, PAGE)) {
 		if (budget.left < 1) return false;
@@ -317,14 +530,14 @@ async function purgeAccounts(
 }
 
 /**
- * The purge cron: finishes interrupted deletions and re-sweeps recent ones
- * until their straggler window has passed. Costs one query when idle.
+ * The purge cron: carries out deletions whose 30 days are up, and re-sweeps
+ * them until their straggler window has passed. Costs one query when idle.
  */
 export async function runAccountPurge(db: Firestore, accessToken: string, projectId: string): Promise<{ finished: number }> {
 	const now = new Date();
 	const jobs = await db.query(
 		'account_deletions',
-		[{ field: 'requested_at', op: 'LESS_THAN_OR_EQUAL', value: now }],
+		[{ field: 'purge_after', op: 'LESS_THAN_OR_EQUAL', value: now }],
 		MAX_JOBS_PER_RUN,
 	);
 
@@ -334,7 +547,7 @@ export async function runAccountPurge(db: Firestore, accessToken: string, projec
 		const uids = Array.isArray(job.data.uids) ? job.data.uids.filter((u): u is string => typeof u === 'string') : [];
 		const done = await purgeAccounts(db, accessToken, projectId, uids, budget);
 
-		const finalizeAfter = job.data.finalize_after instanceof Date ? job.data.finalize_after : now;
+		const finalizeAfter = asDate(job.data.finalize_after) ?? now;
 		if (done && now.getTime() >= finalizeAfter.getTime()) {
 			if (budget.left < 1) break;
 			budget.left--;
@@ -351,9 +564,10 @@ export async function runAccountPurge(db: Firestore, accessToken: string, projec
 }
 
 /**
- * Finds caregivers deleted before this endpoint existed: users docs left with
- * is_active false whose Auth account is gone. Their patients' schedules are
- * what kept the cron busy. Each one becomes an ordinary deletion job.
+ * Finds caregivers deleted before /account/delete existed: users docs left
+ * with is_active false whose Auth account is gone. Their patients' schedules
+ * are what kept the cron busy. Each one becomes a deletion due at once — the
+ * Auth accounts are long gone, so there is nothing to restore.
  *
  * Auth is checked, not just is_active: the old in-app delete set is_active
  * false *before* deleting the Auth account, and the Auth delete fails when the
@@ -368,8 +582,10 @@ export async function enqueueOrphanedCaregivers(db: Firestore, accessToken: stri
 		],
 		10,
 	);
-	// deleted_at is set by this file, so those already have a job.
-	const candidates = inactive.filter((u) => !(u.data.deleted_at instanceof Date)).map((u) => u.id);
+	// Those with deleted_at or a deletion date already have a job.
+	const candidates = inactive
+		.filter((u) => !asDate(u.data.deleted_at) && !asDate(u.data.deletion_scheduled_for))
+		.map((u) => u.id);
 	if (candidates.length === 0) return 0;
 
 	const alive = await lookupAuthUsers(accessToken, projectId, candidates);
@@ -383,11 +599,22 @@ export async function enqueueOrphanedCaregivers(db: Firestore, accessToken: stri
 			uids,
 			requested_by: 'orphan_scan',
 			requested_at: now,
-			// The Auth accounts are long gone; no stragglers to wait for.
+			purge_after: now,
 			finalize_after: now,
 			passes: 0,
 		});
-		await stopTheBleeding(db, uids, patientUids, now);
+		await db.commit([
+			...uids.map((uid) => ({
+				collection: 'users',
+				id: uid,
+				data: { is_active: false, fcm_token: null, deleted_at: now },
+			})),
+			...patientUids.map((uid) => ({
+				collection: 'patient_profile',
+				id: uid,
+				data: { caregiver_ref: '' },
+			})),
+		]);
 	}
 	return orphans.length;
 }

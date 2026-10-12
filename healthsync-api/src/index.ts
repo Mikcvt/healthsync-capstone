@@ -7,13 +7,14 @@
  *   POST /patients      caregiver creates a managed patient's Auth account
  *   POST /otp/redeem    code in, Firebase custom token out (no password login)
  *   POST /dose-events   dose outcome fans out to the caregiver over FCM
- *   POST /account/delete caregiver deletes their account, their patients'
- *                       accounts and all of their data
- *   POST /patients/delete caregiver deletes one patient and all their data
+ *   POST /account/delete caregiver deletes their account and their patients',
+ *                       or a patient deletes their own; purged after 30 days
+ *   POST /patients/delete caregiver deletes one patient; purged after 30 days
+ *   POST /account/restore undoes a deletion within the 30 days
  *   cron every 5 min    marks unconfirmed doses late and missed; creates
  *                       upcoming doses hourly, or at once after an edit
- *   cron every 15 min   finishes account deletions; once a day, finds
- *                       caregivers deleted before /account/delete existed
+ *   cron every 15 min   purges deletions whose 30 days are up; once a day,
+ *                       finds caregivers deleted before /account/delete existed
  *
  * Everything else the app does — every read and every write a user is permitted
  * to make — goes straight from Flutter to Firestore under the security rules.
@@ -24,7 +25,13 @@ import { handleRedeemOtp } from './handlers/otp';
 import { handleDoseEvent } from './handlers/dose-events';
 import { runMaterialize, shouldMaterialize } from './handlers/materialize';
 import { runSweep } from './handlers/sweep';
-import { enqueueOrphanedCaregivers, handleDeleteAccount, handleDeletePatient, runAccountPurge } from './handlers/account';
+import {
+	enqueueOrphanedCaregivers,
+	handleDeleteAccount,
+	handleDeletePatient,
+	handleRestoreAccount,
+	runAccountPurge,
+} from './handlers/account';
 import { Firestore } from './lib/firestore';
 import { getAccessToken, parseServiceAccount } from './lib/google-auth';
 import { error, json } from './lib/http';
@@ -60,6 +67,9 @@ export default {
 
 				case 'POST /patients/delete':
 					return await handleDeletePatient(request, env);
+
+				case 'POST /account/restore':
+					return await handleRestoreAccount(request, env);
 
 				default:
 					return error('Not found.', 404, 'not_found');
