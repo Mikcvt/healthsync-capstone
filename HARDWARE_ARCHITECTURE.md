@@ -1,12 +1,17 @@
 # HealthSync Smart Medicine Box — Hardware Architecture
 
-> Status: **DRAFT for team review** (October 13, 2026)
+> Status: **DRAFT for team review** (October 13, 2026; updated October 19, 2026
+> for the 6-compartment build and the confirmed wiring)
 > Scope: the ESP32 box, how it is wired, what its firmware does, and how it talks
 > to the cloud. The Flutter app and the Worker are covered only where the box
 > touches them.
 >
 > Read it in order. Each step builds on the one before it. Anything marked
 > **DECIDE** is a choice the team has to make before writing firmware.
+>
+> The firmware is built in phases (Step 8.0): **Phase 1** LED + buzzer sync,
+> **Phase 2** button confirms the dose, then Wi-Fi setup, offline and device
+> key. `firmware/healthsync_box/FIRMWARE_ARCHITECTURE.md` has the detail.
 
 ---
 
@@ -22,8 +27,13 @@ The box is a **display and a button**. It is not where dose logic lives.
 | Keep time with the DS3231 when Wi-Fi is down | Hold the Firebase service account key |
 | Queue button presses on the microSD card while offline, and send them later | Store medicine names, patient names, or any health data beyond the queue |
 
-Hardware in this build, and nothing else: **ESP32, 8 LEDs, 1 push button, 1 active
-buzzer, DS3231 RTC, microSD module.** (See "No phantom features" in `CLAUDE.md`.)
+Hardware in this build, and nothing else: **ESP32, 6 LEDs (6 compartments), 1 push
+button, 1 active buzzer, DS3231 RTC, microSD module.** (See "No phantom features"
+in `CLAUDE.md`.)
+
+The box does **not** connect to the phone and does not use the phone's
+internet. The box and the app each talk to the cloud on their own, so the box
+needs its own Wi-Fi (Step 10).
 
 ---
 
@@ -34,18 +44,18 @@ panelist will ask.
 
 | # | Part | Qty | Notes / why |
 |---|---|---|---|
-| 1 | ESP32 dev board (ESP32-WROOM-32, 30 or 38 pin DevKit V1) | 1 | Wi-Fi + enough GPIO for 8 LEDs, I2C and SPI. **If your board says WROVER, read the GPIO 17 note in Step 3.** |
-| 2 | 5 mm LEDs | 8 | Red, yellow, or green. Avoid blue/white: they need ~3.0 V and will be dim on a 3.3 V pin. |
-| 3 | 220 Ω resistors | 8 | One per LED, current limit (~5–6 mA each). |
-| 4 | Tactile push button (12 mm recommended, easy to press for elderly users) | 1 | The "I took it" button. |
-| 5 | 10 kΩ resistor | 1 | Pull-down for the button. |
+| 1 | ESP32 dev board (ESP32-WROOM-32, 30 or 38 pin DevKit V1) | 1 | Wi-Fi + enough GPIO for 6 LEDs, I2C and SPI. **Must be WROOM: GPIO 16/17 are PSRAM on a WROVER (Step 3).** |
+| 2 | 5 mm LEDs | 6 | Red, yellow, or green. Avoid blue/white: they need ~3.0 V and will be dim on a 3.3 V pin. |
+| 3 | 220 Ω resistors | 6 | One per LED, current limit (~5–6 mA each). |
+| 4 | Tactile push button (12 mm recommended, easy to press for elderly users) | 1 | Silences the box (Phase 1), confirms the dose (Phase 2). |
+| 5 | ~~10 kΩ resistor~~ | 0 | Not needed: the button goes to GND and uses the ESP32's internal pull-up. |
 | 6 | Active buzzer (5 V or 3.3 V type) | 1 | *Active* = beeps on DC, no PWM tone needed. |
 | 7 | NPN transistor (2N2222, S8050, or BC547) + 1 kΩ resistor | 1 + 1 | Drives the buzzer. Most buzzers draw 25–30 mA, more than an ESP32 pin should supply. |
 | 8 | 1N4148 diode | 1 | Optional, across the buzzer (protects the transistor from back-EMF). |
 | 9 | DS3231 RTC module (usually "ZS-042") + coin cell | 1 | Keeps time with no Wi-Fi and no power. Read the battery warning in Step 6. |
 | 10 | MicroSD card module (SPI) + microSD card ≤ 32 GB | 1 | Offline queue and schedule cache. Format FAT32. |
 | 11 | 5 V 2 A USB power adapter + cable | 1 | Wi-Fi transmit spikes need the headroom. |
-| 12 | Breadboard / perfboard, jumper wires, enclosure with 8 compartments | — | |
+| 12 | Breadboard / perfboard, jumper wires, enclosure with 6 compartments | — | |
 
 ---
 
@@ -55,16 +65,16 @@ panelist will ask.
                          ┌────────────────────────────────────────────┐
    5 V USB adapter ─────►│               ESP32 DevKit                 │
                          │                                            │
-                         │  GPIO 13,14,25,26,27,32,33,4 ──► 8 LEDs    │──► Compartments 1–8
+                         │  GPIO 13,14,25,26,32,33 ──► 6 LEDs         │──► Compartments 1–6
                          │                                            │
-   Push button ─────────►│  GPIO 5   (input, external pull-down)      │
+   Push button ─────────►│  GPIO 16  (input, internal pull-up, to GND)│
                          │                                            │
-                         │  GPIO 18  ──► NPN ──► Active buzzer        │
+                         │  GPIO 17  ──► NPN ──► Active buzzer        │
                          │                                            │
                          │  I2C  SDA 21 / SCL 22 ◄──► DS3231 RTC      │
                          │                                            │
-                         │  SPI  SCK 15 / MISO 19 /                   │
-                         │       MOSI 23 / CS 17 ◄──► microSD module  │
+                         │  SPI  SCK 18 / MISO 23 /                   │
+                         │       MOSI 19 / CS 15 ◄──► microSD module  │
                          │                                            │
                          │  Wi-Fi ◄──────────────────────────────┐    │
                          └───────────────────────────────────────┼────┘
@@ -100,39 +110,48 @@ The box **never talks to Firestore directly.** It only talks to the Worker
 | LED compartment 2 | 14 | Output | Flickers briefly at boot (ESP32 outputs a PWM signal on 14). Harmless for an LED. |
 | LED compartment 3 | 25 | Output | — |
 | LED compartment 4 | 26 | Output | — |
-| LED compartment 5 | 27 | Output | — |
-| LED compartment 6 | 32 | Output | — |
-| LED compartment 7 | 33 | Output | — |
-| LED compartment 8 | 4  | Output | — |
-| Push button | 5 | Input | **Strapping pin.** Pulled low at boot by the 10 kΩ, which only changes SDIO timing; the board still boots. If you ever get boot loops, move the button to **GPIO 34 or 35** (input-only pins, perfect for a button with an external pull-down). |
-| Active buzzer (via NPN) | 18 | Output | 18 is the *default* SPI clock, which is why SD uses custom pins below. |
+| LED compartment 5 | 32 | Output | — |
+| LED compartment 6 | 33 | Output | — |
+| Push button | 16 | Input | Wired GPIO 16 → button → GND. `INPUT_PULLUP`, pressed = LOW. **On a WROVER board GPIO 16/17 belong to PSRAM — do not use.** On WROOM it is fine. |
+| Active buzzer (via NPN) | 17 | Output | HIGH = sound. Same WROVER caution as GPIO 16. |
 | DS3231 SDA | 21 | I2C | Default I2C pins. |
 | DS3231 SCL | 22 | I2C | Default I2C pins. |
-| microSD MOSI | 23 | SPI | — |
-| microSD MISO | 19 | SPI | — |
-| microSD SCK | 15 | SPI | **Strapping pin.** Low at boot only silences the boot log on Serial. Harmless. |
-| microSD CS | 17 | SPI | **On a WROVER board GPIO 16/17 belong to PSRAM — do not use.** On WROOM it is fine. |
+| microSD SCK | 18 | SPI | — |
+| microSD MOSI | 19 | SPI | Swapped vs. the ESP32 default (see below). |
+| microSD MISO | 23 | SPI | Swapped vs. the ESP32 default (see below). |
+| microSD CS | 15 | SPI | **Strapping pin.** The SD module's pull-up keeps it high at boot, which is the normal state. Harmless. |
 | (built-in LED) | 2 | Output | Optional Wi-Fi status light. Already on the board, not a new feature. |
 
-Pins deliberately **not** used: 0, 2 (strapping), 6–11 (flash), 12 (strapping —
-pulled high at boot it bricks the boot), 34–39 (input-only, kept free for the button fallback).
+Wiring confirmed against the bench box on October 19, 2026.
 
-Because SD is on non-default pins, the firmware must start SPI explicitly:
+Pins deliberately **not** used: 0, 5 (strapping), 6–11 (flash), 12 (strapping —
+pulled high at boot it bricks the boot), 34–39 (input-only).
+
+**Only 6 compartments.** The app lets the care partner pick compartments 1–8.
+A medicine set to 7 or 8 still gets phone reminders, but no LED lights; the
+firmware ignores those numbers. Care partners should use 1–6. (The app is
+final, so this is a usage rule, not an app change.)
+
+**SPI pins.** The ESP32's standard SPI pins are MISO 19 and MOSI 23; our wiring
+has them the other way round. The ESP32 can route SPI to any pins, so the
+firmware follows the wiring and starts SPI explicitly:
 
 ```cpp
-SPI.begin(/*SCK*/ 15, /*MISO*/ 19, /*MOSI*/ 23, /*CS*/ 17);
-SD.begin(17, SPI);
+SPI.begin(/*SCK*/ 18, /*MISO*/ 23, /*MOSI*/ 19, /*CS*/ 15);
+SD.begin(15, SPI);
 ```
+
+If the card will not start, swap MISO and MOSI before checking anything else.
 
 ---
 
 ## Step 4 — Wiring each part
 
 Wire and test **one subsystem at a time** (Step 11 has the test for each).
-All grounds join: ESP32 GND, LED cathodes, button resistor, transistor emitter,
+All grounds join: ESP32 GND, LED cathodes, button, transistor emitter,
 DS3231 GND, SD GND.
 
-### 4.1 LEDs (×8)
+### 4.1 LEDs (×6)
 
 ```
 GPIO ──[220 Ω]──►|── GND
@@ -140,23 +159,19 @@ GPIO ──[220 Ω]──►|── GND
 ```
 
 - HIGH = on, LOW = off.
-- Current per LED ≈ (3.3 V − 2.0 V) / 220 Ω ≈ 6 mA. Even all 8 on is ~48 mA,
+- Current per LED ≈ (3.3 V − 2.0 V) / 220 Ω ≈ 6 mA. Even all 6 on is ~36 mA,
   well inside the ESP32's total budget.
 
 ### 4.2 Push button
 
 ```
-3.3 V ──[button]──┬── GPIO 5
-                  │
-               [10 kΩ]
-                  │
-                 GND
+GPIO 16 ──[button]── GND        (internal pull-up enabled in firmware)
 ```
 
-- Not pressed = LOW, pressed = HIGH (active-high).
-- Use **3.3 V, never 5 V** — ESP32 pins are not 5 V tolerant.
-- Debounce in firmware (50 ms). Require a **press of ≥ 300 ms** so a bump of the
-  box does not confirm a dose.
+- Not pressed = HIGH, pressed = LOW (active-low). `pinMode(16, INPUT_PULLUP)`.
+- No external resistor needed. Never connect the button to 5 V.
+- Debounce in firmware (50 ms). From Phase 2, require a **press of ≥ 300 ms**
+  so a bump of the box does not confirm a dose.
 
 ### 4.3 Active buzzer
 
@@ -167,13 +182,13 @@ GPIO ──[220 Ω]──►|── GND
           [buzzer −]──┬──────┐
                       │      ┴ 1N4148 (optional, cathode to +)
                       C
-GPIO 18 ──[1 kΩ]──── B   NPN (2N2222 / S8050)
+GPIO 17 ──[1 kΩ]──── B   NPN (2N2222 / S8050)
                       E
                       │
                      GND
 ```
 
-- GPIO 18 HIGH = beep.
+- GPIO 17 HIGH = beep.
 - The transistor lets a 5 V buzzer run from a 3.3 V pin and keeps the
   current off the ESP32.
 
@@ -196,10 +211,10 @@ GPIO 18 ──[1 kΩ]──── B   NPN (2N2222 / S8050)
 |---|---|
 | VCC | **see note** |
 | GND | GND |
-| MOSI | GPIO 23 |
-| MISO | GPIO 19 |
-| SCK | GPIO 15 |
-| CS | GPIO 17 |
+| SCK | GPIO 18 |
+| MOSI | GPIO 19 |
+| MISO | GPIO 23 |
+| CS | GPIO 15 |
 
 **Power note — the most common SD failure:** the usual blue module has a 3.3 V
 regulator (AMS1117) and level shifter on it, so it needs **5 V on VCC** (from
@@ -219,11 +234,11 @@ bare breakout with no regulator takes **3.3 V**. Look at your board before wirin
 | Load | Typical | Peak |
 |---|---|---|
 | ESP32 with Wi-Fi | 80–120 mA | ~350 mA (transmit burst) |
-| LEDs (usually 1–2 lit, max 8) | 6–12 mA | 48 mA |
+| LEDs (usually 1–2 lit, max 6) | 6–12 mA | 36 mA |
 | Buzzer | 0 | 30 mA |
 | DS3231 | < 1 mA | — |
 | microSD (write) | 1 mA idle | ~100 mA |
-| **Total** | **~150 mA** | **~530 mA** |
+| **Total** | **~150 mA** | **~520 mA** |
 
 A 5 V 1 A adapter would work; 2 A gives margin for a cheap cable's voltage
 drop. There is **no battery in this build**, so if the box is unplugged it does
@@ -299,6 +314,7 @@ Which LEDs should be on right now.
 {
   "server_time": "2026-10-13T00:02:11Z",
   "lit": [3, 5],
+  "buzz": true,
   "schedule_version": "2026-10-12T09:41:00Z"
 }
 ```
@@ -306,7 +322,11 @@ Which LEDs should be on right now.
 - `lit` = compartments that have a dose `pending` or `snoozed` whose
   `scheduled_at` is between 60 minutes ago and now (the "Due now" and "Late"
   windows from `DOSE_LOGIC_PROPOSAL.md`), and whose schedule has a
-  `mat_box_column`.
+  `mat_box_column`. The box ignores anything outside 1–6.
+- `buzz` = false while every lit dose is snoozed in the app and its
+  `snoozed_until` has not passed, so the box does not beep through a snooze.
+- `schedule_version` is only needed from Phase 4 (offline). Phase 1 can leave
+  it out.
 - When the patient taps Done in the app, the dose stops being pending, so the
   next poll drops it from `lit` and the LED turns off within a minute.
 - `schedule_version` changes when a Care Partner edits a schedule
@@ -388,9 +408,29 @@ display, the server knows the time" without adding another writer.
 `led_active: true` at dose time. The second needs the phone to be awake at the
 right minute, or a Worker write every 5 minutes per due dose.
 
+**Re-checked October 19, 2026:** still true. `DeviceService.setColumnLedStatus`
+has no callers. The uncommitted `healthsync-api/src/handlers/device.ts` builds
+`/state` from `led_active`, so with it no LED would ever light. It also returns
+`compartments` instead of `lit` and uses the UTC date instead of Manila's. It
+has to change before Phase 1 can pass.
+
 ---
 
 ## Step 8 — Firmware structure
+
+### 8.0 Build phases (in order of importance)
+
+| Phase | Goal | Button does |
+|---|---|---|
+| **1 — LED + buzzer sync (MVP)** | Poll `/state` every 60 s, light the due compartments, beep | Silences LEDs + buzzer on the box only (temporary) |
+| **2 — Button confirms the dose** | `POST /dose`, dose taken with `confirmed_via: "button"`, care partner push | Confirms the dose |
+| 3 — Wi-Fi setup hotspot | WiFiManager replaces hardcoded Wi-Fi (Step 10) | — |
+| 4 — Offline | DS3231 + SD: offline schedule and queued presses (Steps 6, 9) | Queues the press when offline |
+| 5 — Device key | `X-Device-Key` + `device_registry` (Step 7.2) | — |
+
+Since Phase 3 (written October 20, 2026) the home Wi-Fi is chosen on the
+box's setup page and saved in the ESP32's flash, not typed into any file. Until Phase 5 the Worker trusts the serial
+alone.
 
 One Arduino (or PlatformIO) project, one file per module:
 
@@ -398,29 +438,40 @@ One Arduino (or PlatformIO) project, one file per module:
 firmware/healthsync_box/
 ├── healthsync_box.ino   setup() and loop() only — calls the modules
 ├── config.h             pins, poll intervals, Worker URL
-├── leds.cpp/.h          ledsSet(lit[]), ledsAllOff(), ledsSelfTest()
-├── button.cpp/.h        debounced long-press → onButtonPressed()
-├── buzzer.cpp/.h        beep pattern while any LED is lit, quiet hours
-├── rtc_clock.cpp/.h     DS3231 read/write, NTP sync
-├── storage.cpp/.h       SD: schedule.json, queue.jsonl
-├── net.cpp/.h           Wi-Fi, provisioning portal, HTTPS to the Worker
-├── schedule.cpp/.h      offline "what is due now" from schedule.json + RTC
-└── secrets.h            serial + device_key (git-ignored; flashed per box)
+├── leds.cpp/.h          leds_set(mask), leds_all_off(), leds_self_test()   (1)
+├── button.cpp/.h        debounced press; long press from Phase 2          (1, 2)
+├── buzzer.cpp/.h        non-blocking beep pattern while a dose is due      (1)
+├── net.cpp/.h           Wi-Fi, HTTPS to the Worker; setup portal in Phase 3 (1, 3)
+├── rtc_clock.cpp/.h     DS3231 read/write, NTP sync                        (4)
+├── storage.cpp/.h       SD: schedule.json, queue.jsonl                     (4)
+├── schedule.cpp/.h      offline "what is due now" from schedule.json + RTC (4)
+└── secrets.h            serial, setup hotspot password, device_key (Phase 5); git-ignored
 ```
 
 ### 8.1 Main loop (non-blocking, no `delay()`)
 
+Phase 1:
+
 ```
-every 50 ms    read button
-every 1 s      update buzzer pattern
-every 60 s     if online:  GET /state → set LEDs
-                           if schedule_version changed → GET /schedule → save to SD
-                           if queue.jsonl not empty → replay it (Step 9)
-               if offline: work out lit columns from schedule.json + RTC → set LEDs
-every 6 h      NTP → DS3231
-on button      if any LED lit → POST /dose (or append to queue.jsonl if offline)
-                             → turn those LEDs off at once, short confirm beep
-               if no LED lit → one low beep ("nothing due")
+every loop     read button → if LEDs lit: turn them and the buzzer off, and
+                              remember those compartments as silenced
+every loop     update buzzer pattern
+every 60 s     if Wi-Fi down → reconnect
+               GET /state → LEDs on for lit minus silenced, buzzer per `buzz`
+               a compartment that leaves `lit` is no longer silenced
+               on failure → keep the last state
+```
+
+Added by later phases:
+
+```
+Phase 2  on button    if any LED lit → POST /dose, LEDs off, short confirm beep
+                      if no LED lit  → one low beep ("nothing due")
+Phase 4  every 60 s   if schedule_version changed → GET /schedule → save to SD
+                      if queue.jsonl not empty → replay it (Step 9)
+                      if offline → lit columns from schedule.json + RTC
+         every 6 h    NTP → DS3231
+         on button    offline → append to queue.jsonl
 ```
 
 ### 8.2 States
@@ -445,7 +496,7 @@ on button      if any LED lit → POST /dose (or append to queue.jsonl if offlin
         └─────────┘   (retry every 60 s)
 ```
 
-Boot self-test: each LED lights for 150 ms in order 1→8 and the buzzer chirps
+Boot self-test: each LED lights for 150 ms in order 1→6 and the buzzer chirps
 once. It shows at a glance that every LED and the buzzer work (useful at the
 defense).
 
@@ -453,12 +504,12 @@ defense).
 
 | Library | For |
 |---|---|
-| `WiFi`, `HTTPClient`, `WiFiClientSecure` (ESP32 core) | Wi-Fi and HTTPS |
-| `WiFiManager` (tzapu) | First-time Wi-Fi setup portal |
-| `RTClib` (Adafruit) | DS3231 |
-| `SD`, `SPI` (ESP32 core) | microSD |
-| `ArduinoJson` v7 | Parsing `/state` and `/schedule` |
-| `Preferences` (ESP32 core) | Serial + device key in flash |
+| `WiFi`, `HTTPClient`, `WiFiClientSecure` (ESP32 core) | Wi-Fi and HTTPS (Phase 1) |
+| `ArduinoJson` v7 | Parsing `/state` (Phase 1) and `/schedule` (Phase 4) |
+| `WiFiManager` (tzapu) | First-time Wi-Fi setup portal (Phase 3) |
+| `RTClib` (Adafruit) | DS3231 (Phase 4) |
+| `SD`, `SPI` (ESP32 core) | microSD (Phase 4) |
+| `Preferences` (ESP32 core) | Serial + device key in flash (Phase 5) |
 
 ---
 
@@ -494,9 +545,20 @@ while the box is offline relight on the box until it reconnects.
 
 1. **Flash** the firmware with that box's `serial` and `device_key`.
    Register the key hash in `device_registry` (Step 7.2).
-2. **Wi-Fi:** on first power-up the box opens a hotspot `HealthSync-0001`.
-   The Care Partner connects with a phone, picks the home Wi-Fi, enters the
-   password. (The built-in LED blinks while in this mode.)
+2. **Wi-Fi (Phase 3):** on first power-up the box opens its own hotspot
+   `HealthSync-0001` (compartment LEDs 1 and 6 blink, one beep). The Care
+   Partner joins it from the phone's Wi-Fi settings with the password on the
+   label, and a setup page opens by itself (or go to `192.168.4.1`). They pick
+   the home Wi-Fi and enter its password; the box joins it, beeps twice, and
+   rejoins it on every boot after.
+   - Holding the button for 5 s while no LED is lit reopens setup (LEDs fill
+     up 1→6 while held); the same hold in setup closes it.
+   - After 5 minutes without its saved Wi-Fi, the box opens setup by itself.
+   - The box uses its **own** Wi-Fi, never the phone's internet. Pairing in
+     step 3 does not give it a connection.
+   - A phone's mobile hotspot can be the network chosen here, but the box then
+     works only while that hotspot is on.
+   - The ESP32 supports **2.4 GHz Wi-Fi only**, not 5 GHz.
 3. **Pair:** in the app, open the Smart box screen and type the serial from the
    label. The app creates the `devices` doc (already built:
    `FirestoreService.pairDevice`).
@@ -528,14 +590,15 @@ small throwaway sketch except 11.8.
 | Step | Build | Pass check |
 |---|---|---|
 | 11.1 | ESP32 alone: upload Blink to GPIO 2 | Built-in LED blinks; Serial Monitor shows output at 115200 |
-| 11.2 | Wire 8 LEDs (4.1). Sketch lights 1→8 in turn | Every LED lights, in the right compartment order |
-| 11.3 | Wire button (4.2). Sketch prints on long press | One print per press, none from tapping the table, none at idle |
+| 11.2 | Wire 6 LEDs (4.1). Sketch lights 1→6 in turn | Every LED lights, in the right compartment order |
+| 11.3 | Wire button (4.2). Sketch prints on press | One print per press, none from tapping the table, none at idle |
 | 11.4 | Wire buzzer (4.3). Sketch beeps on button press | Clear beep; ESP32 does not reset when it beeps |
 | 11.5 | Wire DS3231 (4.4). I2C scanner, then set + read time | Scanner finds `0x68`; time survives unplugging USB for 1 minute |
 | 11.6 | Wire SD (4.5). Write a line, read it back | File readable on a PC afterwards |
 | 11.7 | Wi-Fi + NTP + call the Worker's existing `GET /health` over HTTPS | Prints `{"status":"ok",...}` |
-| 11.8 | Full firmware against a Worker with the `/device/*` endpoints | Due dose lights the LED; button marks it taken in the app within a minute; Care Partner gets the push |
-| 11.9 | Offline test: turn router off, press button, turn router on | Dose appears as taken (via button) after reconnect, once, not twice |
+| 11.8a | **Phase 1:** full firmware against a Worker with the new `/state` | Due dose lights the right LED and beeps; button silences it; tapping Done in the app turns it off within 60 s |
+| 11.8b | **Phase 2:** button confirms | Button marks the dose taken in the app within a minute; Care Partner gets the push |
+| 11.9 | **Phase 4:** offline test: turn router off, press button, turn router on | Dose appears as taken (via button) after reconnect, once, not twice |
 | 11.10 | Conflict test: tap Done in the app while the LED is lit | LED turns off within 60 s without pressing the button |
 
 ---
@@ -567,4 +630,7 @@ small throwaway sketch except 11.8.
    first 10 minutes, then every 5 minutes until +60) and whether to add quiet
    hours.
 5. **Device registry location** for the key hashes. (Step 7.2)
-6. **Button pin:** keep GPIO 5, or move to GPIO 34 now to avoid the strapping pin.
+6. ~~**Button pin:** keep GPIO 5, or move to GPIO 34.~~ **Decided Oct 19,
+   2026:** GPIO 16 to GND with the internal pull-up, matching the wiring.
+7. **Worker URL** for the box: the deployed Worker, not a temporary
+   `trycloudflare.com` tunnel (which changes on every restart).
