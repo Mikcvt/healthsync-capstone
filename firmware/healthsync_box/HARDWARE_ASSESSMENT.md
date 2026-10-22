@@ -6,6 +6,15 @@
 > Build: **6 compartments** (6 LEDs)  
 > Last updated: October 19, 2026
 
+> **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box now
+> talks to the patient's phone over BLE, connect-on-demand: no Wi-Fi, no
+> hotspot, no Worker link. Passages that describe that old link are kept for
+> the record and marked: the ESP32's Wi-Fi role (1.1), the Wi-Fi setup hold
+> (1.4), the Worker-based Phase 2 scenarios (1.4), NTP (1.9), the Wi-Fi
+> status LED (section 2) and `net.cpp` (section 3). The component list and
+> pin list are not changed by this decision.
+
 ---
 
 ## 1. Component Photos
@@ -14,6 +23,10 @@
 <!-- Paste your photo here or drag and drop the image into this section -->
 ![ESP32 DevKit](photos/esp32.jpg)
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision** ("Handles Wi-Fi
+> connectivity" below): the ESP32 now uses its built-in BLE to sync with the
+> patient's phone. See [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md).
+>
 > The main microcontroller of the HealthSync Smart Medicine Box. Handles Wi-Fi connectivity, GPIO control for LEDs, button input, buzzer output, I2C communication with the DS3231 RTC, and SPI communication with the microSD module.  
 > ⚠️ Must be a **WROOM** board: the buzzer (GPIO 17) and button (GPIO 16) use pins that a WROVER board reserves for PSRAM.
 
@@ -56,6 +69,13 @@
 | Pressed while LEDs are lit | LEDs and buzzer off at once; those compartments stay off until their dose is no longer due |
 | Pressed with nothing lit | Ignored |
 | Patient taps "Taken" in the app | Next poll (≤60s) drops the LED → LED and buzzer off, no button needed |
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The Wi-Fi setup
+> hold above and the `/state` polling, posts and replays to the Worker in the
+> scenarios below belong to the old link. With BLE, a box dose event reaches
+> Firebase only after the phone syncs. How "dose taken" is recorded is open
+> question C5 (Christian). Kept for the record.
 
 **Phase 2 scenarios and how they will be handled:**
 
@@ -177,6 +197,12 @@
 | Committed | ✅ Folder and docs — commit `4739071`. Phase 1 code not yet committed. |
 
 ### Firmware File Structure
+
+> **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). `net.cpp`
+> (Wi-Fi, HTTPS to the Worker), the Worker URL in `config.h`, the setup
+> hotspot password in `secrets.h` and NTP in `rtc_clock` belong to the old
+> link. Kept for the record.
 
 ```
 firmware/healthsync_box/

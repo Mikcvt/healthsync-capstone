@@ -143,6 +143,12 @@ sequenceDiagram
     WK-->>CG: FCM push Missed dose
 ```
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision** (the `BX-->>FS: polls
+> led_active` step above). See [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).
+> The box does not poll Firestore; it syncs with the patient's phone over
+> BLE, connect-on-demand, and its dose events reach Firestore through the
+> phone.
+
 ### Step by step
 
 | # | What happens | Written by | Documents touched |
@@ -448,7 +454,7 @@ patient from phone-only to box mode — there is no separate setting.
 | `serial_number` | string | Uppercase letters, digits and dashes, at least 6 characters |
 | `patient_ref` | string | Rules authorise on it |
 | `status` | string | `"online"` · `"offline"` |
-| `last_sync` | timestamp | Updated by the box heartbeat |
+| `last_sync` | timestamp | Updated by the box heartbeat. **SUPERSEDED by the Oct 22, 2026 BLE decision:** the box has no link to the cloud; when this is written is part of the sync design ([BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md)) |
 | `columns_active` | int | |
 | `firmware_version` | string | Default `"v1.0.0"` |
 | `created_at` | timestamp | |
@@ -493,6 +499,11 @@ only needed if you want a searchable drug list in step 1.
 | `notifications` | read own; mark read | write own `low_stock`; read own; mark read | write caregiver alerts | — |
 | `devices` | pair for own patient; read | pair; read | — | heartbeat (Phase 7) |
 | `medications` | read | read | (could seed) | — |
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision** (the ESP32 column above).
+> See [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The ESP32 writes
+> nothing to Firestore. The patient's phone reads the box's dose events over
+> BLE and writes them; how is open question M3 (Miko).
 
 ### Sync rules that keep everything consistent
 
@@ -579,7 +590,7 @@ are covered by 18 emulator checks.
 | `patient_medications` fields | Also has `medication_name`, `dosage_form`, `purpose`, `color_label`, `archived_reason`, `archived_at` | Code |
 | `dose_logs` fields | Also has `dose_count`. (`snoozed_until`, `timing`, `logged_at`, `late_notified`, `cancelled_reason` and `excluded_from_adherence` are now in CLAUDE.md) | Code |
 | `confirmed_via` is `"app"` or `"button"` | `"app"`, or `""` on a fresh pending log. `"button"` is not written yet | Code |
-| Worker has `GET /device/{serial}/schedule` and `POST /device/{serial}/dose` | Neither endpoint exists yet | Code (Phase 7 work) |
+| Worker has `GET /device/{serial}/schedule` and `POST /device/{serial}/dose` | Neither endpoint exists yet | Code (Phase 7 work). **SUPERSEDED by the Oct 22, 2026 BLE decision:** not planned ([BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md)) |
 
 ---
 
@@ -599,12 +610,16 @@ in front of a panel or a real patient.
    `patient_medications`, decrement there by `quantity_per_dose`, and allow
    the patient to update just that field in the rules.
 
-3. **Nothing turns an LED on.** The ESP32 is meant to poll `led_active`, but no
+3. *(SUPERSEDED by the Oct 22, 2026 BLE decision: the box does not poll
+   `led_active`. See [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).)*
+   **Nothing turns an LED on.** The ESP32 is meant to poll `led_active`, but no
    code in the app or the Worker ever sets it to `true`. Box mode needs the
    materialiser (or the app at dose time) to set `led_active: true` on
    schedules with a compartment, and only when the patient has a box.
 
-4. **The ESP32 endpoints do not exist.** `GET /device/{serial}/schedule` and
+4. *(SUPERSEDED by the Oct 22, 2026 BLE decision: the Worker device endpoints
+   are not planned. See [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).)*
+   **The ESP32 endpoints do not exist.** `GET /device/{serial}/schedule` and
    `POST /device/{serial}/dose` are listed in CLAUDE.md but not implemented.
    They should skip any schedule whose `mat_box_column` is null.
 

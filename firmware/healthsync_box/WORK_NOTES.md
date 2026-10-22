@@ -6,9 +6,24 @@
 > (`FIRMWARE_ARCHITECTURE.md`, `HARDWARE_ASSESSMENT.md`, root
 > `HARDWARE_ARCHITECTURE.md`) hold the design; this file holds where we are.
 
+> **Oct 22, 2026: the transport changed.** The box now talks to the patient's
+> phone over **BLE, connect-on-demand**: no Wi-Fi, no hotspot, no direct
+> box-to-cloud link, no device secret. Read
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md) first. The
+> design details there are pending confirmation by Miko and Christian.
+> Sections 0, 2, 4, 6, 7, 8, 9, 10 and 11 below describe the Wi-Fi/Worker
+> link and are marked **SUPERSEDED**; they are kept for the record. The
+> decision is logged in §5.
+
 ---
 
 ## 0. Start here — status at the end of October 20, 2026
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The Wi-Fi,
+> Worker (`/state`), Firebase-key and setup-hotspot items and the "next
+> steps" in this section belong to the old link. The bench results for the
+> LEDs, buzzer, SD card and DS3231 still stand. Kept for the record.
 
 | Item | Status |
 |---|---|
@@ -55,6 +70,13 @@ the stuck-button safeguard). Re-upload it before testing.
 ---
 
 ## 2. How the system works
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). "The box does
+> not connect to the phone" and "the box needs its own Wi-Fi" no longer hold:
+> the box now syncs with the patient's phone over BLE, on demand. The line
+> below, "Bluetooth setup from the app was rejected: it needs app changes",
+> is reversed by the Oct 22 decision. Kept for the record.
 
 - The **care partner** sets each medicine, its dose times and its
   compartment in the app. The app already does reminders, notifications and
@@ -113,6 +135,11 @@ Box ──own Wi-Fi──► Cloudflare Worker ──► Firestore ◄── App
 
 ## 4. Phases
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). These phases
+> assume Wi-Fi polling of the Worker, a Wi-Fi setup hotspot and a device key.
+> The new firmware tasks are in ACTION_PLAN.md Step 7. Kept for the record.
+
 | Phase | Goal | Status |
 |---|---|---|
 | **1** | LED + buzzer sync with the Worker and Firestore. Button silences the box only (temporary) | 🔧 Approved and written Oct 19; firmware compiles (ESP32 core 3.3.12, 78% flash). **Testing on the bench (7.4)** |
@@ -136,10 +163,21 @@ Box ──own Wi-Fi──► Cloudflare Worker ──► Firestore ◄── App
 | 7 | Editing outside `firmware/` | Only if needed, never anything that affects the app |
 | 8 | Test Wi-Fi password in `config.example.h` and the two Wi-Fi test sketches | ✅ Solved Oct 20: `config.example.h` has placeholders only; `wifi_connect_test/` and `wifi_scan_test/` deleted (Christian's OK). The password was never committed |
 | 9 | LED source | `lit` worked out from `dose_logs` by the Worker (nothing in the app sets `led_active` to true, so it cannot be used) |
+| #__ *(number to be assigned)* | **BLE connect-on-demand replaces the Wi-Fi/Worker device link** (Oct 22, 2026) | The medbox talks to the patient's phone over BLE, connect-on-demand: the app connects, syncs and disconnects. No Wi-Fi, no hotspot, no direct box-to-cloud link, no device secret. The box stays optional (DEC-8); the app works fully with no box. Design details pending confirmation by Miko and Christian: [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md) |
+
+Decisions 5 (Wi-Fi setup hotspot) and 9 (LED source from the Worker) are
+**SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+[BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md).
 
 ---
 
 ## 6. Worker URL
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box no
+> longer calls the Worker, so it needs no Worker URL. The warning about
+> deploying the shared Worker still applies to anyone deploying it. Kept for
+> the record.
 
 | What | URL |
 |---|---|
@@ -154,6 +192,11 @@ before any `wrangler deploy`.**
 ---
 
 ## 7. Phase 1 plan (approved Oct 19, code written)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Phase 1 polls
+> `GET /device/{serial}/state` over Wi-Fi; the box no longer talks to the
+> Worker. Kept for the record.
 
 ### 7.1 What Phase 1 does
 
@@ -278,6 +321,12 @@ G. Run the pass check (7.5). Set test doses **10–15 min ahead** so the
 
 ## 8. Open items
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The items about
+> the Worker, the Firebase key, Wi-Fi passwords and the production deploy
+> belong to the old link. The open questions for the BLE design are in
+> BLE_CONNECT_ON_DEMAND.md §4. Kept for the record.
+
 1. ~~Phase 1 approval~~ — approved Oct 19. Now: **bench test (7.4, 7.5)**.
 2. **Before the first commit of Phase 1:** `config.example.h` holds a real
    Wi-Fi password and is tracked by git; `wifi_connect_test/` and
@@ -341,6 +390,13 @@ G. Run the pass check (7.5). Set test doses **10–15 min ahead** so the
 ---
 
 ## 9. For the Firebase teammate: putting the key in
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The key in
+> `.dev.vars` was needed so a local Worker could answer the box's `/state`
+> polls. The box no longer calls the Worker. The rule that the key never goes
+> in the repo, a commit, a screenshot or the group chat still applies. Kept
+> for the record.
 
 **Why:** the box asks the Worker which LEDs to light, and the Worker reads
 Firestore with the **Firebase service account key**. For testing we run the
@@ -422,6 +478,10 @@ sketch) and runs the Phase 1 pass check in 7.5.
 
 ## 10. Wi-Fi discussion (Phase 3 design, built Oct 20)
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). No Wi-Fi and no
+> hotspot. Kept for the record.
+
 ### 10.1 What we agreed already
 
 - The box has its **own** Wi-Fi connection. It does not use the phone's
@@ -485,6 +545,12 @@ in `config.h` or one small change).
 ---
 
 ## 11. Phase 3: Wi-Fi setup hotspot (approved and written Oct 20, bench test pending)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). No hotspot. The
+> button rewiring notes in 11.5 still describe the bench button as it is
+> wired today; how "dose taken" is recorded is now open question C5. Kept for
+> the record.
 
 **Setup hotspot password: `medbox7349`** (for box `HS-0001`'s hotspot
 `HealthSync-0001`). It lives in `secrets.h` as `SETUP_AP_PASSWORD`; print it on
