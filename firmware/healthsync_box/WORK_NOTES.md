@@ -8,6 +8,41 @@
 
 ---
 
+## ⚠️ Oct 22: read this first
+
+The team tracker (read Oct 22) says that on **Oct 21 the box switched from
+Wi-Fi to Bluetooth (BLE)**: the box talks to the phone, and the phone relays
+to Firestore (tasks HW-08, HW-09, HW-10, DEV-27). If that is final:
+- Phase 1 as built (box asks the Worker over Wi-Fi) and Phase 3 (Wi-Fi setup
+  hotspot) are **shelved**; they stay in git history (commit 286c33b).
+- The Firebase key (section 9) is no longer needed for the box.
+- Next firmware work: a Bluetooth server per Miko's spec (DEV-27), with LEDs,
+  buzzer, button, RTC and SD carried over.
+
+The tracker also lists the button as a **6 mm NC (normally closed) panel
+button**, which explains the Oct 20 "held when untouched, up when pressed"
+symptom: the firmware may need pressed = HIGH instead of a rewire.
+
+Full task-by-task review: `TRACKER_REVIEW_2026-10-22.md`.
+
+**Confirmed by Christian, Oct 22:** Bluetooth is final, and the button on the
+board is the **6 mm NC panel button**. So: no rewire; the firmware reads
+pressed = HIGH (HW-26, **done Oct 22**: `BUTTON_PRESSED_LEVEL HIGH` in
+`config.h`, used by `button.cpp` and `hw_test`; compiles; retest pending).
+
+**Oct 22: back to Phase 1 (option A, Christian).** Bluetooth waits for Miko's
+spec, so the Wi-Fi Phase 1 is tested now as a backup demo and to prove the
+LED/buzzer logic. Christian has Firebase access and makes the key himself
+(section 9). Steps: section 7.4.
+
+**Oct 22 note:** the PC was on `192.168.43.164` (looks like a phone hotspot),
+not the home Wi-Fi the box uses, and `config.h` points to `192.168.1.11`. The PC
+and the box must be on the **same** Wi-Fi, and `config.h` must have the PC's
+current IP. The Wi-Fi work is shelved, and
+the Bluetooth firmware waits for Miko's spec (DEV-27).
+
+---
+
 ## 0. Start here — status at the end of October 20, 2026
 
 | Item | Status |
@@ -15,17 +50,17 @@
 | Phase 1 firmware (LED + buzzer sync) | ✅ Written, compiles. ⏳ Not yet tested against real Firebase data |
 | Phase 1 Worker change (`/state`) | ✅ Written, typecheck clean. Runs locally only (`wrangler dev`), **not deployed** |
 | Box Wi-Fi | ✅ Works on the bench |
-| ⚠️ **Button wiring** | Reads "held" when not touched and "up" when pressed: **rewire** (11.5, "Rewire, step by step"). Stuck-button safeguard added so this cannot keep opening setup |
+| ✅ **Button** | It is a 6 mm **NC** button, so it read inverted. Fixed in firmware Oct 22 (`BUTTON_PRESSED_LEVEL HIGH`, HW-26); **retest pending**. No rewire needed. Stuck-button safeguard added so this cannot keep opening setup |
 | SD card (swapped MOSI/MISO) | ✅ Passed on the bench Oct 20 |
 | DS3231 clock | ✅ Passed on the bench Oct 20 (found 0x68 + 0x57; kept time while unplugged) |
-| **Blocker** | 🔑 Firebase service account key missing from `healthsync-api/.dev.vars`. The Firebase teammate will put it in: **section 9** |
+| Firebase key | ✅ Oct 22: Christian generated it; put into `healthsync-api/.dev.vars` (git-ignored) and **verified**: a local Worker answered `device_not_found` for a fake serial, so it reaches Firestore. Delete the downloaded `.json` |
 | LEDs + buzzer + button check | ✅ Passed on the bench Oct 20 (`hw_test/`) |
 | Wi-Fi setup (Phase 3) | ✅ Approved and written Oct 20, compiles (87% flash). Hold-to-open works; the crash after **Save** is fixed but **not retested yet**. ⏳ Rest of the bench test: **section 11.5** |
 | Setup hotspot password | 🔑 **`medbox7349`** (in `secrets.h`; print it on the box label) |
 | Git | Work of Oct 19–20 committed and pushed to `feature/medbox-integration` (Oct 20, end of day). Not merged anywhere; `main` and `release` untouched |
 
 **Next steps, in order (from Oct 21):**
-1. Rewire the button (11.5, "Rewire, step by step") and do the 1-minute
+1. ~~Rewire the button~~ (not needed: NC button, fixed in firmware Oct 22). Do the 1-minute
    no-touch test.
 2. Upload `healthsync_box.ino` (crash fix + safeguard), then finish the Phase 3
    test: hold to open/close setup, Save a Wi-Fi (two beeps, no crash),
@@ -96,7 +131,7 @@ Box ──own Wi-Fi──► Cloudflare Worker ──► Firestore ◄── App
 |---|---|---|
 | LED compartment 1–6 | 13, 14, 25, 26, 32, 33 | 6 compartments only |
 | Buzzer | 17 | Through the NPN transistor, HIGH = sound |
-| Button | 16 | Wired to **GND**, `INPUT_PULLUP`, pressed = LOW. No 10 kΩ resistor |
+| Button | 16 | 6 mm **NC** panel button wired to **GND**, `INPUT_PULLUP`: idle LOW, **pressed HIGH** (`BUTTON_PRESSED_LEVEL HIGH`). No 10 kΩ resistor |
 | SD SCK | 18 | |
 | SD MOSI | **19** | ⚠️ **Swapped** vs. the ESP32 default (default MOSI is 23) |
 | SD MISO | **23** | ⚠️ **Swapped** vs. the ESP32 default (default MISO is 19) |
@@ -650,7 +685,12 @@ the button, or both wires in the same breadboard strip), and pressing the
 button loosens that contact for a moment. The 10 kΩ resistor was not added
 and is not the fix for this.
 
-Rewire, step by step:
+> **Superseded Oct 22:** the button is a 6 mm **normally-closed (NC)** panel
+> button, so it reads LOW idle and HIGH when pressed. That was the cause, not
+> the wiring. Fixed in firmware (`BUTTON_PRESSED_LEVEL HIGH`, HW-26). The steps
+> below are kept only for a normally-open button.
+
+Rewire, step by step (normally-open button only):
 1. Unplug the USB.
 2. Pull the button out and put it back **across the breadboard's middle
    gap**: two legs on one side of the gap, two on the other, pushed fully in.
@@ -663,7 +703,7 @@ Rewire, step by step:
    for 1 minute without touching it; a press gives `Button down`, letting go
    gives `Button up after 0.x s`.
 
-### 11.7 Button noise: fixes (Oct 20)
+### 11.7 Button noise: fixes (Oct 20; cause found Oct 22: NC button, see 11.5)
 
 Firmware part **approved and done Oct 20** (compiles, 87%). `BUTTON_DEBUG 1`
 in `config.h` turns the prints on; set it to 0 once the button is fixed.

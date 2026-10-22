@@ -12,7 +12,11 @@
 
 const int LED_PINS[6] = {13, 14, 25, 26, 32, 33};   // compartments 1–6
 const int BUZZER_PIN  = 17;                          // HIGH = sound
-const int BUTTON_PIN  = 16;                          // to GND, pressed = LOW
+const int BUTTON_PIN  = 16;                          // to GND, internal pull-up
+// Same as BUTTON_PRESSED_LEVEL in config.h: the box's 6 mm button is normally
+// closed (NC), so it reads HIGH while pressed. LOW for a normally-open button.
+const int BUTTON_PRESSED  = HIGH;
+const int BUTTON_RELEASED = (BUTTON_PRESSED == HIGH) ? LOW : HIGH;
 
 static void allOff() {
     for (int pin : LED_PINS) digitalWrite(pin, LOW);
@@ -58,16 +62,16 @@ void setup() {
 
     // ── Part 3: button ───────────────────────────────────────────────────────
     Serial.println("\nPart 3: button");
-    if (digitalRead(BUTTON_PIN) == LOW) {
+    if (digitalRead(BUTTON_PIN) == BUTTON_PRESSED) {
         Serial.println("  WARNING: the button reads PRESSED while nobody presses it.");
-        Serial.println("  Check that it goes from GPIO 16 to GND, not to 3.3 V,");
-        Serial.println("  and that the two legs used are not always connected.");
+        Serial.println("  Check that it goes from GPIO 16 to GND, not to 3.3 V, that no wire");
+        Serial.println("  is loose, and that BUTTON_PRESSED matches the button type (NC = HIGH).");
     }
     Serial.println("  Press the button: each press lights the next compartment and chirps.");
 }
 
 void loop() {
-    static int lastRaw = HIGH, stable = HIGH;
+    static int lastRaw = BUTTON_RELEASED, stable = BUTTON_RELEASED;
     static uint32_t lastChange = 0;
     static int presses = 0, compartment = 0;
 
@@ -78,7 +82,7 @@ void loop() {
     }
     if (raw != stable && millis() - lastChange >= 50) {   // 50 ms debounce
         stable = raw;
-        if (stable == LOW) {
+        if (stable == BUTTON_PRESSED) {
             presses++;
             compartment = compartment % 6 + 1;
             allOff();

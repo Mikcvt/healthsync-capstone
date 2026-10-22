@@ -35,11 +35,11 @@
 
 ---
 
-### 1.4 Tactile Push Button (12mm)
+### 1.4 Push Button (6 mm normally-closed panel button)
 <!-- Paste your photo here -->
 ![Push Button](photos/button.jpg)
 
-> The physical button mounted on the medicine box. 12mm size chosen for ease of use by elderly patients. Wired from **GPIO 16 to GND**; the ESP32's internal pull-up keeps the pin HIGH until it is pressed (pressed = LOW).
+> The physical button mounted on the front of the medicine box: a 6 mm **normally-closed (NC)** panel button in a 7.2 mm hole. Normally closed means it connects while idle and opens when pressed, so the pin reads LOW idle and HIGH pressed (`BUTTON_PRESSED_LEVEL HIGH` in `config.h`). Wired from **GPIO 16 to GND**; the ESP32's internal pull-up keeps the pin HIGH until it is pressed (pressed = LOW).
 >
 > **The button's job grows by phase:**
 > - **Phase 1 (now, temporary):** turns off the lit LED(s) and the buzzer on the box only. The dose must still be confirmed in the app.
@@ -148,7 +148,7 @@
 | LED — Compartment 4 | 26 | Output | — |
 | LED — Compartment 5 | 32 | Output | — |
 | LED — Compartment 6 | 33 | Output | — |
-| Push Button | 16 | Input | Wired to GND. Internal pull-up (`INPUT_PULLUP`), pressed = LOW. ⚠️ WROOM only (PSRAM pin on WROVER). |
+| Push Button | 16 | Input | Wired to GND. Internal pull-up (`INPUT_PULLUP`). NC button: idle LOW, pressed HIGH. ⚠️ WROOM only (PSRAM pin on WROVER). |
 | Active Buzzer (via NPN) | 17 | Output | HIGH = sound. ⚠️ WROOM only (PSRAM pin on WROVER). |
 | MicroSD SCK | 18 | SPI | — |
 | MicroSD MOSI | 19 | SPI | Swapped vs. the ESP32 default (see 1.10). |

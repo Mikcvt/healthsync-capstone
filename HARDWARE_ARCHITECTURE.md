@@ -47,7 +47,7 @@ panelist will ask.
 | 1 | ESP32 dev board (ESP32-WROOM-32, 30 or 38 pin DevKit V1) | 1 | Wi-Fi + enough GPIO for 6 LEDs, I2C and SPI. **Must be WROOM: GPIO 16/17 are PSRAM on a WROVER (Step 3).** |
 | 2 | 5 mm LEDs | 6 | Red, yellow, or green. Avoid blue/white: they need ~3.0 V and will be dim on a 3.3 V pin. |
 | 3 | 220 Ω resistors | 6 | One per LED, current limit (~5–6 mA each). |
-| 4 | Tactile push button (12 mm recommended, easy to press for elderly users) | 1 | Silences the box (Phase 1), confirms the dose (Phase 2). |
+| 4 | Push button: **6 mm normally-closed (NC) panel button**, 7.2 mm hole, front of the box | 1 | Silences the box (Phase 1), confirms the dose (Phase 2). |
 | 5 | ~~10 kΩ resistor~~ | 0 | Not needed: the button goes to GND and uses the ESP32's internal pull-up. |
 | 6 | Active buzzer (5 V or 3.3 V type) | 1 | *Active* = beeps on DC, no PWM tone needed. |
 | 7 | NPN transistor (2N2222, S8050, or BC547) + 1 kΩ resistor | 1 + 1 | Drives the buzzer. Most buzzers draw 25–30 mA, more than an ESP32 pin should supply. |
@@ -112,7 +112,7 @@ The box **never talks to Firestore directly.** It only talks to the Worker
 | LED compartment 4 | 26 | Output | — |
 | LED compartment 5 | 32 | Output | — |
 | LED compartment 6 | 33 | Output | — |
-| Push button | 16 | Input | Wired GPIO 16 → button → GND. `INPUT_PULLUP`, pressed = LOW. **On a WROVER board GPIO 16/17 belong to PSRAM — do not use.** On WROOM it is fine. |
+| Push button | 16 | Input | Wired GPIO 16 → button → GND. `INPUT_PULLUP`. **NC button: idle = LOW, pressed = HIGH** (`BUTTON_PRESSED_LEVEL HIGH`). **On a WROVER board GPIO 16/17 belong to PSRAM — do not use.** On WROOM it is fine. |
 | Active buzzer (via NPN) | 17 | Output | HIGH = sound. Same WROVER caution as GPIO 16. |
 | DS3231 SDA | 21 | I2C | Default I2C pins. |
 | DS3231 SCL | 22 | I2C | Default I2C pins. |
@@ -168,7 +168,8 @@ GPIO ──[220 Ω]──►|── GND
 GPIO 16 ──[button]── GND        (internal pull-up enabled in firmware)
 ```
 
-- Not pressed = HIGH, pressed = LOW (active-low). `pinMode(16, INPUT_PULLUP)`.
+- The button is **normally closed (NC)**: idle it connects the pin to GND (LOW); pressing opens it and the pull-up makes it HIGH. `pinMode(16, INPUT_PULLUP)`, `BUTTON_PRESSED_LEVEL HIGH` in `config.h` (LOW for a normally-open button).
+- A broken wire reads as "held forever"; the firmware ignores a button held over 30 s.
 - No external resistor needed. Never connect the button to 5 V.
 - Debounce in firmware (50 ms). From Phase 2, require a **press of ≥ 300 ms**
   so a bump of the box does not confirm a dose.

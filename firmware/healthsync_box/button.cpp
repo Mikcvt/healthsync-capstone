@@ -1,12 +1,16 @@
-// button.cpp — GPIO 16 → button → GND, internal pull-up, so pressed = LOW.
+// button.cpp — GPIO 16 → button → GND, internal pull-up.
+// BUTTON_PRESSED_LEVEL (config.h) says which level means "pressed": HIGH for
+// the box's normally-closed (NC) panel button, LOW for a normally-open one.
 #include "button.h"
 #include "config.h"
 #include <Arduino.h>
 
-static int      _lastRaw    = HIGH;   // last reading, may still be bouncing
-static int      _stable     = HIGH;   // debounced state
+static const int RELEASED_LEVEL = (BUTTON_PRESSED_LEVEL == HIGH) ? LOW : HIGH;
+
+static int      _lastRaw    = RELEASED_LEVEL;   // last reading, may still be bouncing
+static int      _stable     = RELEASED_LEVEL;   // debounced state
 static uint32_t _lastChange = 0;
-static uint32_t _downSince  = 0;      // when the debounced state went down
+static uint32_t _downSince  = 0;                // when the debounced state went down
 
 void button_init() {
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -23,7 +27,7 @@ bool button_pressed() {
 
     if (raw != _stable && (now - _lastChange) >= BUTTON_DEBOUNCE_MS) {
         _stable = raw;
-        if (_stable == LOW) {
+        if (_stable == BUTTON_PRESSED_LEVEL) {
             _downSince = now;
             return true;         // report the press, not the release
         }
@@ -32,5 +36,5 @@ bool button_pressed() {
 }
 
 uint32_t button_down_ms() {
-    return _stable == LOW ? millis() - _downSince : 0;
+    return _stable == BUTTON_PRESSED_LEVEL ? millis() - _downSince : 0;
 }

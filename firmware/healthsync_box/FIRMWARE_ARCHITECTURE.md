@@ -65,7 +65,7 @@ and a microSD module. Nothing else.
 | LED compartment 5 | 32 | |
 | LED compartment 6 | 33 | |
 | Active buzzer | 17 | HIGH = sound |
-| Push button | 16 | Wired GPIO 16 → button → GND. `INPUT_PULLUP`, pressed = LOW |
+| Push button | 16 | 6 mm **NC** panel button, GPIO 16 → button → GND, `INPUT_PULLUP`: idle LOW, **pressed HIGH** (`BUTTON_PRESSED_LEVEL`) |
 | microSD SCK | 18 | |
 | microSD MOSI | 19 | See SPI note |
 | microSD MISO | 23 | See SPI note |

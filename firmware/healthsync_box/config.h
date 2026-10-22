@@ -42,8 +42,13 @@
 #define BEEP_OFF_MS      150
 #define BEEP_REPEAT_MS   60000UL  // one burst every minute while a dose is due
 
-// ── Push button (GPIO 16 → button → GND, internal pull-up, pressed = LOW) ────
+// ── Push button (GPIO 16 → button → GND, internal pull-up) ────────────────────
+// The box uses a 6 mm NORMALLY CLOSED (NC) panel button: closed while idle, so
+// the pin reads LOW; pressing opens it and the pull-up makes it HIGH.
+// For a normal (normally open) button, set BUTTON_PRESSED_LEVEL to LOW.
+// A broken wire reads as "held forever": the stuck-button safeguard covers it.
 #define BUTTON_PIN 16
+#define BUTTON_PRESSED_LEVEL HIGH
 #define BUTTON_DEBOUNCE_MS 80   // was 50; raised Oct 20 because the bench button picks up noise
 #define BUTTON_DEBUG 1          // 1 = print button down/hold/up on Serial (bench testing); 0 = off
 #define BUTTON_STUCK_MS 30000UL // held longer than this = jammed or miswired: ignored until released

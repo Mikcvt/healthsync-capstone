@@ -1,4 +1,5 @@
-// button.h
+// button.h — "pressed" follows BUTTON_PRESSED_LEVEL in config.h (the box's
+// button is normally closed, so pressed = HIGH).
 #pragma once
 #include <stdint.h>
 
