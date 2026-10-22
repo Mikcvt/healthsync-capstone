@@ -13,6 +13,15 @@
 > **Phase 2** button confirms the dose, then Wi-Fi setup, offline and device
 > key. `firmware/healthsync_box/FIRMWARE_ARCHITECTURE.md` has the detail.
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box now talks to
+> the patient's phone over BLE, connect-on-demand: no Wi-Fi, no hotspot, no
+> direct box-to-cloud link, no device secret. Every part of this file that
+> describes the Wi-Fi/HTTPS link to the Worker (Steps 0, 2, 6, 7, 8, 9, 10
+> and 12) is kept for the record and marked below. The wiring steps are not
+> superseded by this decision, but see the hardware conflicts listed in
+> BLE_CONNECT_ON_DEMAND.md §9.
+
 ---
 
 ## Step 0 — What the box is (and is not)
@@ -30,6 +39,11 @@ The box is a **display and a button**. It is not where dose logic lives.
 Hardware in this build, and nothing else: **ESP32, 6 LEDs (6 compartments), 1 push
 button, 1 active buzzer, DS3231 RTC, microSD module.** (See "No phantom features"
 in `CLAUDE.md`.)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box now syncs
+> with the patient's phone over BLE and has no Wi-Fi. The paragraph below is
+> kept for the record.
 
 The box does **not** connect to the phone and does not use the phone's
 internet. The box and the app each talk to the cloud on their own, so the box
@@ -99,6 +113,11 @@ panelist will ask.
 
 The box **never talks to Firestore directly.** It only talks to the Worker
 (Step 7 explains why).
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The Wi-Fi → HTTPS →
+> Worker path in the diagram above is replaced by box ◄─BLE─► patient's
+> phone → Firebase/Worker. The box still never talks to Firestore directly.
 
 ---
 
@@ -249,6 +268,11 @@ nothing until power returns (the DS3231 keeps the time meanwhile).
 
 ## Step 6 — Timekeeping
 
+> **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). There is no Wi-Fi, so
+> no NTP: the proposed design has the phone set the DS3231 time on each BLE
+> connect. Items 1 and 4 below are kept for the record.
+
 The box must know the time to light LEDs when Wi-Fi is down.
 
 1. **On boot / every 6 hours while online:** get the time by NTP
@@ -267,6 +291,13 @@ desolder/cut that resistor and keep the CR2032.
 ---
 
 ## Step 7 — How the box talks to the cloud
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box no longer
+> talks to the cloud. The device key (7.2), the `/device/{serial}/…`
+> endpoints (7.3) and the polling cost (7.4) are not planned any more. All of
+> Step 7 is kept for the record. The point in 7.1 still holds: the box must
+> never hold the Firebase service account key.
 
 ### 7.1 Through the Worker, not Firestore
 
@@ -419,6 +450,13 @@ has to change before Phase 1 can pass.
 
 ## Step 8 — Firmware structure
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The phases, file list,
+> main loop, states and libraries below assume Wi-Fi, HTTPS polling,
+> WiFiManager and a device key. The proposed firmware is a BLE GATT service,
+> schedule and event storage, and an RTC set from the phone, with no Wi-Fi
+> code. Kept for the record.
+
 ### 8.0 Build phases (in order of importance)
 
 | Phase | Goal | Button does |
@@ -516,6 +554,12 @@ defense).
 
 ## Step 9 — Offline behaviour
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). With BLE
+> connect-on-demand the box always runs from its stored schedule and the
+> DS3231, and the phone pulls its logged dose events on the next connect.
+> The Wi-Fi/Worker replay below is kept for the record.
+
 When Wi-Fi or the Worker is unreachable:
 
 1. **LEDs:** the box lights a compartment from `schedule.json` + the DS3231,
@@ -543,6 +587,11 @@ while the box is offline relight on the box until it reconnects.
 ---
 
 ## Step 10 — Setup and pairing (first use)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). There is no Wi-Fi
+> setup hotspot and no device key. Pairing becomes a BLE pairing flow in the
+> app (proposed; owner Miko). Kept for the record.
 
 1. **Flash** the firmware with that box's `serial` and `device_key`.
    Register the key hash in `device_registry` (Step 7.2).
@@ -605,6 +654,12 @@ small throwaway sketch except 11.8.
 ---
 
 ## Step 12 — Work this creates outside the box
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The Worker device
+> endpoints, `device_registry` and key script below are not planned. The
+> work outside the box is now in the app (Bluetooth permissions, pairing,
+> sync service, box events to Firebase). Kept for the record.
 
 | Where | Work |
 |---|---|

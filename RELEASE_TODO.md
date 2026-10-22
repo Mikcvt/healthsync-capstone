@@ -348,6 +348,49 @@ All of these must be complete before any release can be reviewed.
 
 ---
 
+## 10. Open items from the Oct 22, 2026 BLE decision
+
+The medbox now talks to the patient's phone over **BLE, connect-on-demand**
+(no Wi-Fi, no direct box-to-cloud link). Design details are pending
+confirmation by Miko and Christian: see
+[BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). None of these is
+decided or done.
+
+- [ ] **Bluetooth permission.** The manifest has no Bluetooth permission
+      today. BLE needs one; ask for it only when the user chooses to pair a
+      box. Android 12+ and older devices use different permission flows
+      (open question M5, owner **Miko**). Status: Not started / pending
+      confirmation.
+- [ ] **Data safety form and privacy policy check.** Before the production
+      application (about Oct 29), check whether the Bluetooth permission and
+      the box's dose events reaching Firestore through the phone change the
+      Play listing, the Data safety answers or the privacy policy (M5, owner
+      **Miko**). Status: Not started / pending confirmation.
+- [ ] **Feature-freeze exception.** A BLE update shipped after the Oct 30
+      freeze needs a team decision on a freeze exception (T-a, owner
+      **Project Lead**). Status: Not started / pending confirmation.
+- [ ] **Closed-test clock.** It is unconfirmed whether a new build resets
+      the 12-tester, 14-day closed-test clock (T-b). Status: Not started /
+      pending confirmation.
+- [ ] **Fallback if BLE is not stable by about Oct 27:** ship the app
+      without BLE and add it as a production update before Nov 10, if the
+      freeze exception is allowed (T-c). Status: Not started / pending
+      confirmation.
+- [ ] **Fallback deployment evidence:** a hosted APK (T-d). Status: Not
+      started / pending confirmation.
+- [ ] **App access note for reviewers.** Play reviewers and closed testers
+      cannot test the box, so the Play build is judged as app-only. The
+      reviewer instructions in section 5 should not depend on a box. Status:
+      Not started / pending confirmation.
+
+> **Date conflict, not resolved here.** This file targets Nov 1 with
+> "Oct 27: 14 days complete → apply for production access" (section 0). The
+> Oct 22 plan has closed-test Day 14 about Oct 28, the production
+> application about Oct 29 and READY BY Nov 10 at the latest. CLAUDE.md says
+> Nov 30. See BLE_CONNECT_ON_DEMAND.md §9 (X8).
+
+---
+
 ## Already done (Oct 9)
 
 - [x] "Could not record this dose": dose-log read rule fixed and deployed

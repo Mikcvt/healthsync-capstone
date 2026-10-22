@@ -7,6 +7,15 @@
 > Author: Christian
 > Last updated: October 19, 2026
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box now
+> talks to the patient's phone over BLE, connect-on-demand: no Wi-Fi, no
+> hotspot, no direct box-to-cloud link, no device secret. This file describes
+> the earlier Wi-Fi/Worker design (Worker polling, Phases 1–5 as written,
+> WiFiManager setup, device key). It is kept for the record; the sections
+> that depend on that link are marked below. The pin map and the hardware
+> list are not changed by this decision.
+
 ---
 
 ## Overview
@@ -25,6 +34,11 @@ Box ──Wi-Fi──► Cloudflare Worker ──► Firestore ◄── App (ph
 ```
 
 So the box needs its own Wi-Fi connection. It does not use the phone's.
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Proposed path
+> now: care partner edits schedule → Firebase/Worker → patient's phone → BLE
+> → box. The box has no Wi-Fi.
 
 ---
 
@@ -116,6 +130,11 @@ firmware ignores 7 and 8. Tell care partners to use 1–6.
 ---
 
 ## Phase 1 — LED + buzzer sync (MVP)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Polling
+> `GET /device/{serial}/state` over Wi-Fi is replaced by alarms from the
+> stored schedule and the DS3231 (proposed). Kept for the record.
 
 ### What it does
 
@@ -222,6 +241,12 @@ loop() — non-blocking, no delay():
 
 ### Worker endpoint: `POST /device/{serial}/dose`
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box no
+> longer posts to the Worker. A press becomes a timestamped dose event on the
+> microSD that the phone pulls on the next connect (proposed). How "dose
+> taken" is recorded is an open question (Christian, C5). Kept for the record.
+
 Request body:
 ```json
 {
@@ -254,6 +279,11 @@ the dose was already taken in the app or nothing was due.
 
 ## Phase 3 — Wi-Fi setup hotspot (written Oct 20, 2026)
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). No Wi-Fi and no
+> hotspot. The code for this phase is still in `net.cpp` on this branch; this
+> doc update does not change code. Kept for the record.
+
 | When | What the box does |
 |---|---|
 | No Wi-Fi saved | Opens its hotspot `HealthSync-0001` at once and keeps it open |
@@ -280,6 +310,12 @@ Tools → Partition Scheme → **Huge APP (3MB No OTA/1MB SPIFFS)**.
 
 ## Phase 4 — Offline (later)
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Proposed: the
+> phone sets the DS3231 time and pushes the schedule over BLE; the box logs
+> dose events on the microSD and the phone pulls them on the next connect.
+> No NTP, no `GET /schedule`, no replay to the Worker. Kept for the record.
+
 1. **Time:** NTP on boot and every 6 h, written to the DS3231 (stored as UTC,
    compared in Manila time, UTC+8)
 2. **Schedule:** `GET /device/{serial}/schedule` on boot and when it changes,
@@ -293,6 +329,12 @@ Tools → Partition Scheme → **Huge APP (3MB No OTA/1MB SPIFFS)**.
 ---
 
 ## Phase 5 — Device key (later)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The device-key
+> endpoints are not planned. How the box refuses writes from other phones
+> (bonding with a passkey, or an app-level secret) is undecided (Christian,
+> C3). Kept for the record.
 
 - Each box gets a `DEVICE_KEY` (32 random characters) in `secrets.h`
 - Every request sends `X-Device-Key`; the Worker compares its hash with a
@@ -358,6 +400,11 @@ one is saved: asked earlier, the ESP32 can wrongly answer "no" (bench, Oct 20).
 ---
 
 ## Work needed outside the box (Worker side)
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). No Worker
+> device endpoints are planned. The work outside the box moves to the app
+> (owner Miko). Kept for the record.
 
 | Phase | File | Work |
 |---|---|---|

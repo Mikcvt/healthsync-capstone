@@ -20,6 +20,7 @@
 HealthSync helps patients take their medications on time using two components:
 
 1. **Smart medicine box (hardware)** — ESP32 microcontroller with 8 LED indicators. Each LED corresponds to one medicine compartment (column 1–8). At the scheduled dose time, the correct LED lights up to guide the patient. A push button on the box lets the patient confirm intake. DS3231 RTC handles offline scheduling. MicroSD card logs doses locally when offline and syncs to Firebase on reconnect.
+   **Box ↔ app link (Oct 22, 2026):** BLE between the box and the patient's phone, connect-on-demand. No Wi-Fi, no hotspot, no direct box-to-cloud link; box logs reach Firebase through the phone. Design pending confirmation by Miko and Christian: [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).
 
 2. **Flutter mobile app (software)** — Android app for patients and caregivers. Handles medication scheduling, dose reminders via FCM push notifications, adherence tracking, caregiver monitoring, and real-time sync with the medicine box via Firebase.
 
@@ -32,7 +33,7 @@ HealthSync helps patients take their medications on time using two components:
 | Mobile app | Flutter / Dart (Android only) |
 | Backend | Firebase **Spark (free) plan** — Firestore, Auth, FCM |
 | Server-side jobs | **Cloudflare Worker** (free plan) — OTP redemption, custom tokens, FCM fan-out, missed-dose cron. Cloud Functions are NOT used: they cannot deploy on Spark. |
-| Hardware | ESP32 microcontroller via HTTP REST API |
+| Hardware | ESP32 microcontroller via HTTP REST API. **SUPERSEDED by the Oct 22, 2026 BLE decision:** BLE to the patient's phone, connect-on-demand ([BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md)) |
 | State management | Provider |
 | Font | Plus Jakarta Sans — **bundled** in `fonts/`, declared in `pubspec.yaml` (not `google_fonts`) |
 | Design source | Figma |
@@ -288,6 +289,9 @@ start_date      date
 end_date        date
 is_active       bool
 led_active      bool   (ESP32 polls this to activate/deactivate LED)
+                SUPERSEDED by the Oct 22, 2026 BLE decision: the box does not
+                poll Firestore; it syncs with the phone over BLE
+                (BLE_CONNECT_ON_DEMAND.md)
 paused_for_deletion bool  (switched off by an account deletion; a restore
                            switches back on exactly these)
 created_at      timestamp
@@ -424,6 +428,11 @@ Dose time reached
   Earlier drafts of this file said both "ESP32 sets led_active" and "ESP32
   polls led_active" — it is the second. The ESP32 never decides a dose is due.
 
+  SUPERSEDED by the Oct 22, 2026 BLE decision (BLE_CONNECT_ON_DEMAND.md):
+  the ESP32 no longer polls led_active. Proposed (pending confirmation by
+  Miko and Christian): the box alarms from a schedule the phone pushed over
+  BLE and its DS3231 clock, so it does decide locally when a dose is due.
+
 Dose timeline (DOSE_LOGIC_PROPOSAL.md; one implementation in
 lib/utils/dose_timing.dart, unit-tested in test/dose_timing_test.dart)
 
@@ -520,6 +529,14 @@ compartments: the rules let them write only led_active and pills_remaining.
 ```
 
 ## Medicine box integration
+
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box talks to the
+> patient's phone over BLE, connect-on-demand: no Wi-Fi, no hotspot, no
+> direct box-to-cloud link, no Firestore REST calls and no key on the box.
+> The block below is kept for the record. Its pin list also differs from the
+> wired bench box (firmware/healthsync_box/WORK_NOTES.md §3); that conflict
+> is listed in BLE_CONNECT_ON_DEMAND.md §9 and is not resolved here.
 
 ```
 ESP32 ↔ Firebase communication:
@@ -758,6 +775,9 @@ Endpoints:
                               deleted before this existed
   GET  /device/{serial}/schedule   ESP32 polls this instead of Firestore
   POST /device/{serial}/dose       ESP32 button press
+                              SUPERSEDED by the Oct 22, 2026 BLE decision: the
+                              box does not call the Worker, and device-secret
+                              endpoints are not planned (BLE_CONNECT_ON_DEMAND.md)
 
 App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
           Base URL comes from --dart-define, never hardcoded.

@@ -184,6 +184,13 @@ overrun.
 
 ## Phase 7 — ESP32 integration (Nov 14–20, 1 week)
 
+> **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
+> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box talks to the
+> patient's phone over BLE, connect-on-demand: no Wi-Fi, no Worker device
+> endpoints, no device secret. The plan below (route the ESP32 through the
+> Worker, poll every 30 s, button posts to the Worker) is kept for the
+> record. Its dates also predate the Oct 30 feature freeze in the new file.
+
 Hardware comes late deliberately: it can be demoed from a working app, and it is the part most likely to eat a week.
 
 1. **Route the ESP32 through the Worker, not straight to Firestore.** `CLAUDE.md` currently says the box authenticates with a Firebase service account key. Don't — anyone who desolders the flash chip gets admin access to every patient's data, and a panelist may well ask about exactly that. Instead give each box a device secret, add `GET /device/{serial}/schedule` and `POST /device/{serial}/dose` to the Worker, and let it hold the privileged key. Firmware gets simpler too: no OAuth dance, no JWT signing on a microcontroller.
