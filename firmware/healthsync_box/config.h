@@ -1,28 +1,10 @@
-// config.h — pins, timings, Worker URL. Safe to commit (no secrets here).
-// Wi-Fi and the box serial live in secrets.h.
+// config.h — pins and timings. Safe to commit (no secrets here).
+// The box serial lives in secrets.h.
+//
+// Oct 22, 2026: the box talks to the patient's phone over Bluetooth
+// (BLE_CONNECT_ON_DEMAND.md). The Wi-Fi / Worker settings of the earlier
+// design were removed in Phase 0 (still in git history, commit 286c33b).
 #pragma once
-
-// ── Worker ────────────────────────────────────────────────────────────────────
-// Phase 1 testing: `npx wrangler dev --ip 0.0.0.0` on the PC, reached over the
-// same Wi-Fi. If the PC's IP changes (router restart), run `ipconfig` and
-// update it here, then re-upload.
-// Production: https://healthsync-api.healthsync12.workers.dev — only once the
-// lead software developer has deployed the box endpoint.
-#define WORKER_BASE_URL "http://192.168.1.11:8787"
-
-#define POLL_INTERVAL_MS        60000UL  // ask the Worker every 60 s
-#define HTTP_TIMEOUT_MS          8000    // give up on one request after 8 s
-#define WIFI_CONNECT_TIMEOUT_MS 15000UL  // connect at boot, and when trying a Wi-Fi typed in setup
-
-// ── Wi-Fi setup hotspot (Phase 3) ─────────────────────────────────────────────
-// Hotspot name: "HealthSync-" + the serial without "HS-" (HS-0001 → HealthSync-0001).
-// Its password is SETUP_AP_PASSWORD in secrets.h, printed on the box label.
-#define SETUP_HOLD_MS          5000UL    // hold the button this long, with no LED lit → setup opens;
-                                         // the same hold in setup → setup closes
-#define SETUP_HOLD_SHOW_MS      300UL    // after this much holding, LEDs start filling up 1→6
-#define SETUP_AFTER_NO_WIFI_MS 300000UL  // 5 min without Wi-Fi → setup opens by itself
-#define SETUP_WINDOW_MS        300000UL  // setup nobody uses closes after 5 min to retry the saved Wi-Fi
-#define SETUP_BLINK_MS         1000UL    // compartment LEDs 1 and 6 blink at this rate in setup
 
 // ── LEDs — one per compartment, compartments 1–6 ─────────────────────────────
 #define LED_COUNT 6
@@ -32,8 +14,6 @@
 #define LED_PIN_4 26
 #define LED_PIN_5 32
 #define LED_PIN_6 33
-
-#define STATUS_LED_PIN 2   // built-in LED: on while Wi-Fi is connected
 
 // ── Buzzer (active, through an NPN transistor; HIGH = sound) ─────────────────
 #define BUZZER_PIN 17
@@ -52,15 +32,43 @@
 #define BUTTON_DEBOUNCE_MS 80   // was 50; raised Oct 20 because the bench button picks up noise
 #define BUTTON_DEBUG 1          // 1 = print button down/hold/up on Serial (bench testing); 0 = off
 #define BUTTON_STUCK_MS 30000UL // held longer than this = jammed or miswired: ignored until released
+// A press counts only when the button is let go after being held this long:
+// a bump, or a wire losing contact for a moment, never marks a dose taken.
+#define BUTTON_CONFIRM_MS       300UL
+#define BUTTON_CONFIRM_MAX_MS 10000UL   // held longer than this: not a deliberate press, ignored
+#define BEEP_NOTHING_MS         600UL   // one long beep: nothing is due
 
-// ── microSD (Phase 4) ─────────────────────────────────────────────────────────
+// ── Schedule and dose timing (Phase 1) ────────────────────────────────────────
+// Times follow lib/utils/dose_timing.dart and DOSE_LOGIC_PROPOSAL.md.
+#define TZ_OFFSET_MIN    480   // Manila, UTC+8, no daylight saving. The DS3231 holds UTC
+#define DUE_WINDOW_MIN    60   // a dose stays lit this long after its time, then it is missed
+#define LATE_AFTER_MIN    30   // taken this long after its time or later = "late"
+#define EARLY_WINDOW_MIN  30   // a press up to this long before a dose takes it early
+#define MAX_SCHEDULES     24   // dose times the box can hold
+
+// ── microSD ───────────────────────────────────────────────────────────────────
 // MOSI and MISO are SWAPPED compared with the ESP32 default (MISO 19, MOSI 23).
-// This matches our wiring. If the card will not start, swap these two first.
+// This matches our wiring (verified with sd_test, Oct 20).
 #define SD_SCK_PIN  18
 #define SD_MISO_PIN 23
 #define SD_MOSI_PIN 19
 #define SD_CS_PIN   15
 
-// ── DS3231 RTC (Phase 4) ──────────────────────────────────────────────────────
+// ── Bluetooth (Phase 3) — the protocol is in BLE_PROTOCOL.md ─────────────────
+#define FIRMWARE_VERSION       "0.3.0"
+#define BLE_SERVICE_UUID       "908a611a-cdae-4717-843a-8929f91d551b"
+#define BLE_COMMAND_UUID       "a8672cae-3524-49a5-9a57-696fd57e7b72"   // phone → box (write)
+#define BLE_REPLY_UUID         "c7b37ff8-2e2b-4156-8130-34df10d433e5"   // box → phone (notify)
+#define BLE_MTU                247      // packet size asked for; every message fits in one
+#define BLE_COMMAND_MAX        512      // longest command accepted
+#define BLE_IDLE_DISCONNECT_MS 60000UL  // connect-on-demand: drop a phone silent for 60 s
+#define BLE_EVENTS_MAX         20       // events sent per "events" request
+#define STATUS_LED_PIN         2        // built-in LED: on while a phone is connected (bench aid)
+
+// ── Dose log (Phase 2) ────────────────────────────────────────────────────────
+#define LOG_FILE         "/doselog.jsonl"   // one JSON line per taken/missed dose
+#define LOG_FALLBACK_MAX 32                 // events kept in flash while there is no SD card
+
+// ── DS3231 RTC ────────────────────────────────────────────────────────────────
 #define RTC_SDA_PIN 21
 #define RTC_SCL_PIN 22

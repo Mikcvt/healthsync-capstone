@@ -4,11 +4,7 @@
 #pragma once
 
 // Serial number printed on the box label — must match the one paired in the app.
+// From Phase 3 it is also the box's Bluetooth name (e.g. "HealthSync-0001").
 #define DEVICE_SERIAL "HS-0000"
 
-// Password of the box's Wi-Fi setup hotspot (HealthSync-xxxx). 8+ characters,
-// printed on the box label.
-#define SETUP_AP_PASSWORD "change-me-8-chars"
-
-// The home Wi-Fi is NOT typed here: it is chosen on the box's setup page
-// (Phase 3) and saved in the ESP32's flash.
+// Phase 4 (security) will add the pairing secret or passkey here.

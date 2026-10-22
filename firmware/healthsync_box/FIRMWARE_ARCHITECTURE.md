@@ -1,4 +1,10 @@
 # HealthSync Firmware Architecture
+
+> **Oct 22, 2026, Phase 0 done:** the Wi-Fi code below (`net.cpp/h`,
+> WiFiManager, Worker polling, setup hotspot) was **removed from the firmware**
+> (kept in git history, commit 286c33b). The Worker `/state` route is switched
+> off. The current phase plan is in `WORK_NOTES.md` §12–13.
+
 # firmware/healthsync_box/
 
 > Status: Phase 1 written (Oct 19, 2026), waiting for the Firebase key to test;

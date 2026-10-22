@@ -1,4 +1,9 @@
 /**
+ * SWITCHED OFF (Oct 22, 2026): none of these handlers is routed in index.ts.
+ * The box now talks to the patient's phone over Bluetooth
+ * (BLE_CONNECT_ON_DEMAND.md: "device endpoints are not planned"). Kept for now;
+ * delete this file if the Bluetooth design never needs it.
+ *
  * Device endpoints — used only by the ESP32 Smart Medicine Box. The app never
  * calls them.
  *

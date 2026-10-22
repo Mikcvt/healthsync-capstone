@@ -47,7 +47,11 @@ void buzzer_update() {
 }
 
 void buzzer_chirp() {
+    buzzer_beep_ms(BEEP_ON_MS);
+}
+
+void buzzer_beep_ms(uint32_t ms) {
     writePin(true);
-    delay(BEEP_ON_MS);
+    delay(ms);
     writePin(false);
 }

@@ -1,5 +1,6 @@
 // buzzer.h
 #pragma once
+#include <stdint.h>
 
 void buzzer_init();
 
@@ -10,5 +11,8 @@ void buzzer_stop();      // silence at once
 bool buzzer_running();
 void buzzer_update();
 
-// One short beep, blocking. For the boot self-test only.
+// One short beep, blocking (self-test, confirmations).
 void buzzer_chirp();
+
+// One beep of `ms` milliseconds, blocking ("nothing due").
+void buzzer_beep_ms(uint32_t ms);

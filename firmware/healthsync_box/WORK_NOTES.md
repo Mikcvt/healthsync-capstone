@@ -17,7 +17,57 @@
 
 ---
 
-## ⚠️ Oct 22: read this first
+## ★ Start here — status at the end of October 24, 2026
+
+**Design:** the box talks to the patient's phone over **Bluetooth,
+connect-on-demand** (`BLE_CONNECT_ON_DEMAND.md`). The box has no Wi-Fi and
+never talks to the cloud; the phone relays to Firebase.
+
+| Phase (plan: §12) | Status |
+|---|---|
+| 0 Cleanup | ✅ Oct 22: Wi-Fi code removed from the firmware (kept in git history, commit 286c33b); Worker `/state` switched off (`index.ts` = `release`) |
+| 1 Offline alarm from a stored schedule | ✅ Passed on the bench Oct 23 (§13) |
+| 2 Dose log on the SD card | ✅ Passed Oct 24, including the no-card fallback (§14) |
+| 3 Bluetooth server | ✅ Passed Oct 24 with nRF Connect, firmware 0.3.0 (§15). One check not run: T5, re-sending the schedule while a dose is lit (§15.7) |
+| 4 Security | ⏭ Next session: plan for approval (open question C3: passkey bonding or an app secret) |
+| 5 With Miko's app + battery | Waits for Miko's app Bluetooth work (7.1.x) |
+| 6 Final box | Waits for the print (HW-19) |
+| 7 Hardware papers | Later (HW-07, HW-21, HW-12, DEF-03) |
+
+**Hardware facts (all verified on the bench):** pins in §3. The button is a
+6 mm **normally-closed** panel button: pressed = HIGH (`BUTTON_PRESSED_LEVEL`).
+SD card MOSI 19 / MISO 23 are swapped vs the ESP32 default and work. DS3231 on
+3V3 with a CR2032 (safe on 3V3). The buzzer was in backwards on Oct 22 and was
+fixed by turning it round.
+
+**For Miko:** `firmware/healthsync_box/BLE_PROTOCOL.md` is the draft protocol
+(UUIDs, messages, sync order, how a box event maps to the app's dose id),
+implemented in firmware 0.3.0. Christian tells Miko to pull this branch.
+
+**Next session, in order:**
+1. 2-minute check T5 (§15.7): send a schedule, and while its LED is lit send
+   the same three messages again; the LED must stay lit.
+2. Phase 4 (security) plan for approval.
+3. Open items: ask the print student to keep the ESP32's own USB port
+   reachable after assembly (§15.5); battery life is about 1 day without
+   power saving (Phase 5); tell Mona the two fixes for
+   `BLE_CONNECT_ON_DEMAND.md` (X6: button on GPIO 16, NC; C2: GPIO 13 is
+   LED 1, §12).
+
+**On this PC:** Arduino IDE with ESP32 core 3.3.12, NimBLE-Arduino 2.5.1,
+ArduinoJson 7.4.3, RTClib; Worker packages installed (`npm ci`). Christian's
+phone has nRF Connect. The Firebase key is in `healthsync-api/.dev.vars`
+(git-ignored); the box does not use it.
+
+**Git:** today's work is pushed to `feature/medbox-integration` (end of Oct 24).
+`main` and `release` are untouched. Before each session, check GitHub for
+teammates' pushes and show what changed before merging.
+
+The sections below are history, kept for the record.
+
+---
+
+## History: Oct 22 notes (Wi-Fi → Bluetooth switch)
 
 The team tracker (read Oct 22) says that on **Oct 21 the box switched from
 Wi-Fi to Bluetooth (BLE)**: the box talks to the phone, and the phone relays
@@ -52,7 +102,7 @@ the Bluetooth firmware waits for Miko's spec (DEV-27).
 
 ---
 
-## 0. Start here — status at the end of October 20, 2026
+## 0. History: status at the end of October 20, 2026
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
 > [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The Wi-Fi,
@@ -62,7 +112,8 @@ the Bluetooth firmware waits for Miko's spec (DEV-27).
 
 | Item | Status |
 |---|---|
-| Phase 1 firmware (LED + buzzer sync) | ✅ Written, compiles. ⏳ Not yet tested against real Firebase data |
+| **Bluetooth phases** | Phase 0 cleanup ✅ (Oct 22); **Phase 1 offline alarm ✅ passed (Oct 23)**; **Phase 2 dose log ✅ complete (Oct 24)**; **Phase 3 Bluetooth written, compiles; nRF Connect test: §15.7**; protocol for Miko: `BLE_PROTOCOL.md` |
+| Old Phase 1 firmware (LED + buzzer sync, Wi-Fi) | ✅ Written, compiles. ⏳ Not yet tested against real Firebase data |
 | Phase 1 Worker change (`/state`) | ✅ Written, typecheck clean. Runs locally only (`wrangler dev`), **not deployed** |
 | Box Wi-Fi | ✅ Works on the bench |
 | ✅ **Button** | It is a 6 mm **NC** button, so it read inverted. Fixed in firmware Oct 22 (`BUTTON_PRESSED_LEVEL HIGH`, HW-26); **retest pending**. No rewire needed. Stuck-button safeguard added so this cannot keep opening setup |
@@ -793,3 +844,566 @@ Firmware:
 The original order was Phase 2 (button confirms dose) before Phase 3. Phase 2
 needs the Firebase key; Phase 3 does not. Decided Oct 20: **Phase 3 first**
 while waiting for the key, then Phase 2.
+
+---
+
+## 12. New phase plan for Bluetooth (proposed Oct 22, waiting for approval)
+
+**Why a new plan:** the Oct 22 decision (`BLE_CONNECT_ON_DEMAND.md`) replaces
+the Wi-Fi/Worker link. The old Phases 1–5 (sections 4, 7, 11) are kept for
+the record. Mona's branch `docs/ble-connect-on-demand` was merged into ours
+locally on Oct 22 (merge `e14affb`); no other team pushes were waiting.
+
+**Key point:** the box must alarm **without the phone** (P5). So the first
+phases need neither Bluetooth nor Miko's app, and the Bluetooth phase can be
+tested with the free **nRF Connect** phone app before Miko's app exists.
+
+| Phase | Goal | Needs | Answers / tasks |
+|---|---|---|---|
+| **0. Cleanup** | Remove the Wi-Fi code from the firmware (old Phase 1 Worker polling, old Phase 3 setup hotspot; kept in git history). Switch off the Worker `/state` route (code kept for now; remove later if not needed) | Christian's OK (given Oct 22) | Decisions 3 and 4 below |
+| **1. Offline alarm from a stored schedule** | The box keeps a schedule (compartment 1–6, time, days) and, from the DS3231 clock alone, lights the LED and beeps at dose time until +60 min; the button marks the dose taken (in a −30 to +59 min window, as in DOSE_LOGIC_PROPOSAL 3.5) | Nothing new: a test schedule typed in the Serial Monitor | P5, HW-09 (core) |
+| **2. Dose log on the microSD** | Every taken/missed dose is saved on the SD card with a sequence number and the app's own dose id `{schedule_id}_{YYYY-MM-DD}_{HH:mm}`, so a repeated sync never makes a duplicate; survives power cuts | Phase 1 | C4, 7.2.2, HW-10 (part) |
+| **3. Bluetooth server (NimBLE)** | The phone can set the time, write the schedule, read the dose log and acknowledge it. Tested with nRF Connect. Remove the Wi-Fi code (frees flash) | Phase 2; a draft characteristic list agreed with Miko (DEV-27) | C1, 7.2.1, HW-08 |
+| **4. Security** | Only the paired phone can write (passkey bonding or an app secret) | Phase 3; decision with Miko | C3, 7.2.4 |
+| **5. With Miko's app + battery** | Real pairing/sync from the app; wake/low-power choice; 18650 + 134N3P wiring | Miko's app work (7.1.x); measurements | C2, C6–C8, HW-21, HW-22 |
+| **6. Final box** | Everything mounted in the printed v2.2 enclosure (6 compartments, LEDs under lids 1–6, NC button, buzzer, 18650); full hardware test with a video per function; demo kit | Printed parts (HW-19), Phases 1–5 | HW-20, HW-11, HW-22, HW-13 (Gate 4) |
+| **7. Hardware papers** | Hardware facts for Ch3; v2.2 wiring guide; test results for Ch4/Ch5; your Q&A answers (hardware, offline, security) | Phases 1–6 results | HW-07, HW-21, HW-12, DEF-03 |
+
+**Still true from before:** pins (§3), the 6 mm NC button fix, the 5-beep
+alarm, the stuck-button safeguard, the SD and DS3231 bench tests.
+
+**Corrections for `BLE_CONNECT_ON_DEMAND.md` (to tell Mona):** X6: the button
+is on **GPIO 16** (NC, firmware fixed), not GPIO 5. C2: GPIO 13 is **LED 1**,
+not spare; a wake pin must be another free pin (candidates: 4, 27, 34, 35, 36,
+39). One merged note in §11.5 still points to the button "rewiring notes";
+those are superseded by the NC finding.
+
+**Full list shown to Christian Oct 22** (phases 0, 6 and 7 added).
+
+**Answers Oct 22:** 2. do **not** push yet; push everything at the end of the
+day. 3. switch the Worker `/state` route **off** for now; remove it later if it
+is not needed. 4. remove the old Wi-Fi Phase 1 (done in Phase 0).
+
+**Decisions needed:**
+1. Approve this phase order (0–7).
+2. Push the local commits (`614ca8d` + merge `e14affb`) to `feature/medbox-integration`.
+3. The Worker `/state` code on our branch: remove it (the decision says device
+   endpoints are not planned) or keep it unrouted.
+4. The old Wi-Fi Phase 1 test: skip it (proposed) or run it once as a bench check.
+
+
+---
+
+## 13. Phase 0 done, Phase 1 plan (Oct 22)
+
+### 13.1 Phase 0 (cleanup): done Oct 22
+
+- Removed `net.cpp`/`net.h` (Wi-Fi, WiFiManager, Worker polling, setup
+  hotspot) and their settings from `config.h`; `healthsync_box.ino` now only
+  runs the self-test and reports the button (stuck-button safeguard and debug
+  prints kept). All of it stays in git history (commit 286c33b).
+- `secrets.h` keeps `DEVICE_SERIAL` (future Bluetooth name); the Wi-Fi setup
+  password was removed from it and from `config.example.h`.
+- Worker: the `/state` route is **switched off**; `healthsync-api/src/index.ts`
+  is identical to `release` again. `device.ts` stays, unrouted, marked
+  "switched off" (delete it if Bluetooth never needs it). Typecheck clean.
+- Firmware compiles: **20% flash** (was 87% with Wi-Fi), room for Bluetooth.
+- The old Wi-Fi password is still saved inside the ESP32 chip from earlier
+  uploads; nothing uses it. Harmless.
+
+### 13.2 Phase 1 plan: offline alarm from a stored schedule (waiting for approval)
+
+**What the box will do (no phone, no Bluetooth yet):**
+
+1. Keep the time on the DS3231. The clock holds **UTC**; the box adds 8 hours
+   (Manila, `TZ_OFFSET_MIN 480`) to compare with dose times, like the Worker.
+2. Keep a schedule of up to 24 dose times: compartment 1–6, time (HH:MM),
+   days (every day, or chosen weekdays). Saved in the ESP32 flash memory, so
+   it survives power cuts. (Phase 3 lets the phone write it over Bluetooth.)
+3. At a dose time: that compartment's LED on + 5 beeps every minute, until
+   the dose is taken or 60 min have passed (then **missed**, LED off). A dose
+   due at 23:30 stays lit past midnight correctly.
+4. Button while LEDs are lit: **all lit doses taken** (team proposal "confirm
+   all"), LEDs and buzzer off, two short confirm beeps. Button with nothing
+   lit: if a dose is due within the next 30 min, it is taken **early**
+   (DOSE_LOGIC_PROPOSAL 3.5); otherwise one long beep ("nothing due").
+5. Taken and missed doses are remembered in flash, so a reboot never relights
+   a dose already handled. (Phase 2 adds the full log on the SD card.)
+
+**Bench commands** (Serial Monitor, line ending "Newline"; Phase 3 replaces
+them with Bluetooth):
+
+| Command | Does |
+|---|---|
+| `time 2026-10-23 14:00` | Set the clock (the Manila time you type; stored as UTC) |
+| `add 3 14:02` | Compartment 3 at 14:02, every day |
+| `add 2 08:00 mon,wed,fri` | Only on those days |
+| `list` | Show the schedule with numbers |
+| `del 2` | Delete entry 2 |
+| `clear` | Delete the whole schedule |
+| `status` | Clock time, what is lit, what was taken or missed today |
+
+**Files:**
+
+| File | Change |
+|---|---|
+| `rtc_clock.cpp/h` | Written (was empty): start the DS3231, read/set UTC, Manila time helpers, "lost power" warning |
+| `schedule.cpp/h` | Written (was empty): the entries, saving them in flash, "what is due now", mark taken/missed, remembered across reboots |
+| `console.cpp/h` | New: the bench commands above |
+| `healthsync_box.ino` | Once a second: due compartments → LEDs + buzzer; button → taken / early / nothing due |
+| `config.h` | `TZ_OFFSET_MIN 480`, `DUE_WINDOW_MIN 60`, `EARLY_WINDOW_MIN 30`, `MAX_SCHEDULES 24`, `BEEP_NOTHING_MS` |
+| `storage.cpp/h` | Not touched (Phase 2) |
+
+Not touched: the app, the Worker, Firestore. Libraries: RTClib (installed),
+Preferences (built in).
+
+### 13.3 Phase 1 pass check (Christian, after upload)
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | `time` with the real time, then `status` | Correct Manila time; after unplugging 1 min it is still right |
+| 2 | `add 3 <now + 2 min>` | At that minute LED 3 + 5 beeps, repeating every minute |
+| 3 | Press the button | LED 3 off, buzzer off, two confirm beeps; `status` says taken |
+| 4 | Unplug, plug back in | Schedule still there (`list`); the taken dose does not relight |
+| 5 | `add 5 <now + 2 min>`, wait for it, then `time` 61 min later | LED 5 lights, then goes off as **missed** |
+| 6 | `add 1 <now + 20 min>`, press now | Taken **early**, two beeps |
+| 7 | Press with nothing due | One long beep |
+| 8 | Two compartments due at once, one press | Both taken |
+| 9 | `add 2 23:59`, set the time to 23:58, wait past midnight | Still lit after 00:00 |
+
+
+### 13.4 Bench check after Phase 0 (Oct 22): wiring fault suspected
+
+Uploaded the Phase 0 firmware. Result: **LEDs do not light** in the self-test,
+**the buzzer sounds non-stop**, and the button reads **held** although nobody
+presses it (`holding... 10 s`). The LED/buzzer code is unchanged since the
+Oct 20 `hw_test` pass, and the firmware never keeps the buzzer on, so this is
+the breadboard: most likely a loose or missing **GND** connection, or parts
+put back differently after the caliper measurement (HW-24). The button reading
+"held" with both settings (LOW on Oct 20, HIGH now) also means its circuit is
+not connected. Steps: check every GND, the buzzer transistor wiring, then
+`hw_test`. Phase 1 waits until the bench passes `hw_test` again.
+
+**Update Oct 22 (later): `hw_test` passes again.** LEDs 1→6 in order, the
+5-beep alarm, and the button gives exactly one `Press #n` + `released` per
+press with `BUTTON_PRESSED = HIGH`, which confirms the NC setting. The bench is
+good; Phase 1 can start once approved.
+
+
+### 13.5 Phase 1 written (Oct 22), bench test pending
+
+Approved Oct 22. Files: `rtc_clock.cpp/h` and `schedule.cpp/h` (were empty),
+new `console.cpp/h`, `healthsync_box.ino`, `config.h`, `buzzer.cpp/h`
+(`buzzer_beep_ms`). Compiles with no errors or warnings: **25% flash**.
+
+Changes from the 13.2 plan:
+- **Button press = press and let go**, held 0.3–10 s (`BUTTON_CONFIRM_MS`,
+  `BUTTON_CONFIRM_MAX_MS`). With the NC button a wire that loses contact reads
+  as "pressed"; counting only deliberate press-and-release stops a loose wire
+  from marking a dose taken. Shorter taps print "too short, ignored".
+- A dose time added **after** its time today starts tomorrow (like the app's
+  materializer).
+- `add` refuses until the clock is set; with the clock not set nothing alarms.
+
+Logic check on the PC (JavaScript copy of the rules, not the C++ itself;
+18/18 pass): weekday mapping, lit 14:02–15:01, missed at 15:02 once, one press
+takes two lit doses, early 20 min before but not 40, a 23:59 dose still lit at
+00:30 and missed at 00:59, a 00:10 dose taken early at 23:50, Mon/Wed/Fri
+days, added-after-its-time.
+
+**Note:** `rtc_test` left the DS3231 on Manila time, but Phase 1 reads it as
+UTC, so the first `status` shows 8 hours ahead until the time is set (step 2).
+
+### 13.6 Phase 1 bench test, step by step (Christian)
+
+Before: in the Serial Monitor set the line ending (drop-down at the bottom
+right) to **Newline** and the speed to **115200**. Replace `HH:MM` with real
+times; "now" = the PC clock.
+
+1. Open `firmware/healthsync_box/healthsync_box.ino` → **Upload** → Serial
+   Monitor → press **EN**. Expect `Phase 1: offline alarm`, LEDs 1→6, one chirp.
+2. Type `time 2026-10-23 HH:MM` (today's date, now) → `status`: the clock matches
+   the PC.
+3. `add 3 HH:MM` (now + 2 min). At that minute: **LED 3 + 5 beeps**, again every
+   minute. `status` → `DUE NOW (lit)`.
+4. Press the button about half a second and let go → `Dose TAKEN: compartment
+   3 … on time`, LED off, **two beeps**.
+5. Unplug the USB, plug back in → `status`: entry still there, `TAKEN`, LED 3
+   stays off.
+6. `add 5 HH:MM` (now + 2 min); when LED 5 lights, type `time` with the same date
+   and a time **61 minutes later** → `Dose MISSED: compartment 5`, LED off.
+   Then set the real time again with `time`.
+7. `add 1 HH:MM` (now + 20 min) and press right away → `TAKEN … early (20 min
+   before)`, two beeps.
+8. Press with nothing lit and nothing within 30 min → `Button: nothing due`,
+   **one long beep**.
+9. `add 2 HH:MM` and `add 4 HH:MM` (same time, now + 2 min) → both light; one press
+   → both `TAKEN`.
+10. Tap the button very quickly → `too short, ignored`.
+11. `add 6 23:59`, then `time <today> 23:58`, wait until 00:01 → LED 6 still lit,
+    `status` says `DUE NOW`. Set the real time again.
+12. Clean up: `clear`, then `time` with the real time.
+
+Send the Serial Monitor output and which steps passed.
+
+
+**Phase 1 bench result (Oct 23): PASSED.** Christian ran the tests and
+reported "all of them are working". Seen in the Serial Monitor screenshots:
+- `time 2026-10-23 23:55` set the clock; `status` showed it.
+- `add 3 23:55 thurs` on a Friday → `not today` (day filter; "thurs" accepted).
+- `Dose TAKEN: compartment 1, 23:55 … on time` after a 0.8 s press.
+- `Button: 163 ms is too short, ignored`.
+- `Button: nothing due` (long beep).
+- `add 1 00:11` + `add 2 00:11`, one press at 00:10 → both `TAKEN … early
+  (1 min before)`.
+- `clear` → all dose times deleted.
+- Missed (step 6), power cut (step 5) and midnight (step 11): reported working.
+
+Note: Christian edited lines 16–17 of `console.cpp` (help text only) to show
+example values instead of the `YYYY-MM-DD HH:MM` / `<1-6>` placeholders. It
+changes only what `help` prints; restore the placeholders if wanted.
+
+**Tracker effect:** HW-09 is now partly met on the box itself (a due dose lights
+its LED and beeps at the due time from the stored schedule; the button marks
+it taken). "Shows as taken in the app" needs Phase 3 (Bluetooth) and Phase 5
+(Miko's app).
+
+
+---
+
+## 14. Phase 2 plan: dose log on the microSD (Oct 23, waiting for approval)
+
+**Goal:** every taken or missed dose is written to the SD card, so when the
+phone connects (Phase 3) it can collect each one exactly once and send it to
+Firebase. Answers open question **C4** (no duplicates on repeated syncs) and
+part of task 7.2.2 / HW-10.
+
+### 14.1 What the box will do
+
+1. On every **TAKEN** or **MISSED**, append one line to `/doselog.jsonl` on the
+   SD card, then close the file at once, so a power cut loses nothing:
+   ```json
+   {"seq":7,"type":"taken","comp":3,"date":"2026-10-24","time":"00:32","at":"2026-10-23T16:33:10Z","timing":"on_time","sid":""}
+   ```
+   - `seq`: a number that only goes up (1, 2, 3 …), kept in flash so it never
+     repeats, even after a power cut. The phone uses it to know what it already
+     has.
+   - `date` + `time`: the dose's Manila date and time. With `sid` (the app's
+     schedule id, sent by the phone from Phase 3) they make the app's own dose
+     id `{sid}_{date}_{time}`, so the same dose can never be created twice in
+     Firestore.
+   - `at`: when the button was pressed (or the dose was marked missed), in UTC.
+   - `timing`: `on_time`, `late` or `early` (taken only).
+2. Keep the number of the last event the phone confirmed ("acked"). Events
+   after it are **pending**. Phase 3 lets the phone read pending events and
+   ack them; Phase 2 simulates that with a console command.
+3. **No SD card, or it fails:** the box still alarms normally, prints a
+   warning, and keeps the last 32 events in flash instead, so nothing is lost
+   until the card is back.
+4. Schedule entries get a place for the app's schedule id (`sid`), empty for
+   doses added from the console. This changes the stored format once: the
+   first boot after the upload starts with an empty schedule (re-add the test
+   doses).
+
+### 14.2 New bench commands
+
+| Command | Does |
+|---|---|
+| `log` | Show the last 10 events |
+| `pending` | How many events the phone has not collected yet |
+| `ack <seq>` | Pretend the phone collected everything up to `seq` (Phase 3 does this over Bluetooth) |
+| `sd` | SD card status: found or not, size, log file size |
+
+### 14.3 Files
+
+| File | Change |
+|---|---|
+| `storage.cpp/h` | Written (was empty): start the SD card with our pins (SCK 18, MISO 23, MOSI 19, CS 15), append an event, read the last events, count pending, flash fallback |
+| `schedule.cpp/h` | On TAKEN/MISSED, hand the event to `storage`; entries get `sid` (format version 2) |
+| `console.cpp/h` | `log`, `pending`, `ack`, `sd` |
+| `healthsync_box.ino` | Start the SD card at boot |
+| `config.h` | `LOG_FILE "/doselog.jsonl"`, `LOG_FALLBACK_MAX 32` |
+
+Not touched: the app, the Worker, Firestore. Libraries: SD and SPI (built in).
+
+### 14.4 Phase 2 pass check
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Boot with the card in | `SD card OK` and the size |
+| 2 | Take a dose, let another be missed (clock jump, as in Phase 1) | `log` shows both lines with seq 1 and 2 |
+| 3 | Unplug, plug back in, `log` | Both lines still there; the next event gets seq 3 (no repeat) |
+| 4 | `pending` → `ack 2` → `pending` | 2 pending, then 0 |
+| 5 | Card into the PC | `doselog.jsonl` opens in Notepad with the same lines |
+| 6 | Boot **without** the card, take a dose | Warning, alarm still works, event kept in flash (`log`) |
+
+
+### 14.5 Phase 2 written (Oct 23), bench test pending
+
+Approved Oct 23 (with restoring the `help` placeholders, done). Files:
+`storage.cpp/h` (was empty), `schedule.cpp/h` (`sid` field, format version 2,
+every TAKEN/MISSED goes to the log), `console.cpp/h` (`log`, `pending`, `ack`,
+`sd`; help text back to `time YYYY-MM-DD HH:MM` / `add <1-6> <HH:MM>`),
+`healthsync_box.ino` (card started before the schedule), `config.h`
+(`LOG_FILE`, `LOG_FALLBACK_MAX`). Compiles with no errors or warnings: **29%
+flash**; uses the ESP32 core's SD library.
+
+Rules in the code:
+- The `seq` is saved in flash **before** the line is written, so a number is
+  never handed out twice, even if the power fails in between.
+- The file is opened, appended and closed for every event.
+- If a card write fails, the box switches to the flash fallback until the next
+  boot; at a boot that finds a card, waiting events move to the card first.
+- `ack` also deletes flash copies the phone already has.
+- Not done yet: shrinking the file once everything is acked (it grows by about
+  150 bytes per dose: a year of 6 doses a day is about 330 KB, fine on 16 GB).
+
+### 14.6 Phase 2 bench test, step by step (Christian)
+
+Serial Monitor: line ending **Newline**, **115200**. `HH:MM` = real times.
+
+1. Open `healthsync_box.ino` → **Upload** → press **EN**. Expect `SD card: OK, …
+   MB, /doselog.jsonl is 0 bytes` and `0 dose time(s) stored` (the format
+   changed once, so the schedule is empty). If the clock says `NOT SET`, type
+   `time 2026-10-23 HH:MM`.
+2. `add 3 HH:MM` (now + 2 min). When LED 3 lights, press and let go →
+   `Dose TAKEN …` then `logged #1 on the SD card`.
+3. `add 5 HH:MM` (now + 2 min). When LED 5 lights, type `time` with a time 61 min
+   later → `Dose MISSED …` and `logged #2`. Set the real time again.
+4. `log` → both lines, each marked `*` (not collected yet).
+5. Unplug the USB, plug back in → `log` still shows #1 and #2; `pending` → 2.
+6. `ack 2` → `Pending: 0`; `log` → no `*`.
+7. Take one more dose (as in step 2) → `logged #3` (not #1 again).
+8. Unplug, take the SD card out, put it in the PC → open `doselog.jsonl` with
+   Notepad: three lines. Put the card back.
+9. **Without the card:** unplug, remove the card, plug in → `WARNING: no SD
+   card`. Add and take a dose → `logged #4 in flash`; `log` shows it `(in
+   flash)`. Unplug, put the card back, plug in → `Moved 1 event(s) from flash
+   to the SD card`; `log` shows #4.
+10. Clean up: `clear` (the log stays on the card).
+
+Send the Serial Monitor output and which steps passed.
+
+**Phase 2 bench results (Oct 23–24):**
+
+| Step | Result |
+|---|---|
+| 1 Boot | ✅ `SD card: OK, 14832 MB, /doselog.jsonl is 0 bytes`, `0 dose time(s) stored` |
+| 2 Taken | ✅ `Dose TAKEN: compartment 1 … on time` → `logged #1 on the SD card` |
+| 3 Missed | ✅ clock jump → `Dose MISSED: compartment 2, 00:33` → `logged #2` |
+| Early (extra) | ✅ one press at 00:34 took compartments 1 and 5 (00:37) and 2 (00:45) early → #3, #4, #5. "Confirm all" includes every dose within the next 30 min; **team to confirm** this, or take only the nearest dose time |
+| 4 `log` | ✅ five JSON lines, all `*`; `at` in UTC (16:34Z = 00:34 Manila) |
+| 6 `ack 2` | ✅ `Pending: 3` (correct: #3–#5 remain; Christian first thought the schedule caused it) |
+| 7 No repeat | ✅ numbers kept going up (#3, #4, #5) |
+| 8 Card in the PC | ⏭ skipped: the laptop has no SD slot. Covered by `log`, which reads the lines back from the card file, and by the power-cut step. Optional later with a USB card reader |
+| 9 Without a card | ✅ passed Oct 24 (below) |
+
+Notes: a garbled `������` line came from the Serial Monitor while the Arduino
+IDE was busy ("Downloading index"); the command still worked. The IDE's Auto
+Format (Ctrl+T) re-indented `console.cpp` to 2 spaces; content unchanged.
+
+**Step 9 (no card) passed, Oct 24:** `WARNING: no SD card`, dose 4 taken with
+the alarm working, `logged #6 in flash (1 waiting for a card)`, `log` showed
+it. Card back in → `SD card: OK, /doselog.jsonl is 744 bytes`, `waiting in
+flash 0`, and `log` lists #6 from the card. 744 bytes is exactly the six
+lines #1–#6 (five would be 618), so #6 reached the card. The "Moved 1
+event(s)" line was printed at a boot the Serial Monitor did not catch
+(plugging in starts the box before the monitor connects).
+
+**Phase 2: COMPLETE (Oct 24).**
+
+**Change after Phase 2 (team decision, Oct 24):** an early press takes only
+the **nearest** dose time within 30 min (all compartments at that same time),
+not every dose in the window. Checked on the PC: a press at 00:34 takes
+compartments 1 + 5 (00:37) but not 2 (00:45); the next press takes 2; a 00:10
+dose is still taken early at 23:50. Compiles (29%). Quick bench check: two dose
+times 8 minutes apart, press 3 minutes before the first: only the first is
+taken.
+
+
+---
+
+## 15. Phase 3 plan: Bluetooth server (Oct 24, waiting for approval)
+
+**Goal:** the phone can do over Bluetooth what the bench console does today:
+set the clock, send the schedule, collect the dose log and acknowledge it, and
+tell the box a dose was handled in the app. Connect-on-demand: the phone
+connects, syncs, disconnects (BLE_CONNECT_ON_DEMAND.md P2, P6). Answers C1
+(NimBLE with the clock and SD card) and is task 7.2.1 / HW-08.
+
+Miko's spec (DEV-27) has not arrived, so the box side proposes a **draft
+protocol** for Miko to confirm or change. Testing needs no app: the free
+**nRF Connect** phone app can send these messages by hand.
+
+### 15.1 Draft protocol (to confirm with Miko)
+
+- The box advertises as **`HealthSync-0001`** (from `DEVICE_SERIAL`), with one
+  custom service and two characteristics:
+  - **command** (phone → box, write): one JSON message per write
+  - **reply** (box → phone, notify): one JSON message per notification
+- The phone asks for a larger packet size (MTU 247) on connect, so each
+  message fits in one packet.
+
+| Phone sends | Box replies | Purpose |
+|---|---|---|
+| `{"op":"hello"}` | `{"op":"hello","serial":"HS-0001","fw":"…","utc":…,"sched_ver":"…","last_seq":6,"acked":2,"pending":4,"sd":true}` | First message of every sync |
+| `{"op":"set_time","utc":1761300000}` | `{"op":"ok"}` | The phone's clock sets the DS3231 |
+| `{"op":"sched_begin","ver":"2026-10-24T09:41:00Z","count":3}` | `{"op":"ok"}` | Start sending the schedule |
+| `{"op":"sched_item","sid":"sc_K3pT8mQa","comp":3,"time":"08:00","days":[1,2,3,4,5,6,7]}` × count | `{"op":"ok"}` each | One dose time; `days` as in the app (1 = Monday … 7 = Sunday) |
+| `{"op":"sched_commit"}` | `{"op":"ok","count":3}` | Replace the stored schedule in one step |
+| `{"op":"events","after":2,"max":10}` | one `{"op":"event",…}` per event (the same line as the SD log), then `{"op":"events_end","last":6}` | Collect pending events |
+| `{"op":"ack","seq":6}` | `{"op":"ok","pending":0}` | The phone saved them in Firebase |
+| `{"op":"app_done","sid":"sc_K3pT8mQa","date":"2026-10-24","time":"08:00"}` | `{"op":"ok"}` | A dose was taken/skipped in the app: the box turns that LED off without logging it again |
+| anything wrong | `{"op":"error","msg":"…"}` | |
+
+Rules:
+- `sched_commit` keeps the "added" time of dose times that did not change, so
+  a re-sync never stops a dose that is due right now from lighting.
+- Only schedules with a compartment 1–6 are sent; the app keeps the rest
+  phone-only.
+- `app_done` answers the "Done in the app while the LED is lit" case; without
+  it the box would keep beeping until the button or +60 min.
+- No security yet: anyone nearby can connect. That is Phase 4 (C3).
+
+### 15.2 Files
+
+| File | Change |
+|---|---|
+| `ble.cpp/h` | New: NimBLE server, advertising, command/reply characteristics, larger packet size |
+| `protocol.cpp/h` | New: reads each JSON command (ArduinoJson) and calls the clock, schedule and storage functions; builds the replies |
+| `schedule.cpp/h` | Replace-in-one-step (`sched_begin/item/commit`), keep "added" times, `app_done` |
+| `storage.cpp/h` | Read events after a given seq (for `events`) |
+| `healthsync_box.ino` | Start Bluetooth; refresh the LEDs after a sync |
+| `config.h` | Service and characteristic IDs, `FIRMWARE_VERSION` |
+| `BLE_PROTOCOL.md` | New: the protocol above as a one-page spec for Miko (DEV-27) |
+
+The bench console stays (useful for tests). Not touched: the app, the Worker,
+Firestore.
+
+### 15.3 What needs installing (with OK)
+
+- **NimBLE-Arduino** library (Arduino Library Manager; not installed yet).
+- **nRF Connect for Mobile** (Nordic Semiconductor) on Christian's Android
+  phone, from the Play Store.
+
+### 15.4 Phase 3 pass check (Christian, with nRF Connect)
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | nRF Connect → Scan | `HealthSync-0001` appears |
+| 2 | Connect, enable notifications on **reply**, write `{"op":"hello"}` to **command** | The hello reply with serial, seq numbers, SD status |
+| 3 | Write `set_time` with the current UTC seconds | Serial Monitor `status` shows the right Manila time |
+| 4 | Write `sched_begin` (count 1), one `sched_item` for now + 2 min, `sched_commit` | `list` shows it; at that minute the LED lights |
+| 5 | Write `app_done` for that dose | LED off, no new log line |
+| 6 | Take another dose with the button, then write `events` with `after` = last acked | The event arrives as a notification; then `ack` → pending 0 |
+| 7 | Disconnect | The box advertises again; the alarm keeps working |
+| 8 | Repeat `sched_*` with the same items while a dose is lit | The LED stays lit (added times kept) |
+
+### 15.5 Decisions and notes (Oct 24)
+
+- **Option A approved:** Phase 3 is tested with nRF Connect; the real app gets
+  Bluetooth from Miko (7.1.x) and is joined in Phase 5. The app has no
+  Bluetooth code or permission today, and the team does not change the app.
+- **The finished box needs no laptop and no EN press.** It starts by itself on
+  power (battery or USB), gets its time and schedule from the phone over
+  Bluetooth, keeps its clock on the coin cell and its schedule and log in flash
+  and on the SD card. EN, the laptop and the Serial Monitor are bench tools.
+- **To check with the print student:** the ESP32's own USB port must stay
+  reachable after assembly (a hole or a removable lid), or firmware fixes
+  cannot be uploaded. The v2.2 side USB port may be charging-only (134N3P).
+- **Proposed for Phase 5:** status signals without a laptop (e.g. a blink
+  pattern at power-on if the SD card is missing or the clock is not set).
+- **Battery: one rechargeable 18650 through the 134N3P (charge + 5 V).** Rough
+  estimate: ESP32 with Bluetooth always on ≈ 50–60 mA at 5 V → about **1 day**
+  per charge from a 2,500–3,000 mAh cell. Several days needs power saving
+  (C2 wake pin, light sleep, slower CPU) in Phase 5. Measure the real current
+  then.
+- **No battery level** in this build (no monitoring; CLAUDE.md "no phantom
+  features"). Adding it = a voltage divider (two resistors) to a free ADC pin
+  (e.g. 34/35): a team decision, not planned.
+
+
+### 15.6 Phase 3 written (Oct 24), bench test pending
+
+Approved Oct 24 (option A: test with nRF Connect). Installed
+**NimBLE-Arduino 2.5.1** (Arduino libraries folder). New files: `ble.cpp/h`
+(server, advertising, queue to loop(), idle drop, status LED on GPIO 2),
+`protocol.cpp/h` (the messages), **`BLE_PROTOCOL.md`** (one-page draft spec for
+Miko, DEV-27). Updated: `schedule.cpp/h` (sync begin/item/commit, keeps
+"added" times, `app_done`, version), `storage.cpp/h` (`storage_events_after`),
+`healthsync_box.ino`, `config.h` (UUIDs, `FIRMWARE_VERSION "0.3.0"`). Compiles
+with no errors or warnings: **54% flash**, 12% RAM.
+
+Design notes:
+- Commands arrive on the Bluetooth task and are queued; loop() handles them, so
+  the schedule, clock and SD card are only touched from one place.
+- NimBLE 2.x does not re-advertise after a disconnect by default:
+  `advertiseOnDisconnect(true)` is set.
+- The 128-bit service id fills the advertisement, so the name is in the scan
+  response.
+- Replies need MTU 247 (the phone asks for it); at the default 23 the box
+  prints "does not fit packet size" on the Serial Monitor.
+
+### 15.7 Phase 3 bench test with nRF Connect, step by step (Christian)
+
+**Setup (once):**
+1. Android phone: Play Store → install **nRF Connect for Mobile** (by Nordic
+   Semiconductor). Turn on Bluetooth (and Location, if the phone asks).
+2. PC: upload `healthsync_box.ino`, Serial Monitor at 115200, Newline, press
+   **EN**. Expect `fw 0.3.0, Phase 3: Bluetooth` and `Bluetooth: advertising as
+   "HealthSync-0001"`. Check the clock with `status`; set it with `time` if
+   needed.
+
+**Connect:**
+3. nRF Connect → **SCANNER** → **SCAN** → `HealthSync-0001` → **CONNECT**.
+   Serial: `Bluetooth: phone connected`. The ESP32's blue LED turns on.
+4. Top right **⋮** → **Request MTU** → `247` → OK. Serial: `packet size 247`.
+5. Open the service `908a611a-…` (shown as "Unknown Service"). It has two
+   characteristics: `a8672cae-…` (write = **command**) and `c7b37ff8-…`
+   (notify = **reply**).
+6. On the **reply** characteristic tap the **triple-arrow** icon to turn on
+   notifications.
+
+**Sending a message:** on the **command** characteristic tap the **up-arrow**
+→ change the format from BYTE ARRAY to **TEXT** → type the message → **SEND**.
+The answer shows under the reply characteristic and, more readably, in the
+Serial Monitor as `BLE < …` (every message the phone sends shows as `BLE > …`).
+
+| # | Send | Expect |
+|---|---|---|
+| T1 | `{"op":"hello"}` | `{"op":"hello","serial":"HS-0001","fw":"0.3.0",…}` |
+| T2 | `{"op":"set_time","utc":NUMBER}` — get NUMBER on the PC in PowerShell: `[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()`, then send within a few seconds | `{"op":"ok"}`; Serial `status` shows the right Manila time |
+| T3 | `{"op":"sched_begin","ver":"test1","count":1}` → `{"op":"sched_item","sid":"test-a","comp":3,"time":"HH:MM"}` (now + 2 min) → `{"op":"sched_commit"}` | `ok` ×2, then `{"op":"ok","count":1}`; `list` shows it; at HH:MM LED 3 lights |
+| T4 | While LED 3 is lit: `{"op":"app_done","sid":"test-a","date":"YYYY-MM-DD","time":"HH:MM"}` (today, same time) | `ok`; LED 3 off; `status` says `done in the app`; `log` has no new line |
+| T5 | New test dose: T3 again with `"ver":"test2"`, `"sid":"test-b"`, `"comp":5`, now + 2 min. When LED 5 lights, send the same three messages again | LED 5 **stays lit** |
+| T6 | Press the button (LED 5 taken), then `{"op":"events","after":0}` | One `event` per logged dose, then `events_end` with `last` (watch the Serial Monitor: nRF Connect shows only the newest value) |
+| T7 | `{"op":"ack","seq":LAST}` (the `last` from T6) | `{"op":"ok","pending":0}` |
+| T8 | `{"op":"nope"}` | `{"op":"error","msg":"unknown op"}` |
+| T9 | **DISCONNECT** in nRF Connect | Serial `phone disconnected, advertising again`; the box shows up in SCAN again; alarms still work |
+| T10 | Connect and send nothing for 60 s | Serial `phone silent for 60 s, disconnecting` |
+
+T6 with the SD card in also answers **C1** (Bluetooth, clock and SD card
+together). Clean up afterwards: `clear` in the Serial Monitor.
+
+**Phase 3 bench results (Oct 24, nRF Connect):**
+
+| Test | Result |
+|---|---|
+| Connect + MTU | ✅ `phone connected (packet size 247)` |
+| Not JSON | ✅ `hi` → `{"op":"error","msg":"not JSON"}` |
+| T1 hello | ✅ serial HS-0001, fw 0.3.0, clock_ok true (box time 2026-10-24 01:28) |
+| T3 schedule sync | ✅ `sched_begin`/`sched_item` (test-a, comp 3, 01:32)/`sched_commit` → `{"op":"ok","count":1}`, "Schedule replaced by the phone" |
+| T4 app_done | ✅ (second run, `test-c`, comp 1, 02:00): `Dose done in the app: compartment 1, 02:00 … alarm off`; `status` → `done in the app` |
+| T5 re-send while lit | ⏳ not run (app_done was sent right after the commit). 2-minute check at the start of the next session |
+| T6 events | ✅ all 7 events from the SD card as `event` notifications, then `events_end` sent 7, last 7. **Answers C1:** Bluetooth + DS3231 + SD work together |
+| T7 ack | ✅ `ack 7` → `pending 0` |
+| T8 unknown op | ✅ `{"op":"error","msg":"unknown op"}` |
+| T9 disconnect | ✅ `phone disconnected, advertising again` |
+| T10 idle drop | not run (optional) |
+
+Christian found the message format hard to follow at first; the session reply
+explained that nRF Connect plays the app's part and gave each message ready to
+copy. Offered: a console `demo` command that prints the messages with the time
+filled in.
+
+**Phase 3: COMPLETE (Oct 24)**, declared by Christian; T5 to check next session. BLE_PROTOCOL.md goes to Miko through this branch (Christian tells him to pull).

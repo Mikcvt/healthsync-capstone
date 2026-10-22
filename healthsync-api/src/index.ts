@@ -11,7 +11,6 @@
  *                       or a patient deletes their own; purged after 30 days
  *   POST /patients/delete caregiver deletes one patient; purged after 30 days
  *   POST /account/restore undoes a deletion within the 30 days
- *   GET  /device/{serial}/state  the medicine box asks which LEDs to light
  *   cron every 5 min    marks unconfirmed doses late and missed; creates
  *                       upcoming doses hourly, or at once after an edit
  *   cron every 15 min   purges deletions whose 30 days are up; once a day,
@@ -21,7 +20,6 @@
  * to make — goes straight from Flutter to Firestore under the security rules.
  */
 
-import { handleDeviceState } from './handlers/device';
 import { handleCreatePatient } from './handlers/patients';
 import { handleRedeemOtp } from './handlers/otp';
 import { handleDoseEvent } from './handlers/dose-events';
@@ -51,14 +49,6 @@ export default {
 		const route = `${request.method} ${url.pathname}`;
 
 		try {
-			// ── ESP32 medicine box (prefix match: the serial is in the path) ───
-			// Phase 1 routes only /state. /schedule and /dose stay unrouted until
-			// their phases rebuild them (firmware/healthsync_box/FIRMWARE_ARCHITECTURE.md).
-			const deviceMatch = url.pathname.match(/^\/device\/([^/]+)\/state$/);
-			if (deviceMatch && request.method === 'GET') {
-				return await handleDeviceState(decodeURIComponent(deviceMatch[1]), env);
-			}
-
 			switch (route) {
 				case 'GET /health':
 					return json({ status: 'ok', service: 'healthsync-api' });

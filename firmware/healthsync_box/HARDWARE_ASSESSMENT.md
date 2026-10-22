@@ -209,11 +209,11 @@ firmware/healthsync_box/
 ├── healthsync_box.ino     — setup() and loop() only, calls all modules
 ├── config.h               — pins, poll interval, Worker URL
 ├── config.example.h       — safe-to-commit template (copy → secrets.h), placeholders only
-├── secrets.h              — serial + setup hotspot password (git-ignored, flashed per box)
+├── secrets.h              — serial (git-ignored, flashed per box)
 ├── leds.cpp / leds.h      — leds_set(), leds_all_off(), leds_self_test()
 ├── button.cpp / button.h  — debounced press detection
 ├── buzzer.cpp / buzzer.h  — non-blocking beep pattern
-├── net.cpp / net.h        — Wi-Fi, HTTPS to Worker
+├── (net.cpp / net.h — Wi-Fi, removed Oct 22 in Phase 0; Bluetooth comes in Phase 3)
 ├── rtc_clock.cpp / rtc_clock.h — DS3231 read/write, NTP sync (Phase 4)
 ├── storage.cpp / storage.h    — SD: schedule.json, queue.jsonl (Phase 4)
 ├── schedule.cpp / schedule.h  — offline "what is due now" logic (Phase 4)
