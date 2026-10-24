@@ -4,6 +4,7 @@
 #include "rtc_clock.h"
 #include "schedule.h"
 #include "storage.h"
+#include "ble.h"
 #include <Arduino.h>
 #include <RTClib.h>
 
@@ -23,6 +24,9 @@ static void printHelp() {
   Serial.println("  pending                      events the phone has not collected yet");
   Serial.println("  ack <seq>                    pretend the phone collected everything up to seq");
   Serial.println("  sd                           SD card status");
+  Serial.println("  pair                         open Bluetooth pairing mode for 2 minutes");
+  Serial.println("  bonds                        how many phones are paired");
+  Serial.println("  unpair                       forget every paired phone");
 }
 
 static void printTime() {
@@ -160,6 +164,21 @@ static bool handle(char *line) {
   }
   if (!strcasecmp(cmd, "sd")) {
     storage_print_info();
+    return false;
+  }
+  if (!strcasecmp(cmd, "pair")) {
+    ble_pairing_open(PAIRING_WINDOW_MS);
+    Serial.println("PAIRING MODE for 2 minutes: connect the phone and type the 6-digit code from the box label");
+    return false;
+  }
+  if (!strcasecmp(cmd, "bonds")) {
+    Serial.printf("Paired phones: %d (the box remembers up to 3)\n", ble_bond_count());
+    return false;
+  }
+  if (!strcasecmp(cmd, "unpair")) {
+    int n = ble_bond_count();
+    ble_forget_all();
+    Serial.printf("Forgot %d paired phone(s). On each phone also tap Forget for the box in Bluetooth settings.\n", n);
     return false;
   }
   Serial.printf("Unknown command \"%s\". Type help\n", cmd);

@@ -4,7 +4,9 @@
 #pragma once
 
 // Serial number printed on the box label — must match the one paired in the app.
-// From Phase 3 it is also the box's Bluetooth name (e.g. "HealthSync-0001").
+// It is also the box's Bluetooth name (e.g. "HealthSync-0001").
 #define DEVICE_SERIAL "HS-0000"
 
-// Phase 4 (security) will add the pairing secret or passkey here.
+// Bluetooth pairing code: 6 digits (100000–999999), different for every box,
+// printed on the label under the box and on its card. Never commit a real one.
+#define BLE_PASSKEY 123456

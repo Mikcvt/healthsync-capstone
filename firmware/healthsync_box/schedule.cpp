@@ -254,11 +254,11 @@ uint8_t schedule_update(uint32_t nowLocal) {
     return lit;
 }
 
-uint8_t schedule_take(uint32_t nowLocal, bool &early) {
+uint8_t schedule_take(uint32_t nowLocal) {
     uint8_t taken = 0;
-    early = false;
 
-    // Every dose that is due now.
+    // Every dose that is due now. A dose that is not lit yet is never taken
+    // early: a press before the alarm may be an accident (Oct 25).
     forEachDose(nowLocal, -1, 0, [&](const ScheduleEntry &e, uint32_t day, uint32_t start) {
         if (nowLocal < start || nowLocal >= start + DUE_WINDOW_MIN * 60UL) return;
         if (findHandled(day, e.minute, e.compartment)) return;
@@ -268,30 +268,6 @@ uint8_t schedule_take(uint32_t nowLocal, bool &early) {
         recordDose(EV_TAKEN, e, day, nowLocal, late ? TIMING_LATE : TIMING_ON_TIME,
                    late ? "late" : "on time");
     });
-    if (taken) return taken;
-
-    // Nothing due: the NEAREST dose time within the early window is taken early
-    // (every compartment at that same time; a later dose waits for its own
-    // press — team decision, Oct 24). Tomorrow too: a 00:10 dose can be taken
-    // early at 23:50.
-    auto inEarlyWindow = [&](const ScheduleEntry &e, uint32_t day, uint32_t start) {
-        return start > nowLocal && start <= nowLocal + EARLY_WINDOW_MIN * 60UL &&
-               !findHandled(day, e.minute, e.compartment);
-    };
-    uint32_t nearest = UINT32_MAX;
-    forEachDose(nowLocal, 0, 1, [&](const ScheduleEntry &e, uint32_t day, uint32_t start) {
-        if (inEarlyWindow(e, day, start) && start < nearest) nearest = start;
-    });
-    forEachDose(nowLocal, 0, 1, [&](const ScheduleEntry &e, uint32_t day, uint32_t start) {
-        if (start != nearest || !inEarlyWindow(e, day, start)) return;
-        markHandled(day, e.minute, e.compartment, ST_TAKEN);
-        taken |= 1 << (e.compartment - 1);
-        char note[24];
-        snprintf(note, sizeof(note), "early (%lu min before)",
-                 (unsigned long)((start - nowLocal + 59) / 60));
-        recordDose(EV_TAKEN, e, day, nowLocal, TIMING_EARLY, note);
-    });
-    early = taken != 0;
     return taken;
 }
 

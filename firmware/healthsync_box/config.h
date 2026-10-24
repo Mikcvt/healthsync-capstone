@@ -17,10 +17,14 @@
 
 // ── Buzzer (active, through an NPN transistor; HIGH = sound) ─────────────────
 #define BUZZER_PIN 17
-#define BEEP_COUNT       5        // short beeps per burst
-#define BEEP_ON_MS       200
-#define BEEP_OFF_MS      150
-#define BEEP_REPEAT_MS   60000UL  // one burst every minute while a dose is due
+// One straight (continuous) tone per event, each a different length (Oct 25):
+#define TONE_ALARM_MS        5000UL   // a dose is due: 5 s tone ...
+#define ALARM_REPEAT_MS    300000UL   // ... repeated every 5 min until taken or missed (+60 min)
+#define TONE_PAIRED_MS       3000UL   // a phone paired
+#define TONE_PAIRING_MS      2000UL   // pairing mode opened
+#define TONE_TAKEN_MS        1500UL   // dose taken with the button
+#define TONE_POWER_ON_MS     1000UL   // power on (self-test)
+#define TONE_NOTHING_MS       800UL   // press with no dose due, or the clock not set
 
 // ── Push button (GPIO 16 → button → GND, internal pull-up) ────────────────────
 // The box uses a 6 mm NORMALLY CLOSED (NC) panel button: closed while idle, so
@@ -36,14 +40,12 @@
 // a bump, or a wire losing contact for a moment, never marks a dose taken.
 #define BUTTON_CONFIRM_MS       300UL
 #define BUTTON_CONFIRM_MAX_MS 10000UL   // held longer than this: not a deliberate press, ignored
-#define BEEP_NOTHING_MS         600UL   // one long beep: nothing is due
 
 // ── Schedule and dose timing (Phase 1) ────────────────────────────────────────
 // Times follow lib/utils/dose_timing.dart and DOSE_LOGIC_PROPOSAL.md.
 #define TZ_OFFSET_MIN    480   // Manila, UTC+8, no daylight saving. The DS3231 holds UTC
 #define DUE_WINDOW_MIN    60   // a dose stays lit this long after its time, then it is missed
 #define LATE_AFTER_MIN    30   // taken this long after its time or later = "late"
-#define EARLY_WINDOW_MIN  30   // a press up to this long before a dose takes it early
 #define MAX_SCHEDULES     24   // dose times the box can hold
 
 // ── microSD ───────────────────────────────────────────────────────────────────
@@ -55,7 +57,7 @@
 #define SD_CS_PIN   15
 
 // ── Bluetooth (Phase 3) — the protocol is in BLE_PROTOCOL.md ─────────────────
-#define FIRMWARE_VERSION       "0.3.0"
+#define FIRMWARE_VERSION       "0.4.1"
 #define BLE_SERVICE_UUID       "908a611a-cdae-4717-843a-8929f91d551b"
 #define BLE_COMMAND_UUID       "a8672cae-3524-49a5-9a57-696fd57e7b72"   // phone → box (write)
 #define BLE_REPLY_UUID         "c7b37ff8-2e2b-4156-8130-34df10d433e5"   // box → phone (notify)
@@ -64,6 +66,16 @@
 #define BLE_IDLE_DISCONNECT_MS 60000UL  // connect-on-demand: drop a phone silent for 60 s
 #define BLE_EVENTS_MAX         20       // events sent per "events" request
 #define STATUS_LED_PIN         2        // built-in LED: on while a phone is connected (bench aid)
+
+// ── Bluetooth security (Phase 4) ──────────────────────────────────────────────
+// Pairing uses the 6-digit BLE_PASSKEY from secrets.h (printed on the box label).
+// A new phone can pair only while pairing mode is open; paired phones reconnect
+// encrypted with no code.
+#define PAIRING_HOLD_MS        5000UL   // hold the button this long, with no LED lit → pairing mode
+#define PAIRING_HOLD_SHOW_MS   1000UL   // after this much holding the LEDs start filling up 1→6
+#define PAIRING_WINDOW_MS    120000UL   // pairing mode lasts 2 minutes (running light 1→6)
+#define PAIRING_CHASE_MS        150UL   // running-light step
+#define BLE_UNSECURED_DROP_MS 30000UL   // a phone not paired/encrypted within 30 s is dropped
 
 // ── Dose log (Phase 2) ────────────────────────────────────────────────────────
 #define LOG_FILE         "/doselog.jsonl"   // one JSON line per taken/missed dose

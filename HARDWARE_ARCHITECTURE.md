@@ -1,7 +1,9 @@
 # HealthSync Smart Medicine Box — Hardware Architecture
 
 > Status: **DRAFT for team review** (October 13, 2026; updated October 19, 2026
-> for the 6-compartment build and the confirmed wiring)
+> for the 6-compartment build and the confirmed wiring; updated October 25,
+> 2026: pins re-checked, battery power, a voltage for every part in Step 4.7,
+> power budget without Wi-Fi)
 > Scope: the ESP32 box, how it is wired, what its firmware does, and how it talks
 > to the cloud. The Flutter app and the Worker are covered only where the box
 > touches them.
@@ -31,13 +33,14 @@ The box is a **display and a button**. It is not where dose logic lives.
 | The box DOES | The box does NOT |
 |---|---|
 | Light the LED of the compartment whose dose is due | Decide on its own that a dose is due (except when offline, Step 9) |
-| Beep the buzzer while a dose is due | Measure heart rate, SpO2, battery, or anything else |
+| Beep the buzzer while a dose is due | Measure heart rate, SpO2, battery level, or anything else |
 | Let the patient press one button to confirm "I took it" | Send SMS, talk to a smartwatch, or scan QR codes |
 | Keep time with the DS3231 when Wi-Fi is down | Hold the Firebase service account key |
 | Queue button presses on the microSD card while offline, and send them later | Store medicine names, patient names, or any health data beyond the queue |
 
 Hardware in this build, and nothing else: **ESP32, 6 LEDs (6 compartments), 1 push
-button, 1 active buzzer, DS3231 RTC, microSD module.** (See "No phantom features"
+button, 1 active buzzer, DS3231 RTC, microSD module, and one rechargeable 18650
+cell with its 134N3P charging module** (no battery-level reading). (See "No phantom features"
 in `CLAUDE.md`.)
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
@@ -58,18 +61,20 @@ panelist will ask.
 
 | # | Part | Qty | Notes / why |
 |---|---|---|---|
-| 1 | ESP32 dev board (ESP32-WROOM-32, 30 or 38 pin DevKit V1) | 1 | Wi-Fi + enough GPIO for 6 LEDs, I2C and SPI. **Must be WROOM: GPIO 16/17 are PSRAM on a WROVER (Step 3).** |
+| 1 | ESP32 dev board with an ESP32-WROOM-32 (38-pin; the team lists it as a NodeMCU-32S) | 1 | Bluetooth (BLE) + enough GPIO for 6 LEDs, I2C and SPI. **Must be WROOM: GPIO 16/17 are PSRAM on a WROVER (Step 3).** |
 | 2 | 5 mm LEDs | 6 | Red, yellow, or green. Avoid blue/white: they need ~3.0 V and will be dim on a 3.3 V pin. |
 | 3 | 220 Ω resistors | 6 | One per LED, current limit (~5–6 mA each). |
-| 4 | Push button: **6 mm normally-closed (NC) panel button**, 7.2 mm hole, front of the box | 1 | Silences the box (Phase 1), confirms the dose (Phase 2). |
+| 4 | Push button: **6 mm normally-closed (NC) panel button**, 7.2 mm hole, front of the box | 1 | Press and let go (0.3–10 s): the lit dose is taken. |
 | 5 | ~~10 kΩ resistor~~ | 0 | Not needed: the button goes to GND and uses the ESP32's internal pull-up. |
-| 6 | Active buzzer (5 V or 3.3 V type) | 1 | *Active* = beeps on DC, no PWM tone needed. |
+| 6 | Active buzzer (5 V or 3.3 V type: **check the bench one**, Step 4.7) | 1 | *Active* = beeps on DC, no PWM tone needed. It has a + and a − leg (Oct 22: it only worked once turned the right way). |
 | 7 | NPN transistor (2N2222, S8050, or BC547) + 1 kΩ resistor | 1 + 1 | Drives the buzzer. Most buzzers draw 25–30 mA, more than an ESP32 pin should supply. |
 | 8 | 1N4148 diode | 1 | Optional, across the buzzer (protects the transistor from back-EMF). |
 | 9 | DS3231 RTC module (usually "ZS-042") + coin cell | 1 | Keeps time with no Wi-Fi and no power. Read the battery warning in Step 6. |
-| 10 | MicroSD card module (SPI) + microSD card ≤ 32 GB | 1 | Offline queue and schedule cache. Format FAT32. |
-| 11 | 5 V 2 A USB power adapter + cable | 1 | Wi-Fi transmit spikes need the headroom. |
-| 12 | Breadboard / perfboard, jumper wires, enclosure with 6 compartments | — | |
+| 10 | MicroSD card module (SPI) + microSD card ≤ 32 GB | 1 | The dose log (`doselog.jsonl`). Format FAT32. Bench card: 16 GB. |
+| 11 | Protected 18650 Li-ion cell + single-cell holder (about 75 × 21 × 18 mm) | 1 + spares | Rechargeable; runs the box without a cable (HW-15, HW-25). |
+| 12 | 134N3P charge / protection / 5 V boost module | 1 | Charges the cell from the side USB port and gives 5 V to the ESP32's `VIN`. |
+| 13 | USB cable + 5 V USB charger | 1 | Charging through the side port; firmware uploads through the ESP32's own port (open area in the box). |
+| 14 | Breadboard / perfboard, jumper wires, enclosure with 6 compartments | — | |
 
 ---
 
@@ -139,9 +144,10 @@ The box **never talks to Firestore directly.** It only talks to the Worker
 | microSD MOSI | 19 | SPI | Swapped vs. the ESP32 default (see below). |
 | microSD MISO | 23 | SPI | Swapped vs. the ESP32 default (see below). |
 | microSD CS | 15 | SPI | **Strapping pin.** The SD module's pull-up keeps it high at boot, which is the normal state. Harmless. |
-| (built-in LED) | 2 | Output | Optional Wi-Fi status light. Already on the board, not a new feature. |
+| (built-in LED) | 2 | Output | On while a phone is connected over Bluetooth (bench aid). Already on the board, not a new feature. |
 
-Wiring confirmed against the bench box on October 19, 2026.
+Wiring confirmed against the bench box on October 19, 2026, and re-checked
+against the firmware (`config.h`, firmware 0.3.0) on October 25, 2026.
 
 Pins deliberately **not** used: 0, 5 (strapping), 6–11 (flash), 12 (strapping —
 pulled high at boot it bricks the boot), 34–39 (input-only).
@@ -190,8 +196,9 @@ GPIO 16 ──[button]── GND        (internal pull-up enabled in firmware)
 - The button is **normally closed (NC)**: idle it connects the pin to GND (LOW); pressing opens it and the pull-up makes it HIGH. `pinMode(16, INPUT_PULLUP)`, `BUTTON_PRESSED_LEVEL HIGH` in `config.h` (LOW for a normally-open button).
 - A broken wire reads as "held forever"; the firmware ignores a button held over 30 s.
 - No external resistor needed. Never connect the button to 5 V.
-- Debounce in firmware (50 ms). From Phase 2, require a **press of ≥ 300 ms**
-  so a bump of the box does not confirm a dose.
+- Debounce in firmware (80 ms). A press counts when the button is **let go
+  after 0.3–10 s**, so a bump of the box, or a wire losing contact for a
+  moment, never marks a dose taken.
 
 ### 4.3 Active buzzer
 
@@ -243,26 +250,77 @@ bare breakout with no regulator takes **3.3 V**. Look at your board before wirin
 
 ### 4.6 Power
 
-- USB 5 V 2 A adapter into the ESP32's USB port, or 5 V into `VIN`.
-- The ESP32's onboard regulator supplies 3.3 V to the LEDs, button and DS3231.
-- The SD module (if 5 V type) and a 5 V buzzer take from `VIN`/`5V`.
+> Updated October 25, 2026: the box runs on one rechargeable 18650 cell
+> (HW-15, HW-25). Before, it was USB only.
+
+```
+Side USB port (5 V) ──► 134N3P ──charges──► 18650 (3.7 V nominal, 4.2 V full)
+                          │
+                          └── 5 V out ──► ESP32 VIN / 5V pin
+                                              │
+                                              └── onboard regulator ──► 3V3 pin (3.3 V)
+```
+
+- The 134N3P charges the cell from the side USB port and boosts it to **5 V**
+  for the ESP32's `VIN`/`5V` pin.
+- **Never connect the 18650 (3.0–4.2 V) straight to the 3V3 pin or to VIN.**
+  It always goes through the 134N3P.
+- The ESP32's onboard regulator makes **3.3 V** (`3V3` pin) for the DS3231;
+  the LEDs, the button pull-up and every GPIO also work at 3.3 V.
+- 5 V parts (a 5 V buzzer, a 5 V microSD module) take from `VIN`/`5V`.
+- Firmware uploads use the ESP32's own USB port, reached through the open
+  area of the box. Before plugging a laptop into a battery-powered box, check
+  that the board's USB 5 V line has its protective diode (most DevKit boards
+  do), or switch the battery off.
+- The 134N3P figures (5 V output, charge current, short-circuit behaviour)
+  are assumed, not measured, and it has **no reverse-polarity protection**:
+  check the cell's + and − twice (BLE_CONNECT_ON_DEMAND.md, C7).
+
+### 4.7 Voltage of each part
+
+| Part | Supply | Signal level | Powered from | Notes |
+|---|---|---|---|---|
+| ESP32 board (WROOM-32) | **5 V in** (`VIN`/USB); the chip runs at **3.3 V** | GPIO **3.3 V, not 5 V tolerant** | 134N3P 5 V out (or USB on the bench) | Onboard regulator 5 V → 3.3 V feeds the `3V3` pin |
+| LEDs ×6 (red/yellow/green) | About **2.0 V** forward, about **6 mA** each | — | Their GPIO (3.3 V) through 220 Ω | Blue/white need about 3.0 V: too dim on 3.3 V |
+| 220 Ω resistors ×6 | Drop about **1.3 V** each | — | — | (3.3 V − 2.0 V) / 220 Ω ≈ 6 mA |
+| Push button (6 mm NC) | **3.3 V** through the internal pull-up | Idle **0 V**, pressed **3.3 V** | GPIO 16 and GND | Never connect it to 5 V |
+| Active buzzer | **5 V** (5 V type) or **3.3 V** (3.3 V type), about **25–30 mA** | — | `VIN`/`5V` (or `3V3`), switched by the NPN | **Check: which type is on the bench?** |
+| NPN transistor + 1 kΩ | Base driven at **3.3 V** (about 2.6 mA through 1 kΩ) | — | GPIO 17 | Switches the buzzer's supply so its current stays off the ESP32 |
+| 1N4148 diode | — | — | Across the buzzer | Blocks the voltage spike when the buzzer switches off |
+| DS3231 (ZS-042) | 2.3–5.5 V allowed; **we use 3.3 V** | I2C at **3.3 V** | `3V3` pin | Keep it on 3.3 V: on 5 V its charging circuit would charge the CR2032 |
+| CR2032 coin cell | **3 V** | — | DS3231 holder | Keeps the time with no power (bench: kept time while unplugged, Oct 20) |
+| microSD module | **5 V** for the blue module with a regulator (AMS1117); **3.3 V** for a bare breakout | SPI at **3.3 V** | `VIN`/`5V` or `3V3` | **Check: which module is on the bench, and which pin feeds it?** The card itself always runs at 3.3 V |
+| 18650 Li-ion (protected) | **3.7 V** nominal, **4.2 V** full, about **3.0 V** empty (protection cuts off near 2.5 V) | — | Holder → 134N3P | Never straight to the ESP32 |
+| 134N3P module | In: **5 V** USB; battery side **3.0–4.2 V**; out: **5 V** | — | Side USB port | Assumed values, to be measured (C7) |
+| Side USB charger | **5 V** | — | — | Charging only, no data to the ESP32 |
 
 ---
 
 ## Step 5 — Power budget
 
-| Load | Typical | Peak |
+> Updated October 25, 2026 for Bluetooth (no Wi-Fi) and the 18650. These are
+> estimates from typical datasheet values, **not measurements**; measure the
+> real current in Phase 5.
+
+| Load (at 5 V) | Typical | Peak |
 |---|---|---|
-| ESP32 with Wi-Fi | 80–120 mA | ~350 mA (transmit burst) |
+| ESP32 with Bluetooth (advertising or connected, no Wi-Fi) | about 40–60 mA | about 130 mA (radio burst) |
 | LEDs (usually 1–2 lit, max 6) | 6–12 mA | 36 mA |
 | Buzzer | 0 | 30 mA |
 | DS3231 | < 1 mA | — |
-| microSD (write) | 1 mA idle | ~100 mA |
-| **Total** | **~150 mA** | **~520 mA** |
+| microSD (write) | 1 mA idle | about 100 mA |
+| **Total** | **about 50–75 mA** | **about 300 mA** |
 
-A 5 V 1 A adapter would work; 2 A gives margin for a cheap cable's voltage
-drop. There is **no battery in this build**, so if the box is unplugged it does
-nothing until power returns (the DS3231 keeps the time meanwhile).
+**Battery life (estimate):** one 18650 of 2,500–3,000 mAh at 3.7 V, through the
+134N3P's 5 V boost (about 85% efficient), gives about 1,600–1,900 mAh at 5 V.
+At about 60 mA that is **roughly one day per charge**. Several days needs power
+saving in Phase 5 (light sleep, slower CPU, longer Bluetooth advertising
+interval; open question C2). With a flat battery the box stops until it is
+charged; the DS3231 keeps the time, and the schedule and dose log are kept in
+flash and on the SD card.
+
+There is **no battery-level reading** (no monitoring pin; CLAUDE.md "No
+phantom features").
 
 ---
 
@@ -682,9 +740,11 @@ small throwaway sketch except 11.8.
    lowest-numbered one per press?
 3. **Early window on the box:** light the LED only from the dose time
    (proposed), or from 30 minutes before, to match the app's unlock time?
-4. **Buzzer:** how long to beep (proposed: 3 short beeps every minute for the
-   first 10 minutes, then every 5 minutes until +60) and whether to add quiet
-   hours.
+4. ~~**Buzzer:** how long to beep and whether to add quiet hours.~~ **Decided
+   Oct 25, 2026:** one straight tone per event, each a different length; the
+   dose alarm is a 5 s tone every 5 minutes until taken or missed at +60 min;
+   no quiet hours. Taking a dose early on the box was removed (a press before
+   the alarm may be an accident).
 5. **Device registry location** for the key hashes. (Step 7.2)
 6. ~~**Button pin:** keep GPIO 5, or move to GPIO 34.~~ **Decided Oct 19,
    2026:** GPIO 16 to GND with the internal pull-up, matching the wiring.

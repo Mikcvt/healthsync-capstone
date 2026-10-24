@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 enum DoseEventType : uint8_t { EV_TAKEN = 1, EV_MISSED = 2 };
+// TIMING_EARLY is kept for the stored format; the box no longer takes doses early.
 enum DoseTiming    : uint8_t { TIMING_NONE = 0, TIMING_ON_TIME, TIMING_LATE, TIMING_EARLY };
 
 struct DoseEvent {

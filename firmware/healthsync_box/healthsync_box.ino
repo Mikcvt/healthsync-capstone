@@ -4,15 +4,18 @@
 // Phase 2: every taken/missed dose is logged on the microSD (storage.h).
 // Phase 3: the phone syncs over Bluetooth (ble.h, protocol.h, BLE_PROTOCOL.md):
 //          time, schedule, dose events + ack, "done in the app".
-//   Boot     self-test (LEDs 1→6, one chirp), DS3231 clock, stored schedule
-//   Each s   due compartments (from the clock + schedule) → LED on, 5 beeps
-//            every minute; 60 min after its time a dose is missed (LED off)
-//   Button   press and let go (0.3–10 s): every lit dose is taken, two beeps.
-//            Nothing lit: a dose due within 30 min is taken early; otherwise
-//            one long beep ("nothing due")
-//   Serial   bench commands (console.h) until Bluetooth arrives in Phase 3
+// Phase 4: only a paired phone can connect (passkey on the box label).
+//   Boot     self-test (LEDs 1→6, 1 s tone), DS3231 clock, stored schedule
+//   Each s   due compartments (from the clock + schedule) → LED on and a 5 s
+//            tone every 5 min; 60 min after its time a dose is missed (LED off)
+//   Button   press and let go (0.3–10 s): every lit dose is taken (1.5 s tone).
+//            Nothing lit: nothing is taken, never early (0.8 s tone).
+//            Nothing lit, held 5 s (LEDs fill up 1→6): pairing mode for
+//            2 minutes (running light 1→6, 2 s tone); a phone pairs → 3 s tone
+//   Tones    one straight tone per event, each a different length (config.h)
+//   Serial   bench commands (console.h)
 //
-// Next phases (WORK_NOTES.md §12): 4 security, 5 with the app + battery.
+// Next phases (WORK_NOTES.md §12): 5 with the app + battery.
 // No logic beyond wiring the modules together lives here.
 
 #include "config.h"
@@ -27,12 +30,17 @@
 #include "protocol.h"
 #include "secrets.h"
 
-static uint8_t  _shownMask   = 0;      // compartments lit right now
-static uint32_t _lastTick    = 0;
-static uint32_t _lastHeld    = 0;      // button hold time in the previous loop
-static uint32_t _lastSecond  = 0;      // for the "holding..." debug prints
-static bool     _stuckWarned = false;
-static bool     _clockWarned = false;
+static_assert(BLE_PASSKEY >= 100000 && BLE_PASSKEY <= 999999, "BLE_PASSKEY needs 6 digits");
+
+static uint8_t  _shownMask    = 0;      // dose compartments lit right now
+static uint32_t _lastTick     = 0;
+static uint32_t _lastHeld     = 0;      // button hold time in the previous loop
+static uint32_t _lastSecond   = 0;      // for the "holding..." debug prints
+static bool     _stuckWarned  = false;
+static bool     _clockWarned  = false;
+static bool     _holdEligible = false;  // this press began with nothing lit: it may open pairing
+static bool     _holdPairing  = false;  // this press opened pairing; its release does nothing else
+static bool     _overlayShown = false;  // the LEDs show the hold progress or the running light
 
 // LEDs and buzzer follow the due compartments; a newly due dose starts a fresh
 // burst of beeps.
@@ -61,6 +69,13 @@ static void tick() {
     showDoses(schedule_update(rtc_now_local()));
 }
 
+static void openPairing() {
+    ble_pairing_open(PAIRING_WINDOW_MS);
+    buzzer_tone(TONE_PAIRING_MS);
+    Serial.println("PAIRING MODE for 2 minutes: connect the phone and type the 6-digit code "
+                   "from the box label");
+}
+
 // A deliberate press: held BUTTON_CONFIRM_MS to BUTTON_CONFIRM_MAX_MS, then let go.
 static void onPress(uint32_t heldMs) {
     if (heldMs < BUTTON_CONFIRM_MS) {
@@ -74,25 +89,22 @@ static void onPress(uint32_t heldMs) {
     }
     if (!rtc_time_valid()) {
         Serial.println("Button: clock not set, nothing can be taken");
-        buzzer_beep_ms(BEEP_NOTHING_MS);
+        buzzer_tone(TONE_NOTHING_MS);
         return;
     }
 
-    bool early = false;
-    uint8_t taken = schedule_take(rtc_now_local(), early);
-    tick();                                   // LEDs off and buzzer quiet first
+    uint8_t taken = schedule_take(rtc_now_local());   // only lit doses, never early
+    tick();                                   // LEDs off and the alarm stops first
     if (taken) {
-        buzzer_chirp();                       // two short beeps: taken
-        delay(120);
-        buzzer_chirp();
+        buzzer_tone(TONE_TAKEN_MS);           // 1.5 s: taken
     } else {
-        Serial.println("Button: nothing due");
-        buzzer_beep_ms(BEEP_NOTHING_MS);      // one long beep
+        Serial.println("Button: nothing due (nothing is taken before its alarm)");
+        buzzer_tone(TONE_NOTHING_MS);         // 0.8 s: nothing due
     }
 }
 
-// Button state every loop: debug prints, the stuck warning, and a press is
-// handled when the button is let go.
+// Button state every loop: debug prints, the stuck warning, the 5-second hold
+// for pairing, and a press is handled when the button is let go.
 static void watchButton() {
     button_pressed();                         // keeps the debounced state current
     uint32_t held = button_down_ms();
@@ -109,21 +121,53 @@ static void watchButton() {
     }
 #endif
 
+    // A press that starts with a dose lit always takes the dose: it never opens
+    // pairing, however long it is held.
+    if (held > 0 && _lastHeld == 0) {
+        _holdEligible = (_shownMask == 0);
+        _holdPairing  = false;
+    }
+    if (held > 0 && _holdEligible && !_holdPairing && held < BUTTON_STUCK_MS) {
+        if (held >= PAIRING_HOLD_MS) {
+            _holdPairing = true;
+            openPairing();
+        } else if (held >= PAIRING_HOLD_SHOW_MS) {
+            int n = held * LED_COUNT / PAIRING_HOLD_MS;   // 1..5 while holding
+            leds_set((1 << n) - 1);                     // LEDs fill up 1→6
+            _overlayShown = true;
+        }
+    }
+
     if (held >= BUTTON_STUCK_MS && !_stuckWarned) {
         _stuckWarned = true;
         Serial.println("WARNING: button held 30 s: jammed or miswired? Ignored until released.");
     }
     if (held == 0 && _lastHeld > 0) {
         _stuckWarned = false;
-        onPress(_lastHeld);
+        if (!_holdPairing) onPress(_lastHeld);   // a 5 s hold only opened pairing
+        _holdPairing = false;
     }
     _lastHeld = held;
+}
+
+// Pairing mode shows a running light 1→6 (never mistaken for a dose, which
+// lights one steady LED). A due dose always has priority on the LEDs.
+static void showOverlay() {
+    bool holding = button_down_ms() >= PAIRING_HOLD_SHOW_MS && _holdEligible && !_holdPairing;
+    if (holding) return;                                      // watchButton draws the fill-up
+    if (ble_pairing_active() && _shownMask == 0) {
+        leds_set(1 << ((millis() / PAIRING_CHASE_MS) % LED_COUNT));
+        _overlayShown = true;
+    } else if (_overlayShown) {
+        _overlayShown = false;
+        leds_set(_shownMask);                                 // back to the dose LEDs
+    }
 }
 
 void setup() {
     Serial.begin(115200);
     delay(300);
-    Serial.println("\n=== HealthSync Box booting (fw " FIRMWARE_VERSION ", Phase 3: Bluetooth) ===");
+    Serial.println("\n=== HealthSync Box booting (fw " FIRMWARE_VERSION ", Phase 4: secure Bluetooth) ===");
 
     leds_init();
     buzzer_init();
@@ -131,7 +175,7 @@ void setup() {
 
     Serial.println("Self-test: LEDs 1-6 and buzzer");
     leds_self_test();
-    buzzer_chirp();
+    buzzer_beep_ms(TONE_POWER_ON_MS);         // 1 s: power on
 
     if (!rtc_begin()) Serial.println("WARNING: DS3231 clock not found (check SDA 21 / SCL 22)");
     else if (rtc_lost_power()) Serial.println("WARNING: the clock lost power: set the time again");
@@ -142,7 +186,7 @@ void setup() {
     // Bluetooth name: "HealthSync-" + the serial without "HS-" (HS-0001 → HealthSync-0001).
     String name = DEVICE_SERIAL;
     if (name.startsWith("HS-")) name = name.substring(3);
-    ble_begin(("HealthSync-" + name).c_str());
+    ble_begin(("HealthSync-" + name).c_str(), BLE_PASSKEY);
 
     tick();
     _lastTick = millis();
@@ -157,11 +201,17 @@ void loop() {
         if (protocol_handle(cmd)) tick();
     }
     ble_update();
+    if (ble_take_paired_event()) {
+        ble_pairing_close();
+        Serial.println("Phone paired: pairing mode closed");
+        buzzer_tone(TONE_PAIRED_MS);          // 3 s: paired
+    }
     watchButton();
 
     if (millis() - _lastTick >= 1000) {
         _lastTick = millis();
         tick();
     }
+    showOverlay();
     buzzer_update();
 }

@@ -111,7 +111,7 @@
 <!-- Paste your photo here -->
 ![Active Buzzer](photos/buzzer.jpg)
 
-> Beeps while a dose is due to alert the patient: 5 short beeps every minute. Active type (beeps on DC, no PWM needed). Controlled from GPIO 17. Driven through an NPN transistor since most buzzers draw 25–30mA, more than an ESP32 pin should supply directly. Silenced immediately when the button is pressed or when the app marks the dose as taken.
+> Sounds while a dose is due to alert the patient: one straight 5 s tone, repeated every 5 minutes until the dose is taken or missed (+60 min). Every other event has its own straight tone: phone paired 3 s, pairing mode 2 s, dose taken 1.5 s, power on 1 s, nothing due 0.8 s (Oct 25). Active type (beeps on DC, no PWM needed). Controlled from GPIO 17. Driven through an NPN transistor since most buzzers draw 25–30mA, more than an ESP32 pin should supply directly. Silenced immediately when the button is pressed or when the app marks the dose as taken.
 
 ---
 

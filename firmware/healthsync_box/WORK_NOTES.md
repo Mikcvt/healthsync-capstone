@@ -17,7 +17,7 @@
 
 ---
 
-## ★ Start here — status at the end of October 24, 2026
+## ★ Start here — status at the end of October 25, 2026
 
 **Design:** the box talks to the patient's phone over **Bluetooth,
 connect-on-demand** (`BLE_CONNECT_ON_DEMAND.md`). The box has no Wi-Fi and
@@ -28,9 +28,9 @@ never talks to the cloud; the phone relays to Firebase.
 | 0 Cleanup | ✅ Oct 22: Wi-Fi code removed from the firmware (kept in git history, commit 286c33b); Worker `/state` switched off (`index.ts` = `release`) |
 | 1 Offline alarm from a stored schedule | ✅ Passed on the bench Oct 23 (§13) |
 | 2 Dose log on the SD card | ✅ Passed Oct 24, including the no-card fallback (§14) |
-| 3 Bluetooth server | ✅ Passed Oct 24 with nRF Connect, firmware 0.3.0 (§15). One check not run: T5, re-sending the schedule while a dose is lit (§15.7) |
-| 4 Security | ⏭ Next session: plan for approval (open question C3: passkey bonding or an app secret) |
-| 5 With Miko's app + battery | Waits for Miko's app Bluetooth work (7.1.x) |
+| 3 Bluetooth server | ✅ Passed Oct 24 with nRF Connect, firmware 0.3.0 (§15). T5 (re-send while lit) checked by Christian on the bench, Oct 25 |
+| 4 Security | ✅ Passed Oct 25 (fw 0.4.0): passkey pairing (code on the label), hold 5 s → pairing mode, running light (§17). Then fw 0.4.1: one straight tone per event, alarm every 5 min, no early take (§17.9) |
+| 5 With Miko's app + battery | Next: box-only part (power saving, status signals, current measurement). The app part waits for Miko's Bluetooth work (7.1.x) |
 | 6 Final box | Waits for the print (HW-19) |
 | 7 Hardware papers | Later (HW-07, HW-21, HW-12, DEF-03) |
 
@@ -41,25 +41,25 @@ SD card MOSI 19 / MISO 23 are swapped vs the ESP32 default and work. DS3231 on
 fixed by turning it round.
 
 **For Miko:** `firmware/healthsync_box/BLE_PROTOCOL.md` is the draft protocol
-(UUIDs, messages, sync order, how a box event maps to the app's dose id),
-implemented in firmware 0.3.0. Christian tells Miko to pull this branch.
+(UUIDs, messages, sync order, how a box event maps to the app's dose id,
+section 5 security: passkey pairing), implemented in firmware 0.4.1. Christian tells Miko to pull this branch.
 
 **Next session, in order:**
-1. 2-minute check T5 (§15.7): send a schedule, and while its LED is lit send
-   the same three messages again; the LED must stay lit.
-2. Phase 4 (security) plan for approval.
-3. Open items: ask the print student to keep the ESP32's own USB port
-   reachable after assembly (§15.5); battery life is about 1 day without
-   power saving (Phase 5); tell Mona the two fixes for
-   `BLE_CONNECT_ON_DEMAND.md` (X6: button on GPIO 16, NC; C2: GPIO 13 is
-   LED 1, §12).
+1. Quick bench check of firmware 0.4.1 (§17.9): the new tones, no early take.
+2. Phase 5, box-only part (no need to wait for Miko): power saving (battery
+   life, now about one day), status signals without a laptop, measure the real
+   current. The app part of Phase 5 waits for Miko's Bluetooth work.
+3. Still to confirm on the bench (HARDWARE_ARCHITECTURE.md 4.7): buzzer 5 V or
+   3.3 V type; microSD module type and which pin feeds it.
+
+**Pairing code:** box HS-0001's 6-digit code is in `secrets.h` (`BLE_PASSKEY`, git-ignored) and goes on the label; it is not written in the repo.
 
 **On this PC:** Arduino IDE with ESP32 core 3.3.12, NimBLE-Arduino 2.5.1,
 ArduinoJson 7.4.3, RTClib; Worker packages installed (`npm ci`). Christian's
 phone has nRF Connect. The Firebase key is in `healthsync-api/.dev.vars`
 (git-ignored); the box does not use it.
 
-**Git:** today's work is pushed to `feature/medbox-integration` (end of Oct 24).
+**Git:** work up to Oct 25 is pushed to `feature/medbox-integration` (end of Oct 25).
 `main` and `release` are untouched. Before each session, check GitHub for
 teammates' pushes and show what changed before merging.
 
@@ -1394,7 +1394,7 @@ together). Clean up afterwards: `clear` in the Serial Monitor.
 | T1 hello | ✅ serial HS-0001, fw 0.3.0, clock_ok true (box time 2026-10-24 01:28) |
 | T3 schedule sync | ✅ `sched_begin`/`sched_item` (test-a, comp 3, 01:32)/`sched_commit` → `{"op":"ok","count":1}`, "Schedule replaced by the phone" |
 | T4 app_done | ✅ (second run, `test-c`, comp 1, 02:00): `Dose done in the app: compartment 1, 02:00 … alarm off`; `status` → `done in the app` |
-| T5 re-send while lit | ⏳ not run (app_done was sent right after the commit). 2-minute check at the start of the next session |
+| T5 re-send while lit | ✅ checked by Christian on the bench Oct 25 (no screenshot) |
 | T6 events | ✅ all 7 events from the SD card as `event` notifications, then `events_end` sent 7, last 7. **Answers C1:** Bluetooth + DS3231 + SD work together |
 | T7 ack | ✅ `ack 7` → `pending 0` |
 | T8 unknown op | ✅ `{"op":"error","msg":"unknown op"}` |
@@ -1407,3 +1407,298 @@ copy. Offered: a console `demo` command that prints the messages with the time
 filled in.
 
 **Phase 3: COMPLETE (Oct 24)**, declared by Christian; T5 to check next session. BLE_PROTOCOL.md goes to Miko through this branch (Christian tells him to pull).
+
+
+---
+
+## 16. Phases vs the tracker (Oct 25)
+
+Tracker read Oct 25 (Christian's tasks). It already carries the Oct 24 firmware
+results in its notes.
+
+| Phase | Status | Tracker tasks |
+|---|---|---|
+| 0 Cleanup | ✅ Oct 22 | — |
+| 1 Offline alarm from a stored schedule | ✅ Oct 23 | HW-09 (box side done; "shows as taken in the app" waits for Phase 5) |
+| 2 Dose log on the SD card | ✅ Oct 24 | HW-10 (box side done; the upload to Firebase waits for Phase 5, DEV-17/DEV-29) |
+| 3 Bluetooth server | ✅ Oct 24–25 | HW-08 (For Review: box side passed with nRF Connect; the real proof needs the app, DEV-28/DEV-29/PM-11) |
+| 4 Security | ⏭ next | open question C3 |
+| 5 With Miko's app + battery | waits for Miko | HW-09, HW-10 final proof; HW-15; power saving (C2); status signals without a laptop |
+| 6 Final box | waits for the print | HW-27 → HW-17 → HW-19 → HW-20 → HW-11 → HW-22 → HW-13; HW-16 |
+| 7 Hardware papers | later | HW-07, HW-21, HW-12, HW-26 (figures), DEF-03 |
+
+**Complete on the tracker:** HW-01, 02, 03, 04, 05, 06, 14, 18, 24, 25.
+**For Review:** HW-08, HW-23 (Siemonne confirms the spools), HW-26 (pins
+verified in §3 → can be Complete).
+**In Progress:** HW-09, HW-10, HW-15 (Complete once DEC-18 is logged), HW-16.
+**Not Started:** HW-07, 11, 12, 13, 17, 19, 20, 21, 22, 27.
+
+Suggested tracker edits (Christian, by hand): HW-08 note "T5 passed on the
+bench, Oct 25"; HW-26 → Complete.
+
+### 16.1 ESP32 USB access in the finished box (HW-27 point 2)
+
+- The ESP32's own micro-USB port is the **only way to upload new firmware**
+  and to read the Serial Monitor. The box has no Wi-Fi, so no over-the-air
+  updates (Bluetooth updates are possible but large and risky; not planned).
+- The side USB port of the design charges the battery through the 134N3P; it
+  has **no data path** to the ESP32, so it cannot be used for uploads.
+- Options for the print student: (a) mount the ESP32 at an outside wall with a
+  hole lined up with its micro-USB port (simplest); (b) a screwed or
+  clip-on panel over the electronics. Either way leave room for the cable plug.
+- Uploads normally need no button press. If this board ever needs BOOT held,
+  a small pinhole over BOOT (and EN) helps; otherwise open the panel.
+- Before plugging a PC cable into a battery-powered box, check that the board
+  takes power from both safely (DevKit boards usually have a diode on the USB
+  5 V line; to be checked on our board). If the box gets an on/off switch,
+  switch the battery off while uploading.
+
+### 16.2 When does the project go into Firebase?
+
+- **The box never goes into Firebase.** Its firmware runs only on the ESP32,
+  and the box has no internet and holds no key.
+- What reaches Firebase is the box's **data**, through the patient's phone:
+  Miko's app collects the dose events over Bluetooth (`events`) and writes them
+  as `dose_logs` under the app's own dose id with `confirmed_via: "button"`,
+  then sends `ack`. That is **Phase 5**, built by Miko against
+  `BLE_PROTOCOL.md`, and tested together on the bench.
+- Already in Firebase and used by the box design: the `devices` document
+  (pairing by serial in the app) and `schedules.mat_box_column` (which
+  compartment). Nothing to deploy from the box side; the Worker `/state` route
+  stays switched off.
+- The Firebase key in `healthsync-api/.dev.vars` is not needed by the box.
+
+### 16.3 Oct 25 updates
+
+- **ESP32 USB access: solved.** Christian: the box design has an open area
+  over the ESP32, so its USB port stays reachable for uploads (HW-27 point 2).
+- **Firebase (Christian's question):** Firebase *is* used. The box is not
+  connected to it directly; the patient's phone carries the data both ways
+  (schedule Firebase → app → box; doses box → app → Firebase). See 16.2.
+- **`HARDWARE_ARCHITECTURE.md` updated:** the Step 3 pin map was already
+  correct and is now marked re-checked against firmware 0.3.0. Also: parts list
+  (18650, holder, 134N3P, Bluetooth ESP32, button rule), built-in LED = Bluetooth
+  light, 4.2 debounce 80 ms and press-and-release, **4.6 Power rewritten for
+  the 18650**, **new 4.7 "Voltage of each part"**, **Step 5 power budget without
+  Wi-Fi** (about 50–75 mA typical, roughly one day per charge, estimates).
+- **To confirm on the bench (marked "Check" in 4.7):** is the buzzer a 5 V or a
+  3.3 V type, and is the microSD module the blue 5 V one (with a regulator) or a
+  3.3 V breakout, and which pin feeds it?
+
+
+---
+
+## 17. Phase 4 plan: security (Oct 25, waiting for approval)
+
+**Goal:** only the patient's paired phone can control the box (open question
+C3, task 7.2.4). Today (Phase 3) any phone in range can connect and send
+commands. The box itself still needs no key and no internet.
+
+### 17.1 The two options
+
+| | A. Bluetooth pairing with a passkey (recommended) | B. A secret word inside every message |
+|---|---|---|
+| How | Standard Bluetooth "Secure Connections" pairing. First time only, Android shows its normal "Bluetooth pairing request" box and the user types the box's **6-digit passkey** (printed on the label). After that the phone reconnects with no code, and every message is **encrypted** | The app adds a secret to every command; the box checks it |
+| Strength | Encrypted link (AES); a nearby phone cannot read or send anything | The secret travels **unencrypted** over Bluetooth, so anyone listening could copy it, unless extra crypto is added |
+| Work for Miko's app | Small: Android shows the pairing box by itself the first time the app writes to the box (or the app calls `createBond()`) | More: store the secret, add it to every message |
+| What a panelist hears | "BLE Secure Connections with a passkey, the industry standard" | "A password in the message" |
+
+### 17.2 Proposed behaviour (option A)
+
+1. **Pairing mode:** with no LED lit, hold the button **5 s** (LEDs fill up 1→6)
+   → pairing mode for **2 minutes**: LEDs 1 and 6 blink, one beep. Only then can
+   a new phone pair.
+2. The phone connects; Android asks for the PIN; type the box's passkey → the
+   phone is **paired** (two beeps). Pairing mode closes.
+3. Afterwards that phone reconnects at any time, without a PIN, encrypted.
+4. **Any phone that is not paired** is disconnected at once (Serial: "not
+   paired, rejected"), unless pairing mode is open and it knows the passkey.
+   A wrong PIN fails and the box disconnects it.
+5. The box remembers up to 3 paired phones (library default). Bench command
+   `unpair` forgets them all (e.g. a new phone); `bonds` shows how many.
+6. The command and reply characteristics require an encrypted, authenticated
+   link; without pairing they cannot be used at all.
+
+### 17.3 Files
+
+| File | Change |
+|---|---|
+| `ble.cpp/h` | Security on (bonding, passkey, Secure Connections), encrypted characteristics, pairing window, reject unpaired phones, pairing result |
+| `healthsync_box.ino` | 5 s hold (nothing lit) → pairing mode; LEDs 1 + 6 blink; beeps |
+| `console.cpp/h` | `pair` (open pairing mode from the bench), `unpair`, `bonds` |
+| `config.h` | `PAIRING_HOLD_MS 5000`, `PAIRING_WINDOW_MS 120000` |
+| `secrets.h` / `config.example.h` | `BLE_PASSKEY` (6 digits per box; placeholder in the example) |
+| `BLE_PROTOCOL.md` | New "Security" section for Miko |
+
+Not touched: the app, the Worker, Firebase.
+
+### 17.4 Phase 4 pass check (nRF Connect)
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Connect without pairing mode | Box disconnects: "not paired, rejected" |
+| 2 | Hold the button 5 s | LEDs 1 + 6 blink, one beep: pairing mode |
+| 3 | Connect, write `{"op":"hello"}` | Android asks for a PIN; type the passkey → paired, two beeps, hello reply |
+| 4 | Disconnect and reconnect (pairing mode closed) | Works with no PIN |
+| 5 | Pair with a wrong PIN (after `unpair` + forgetting the box on the phone) | Pairing fails, box disconnects |
+| 6 | `unpair` on the bench, then connect | Rejected until paired again (also tap "Forget" for HealthSync-0001 in Android's Bluetooth settings) |
+| 7 | Alarm, button and log during all this | Unchanged |
+
+### 17.5 Decisions (Oct 25)
+
+- **Option A approved** (Bluetooth pairing, encrypted).
+- **Pairing mode = press the button 5 times** (Christian), not a 5 s hold.
+  Proposed rule so it never clashes with taking a dose: with a dose lit, the
+  first press takes it at once and the rest of that burst is ignored; with
+  nothing lit, quick taps are counted (a short tick each) and 5 taps less than
+  about 1 s apart open pairing mode for 2 minutes, while 1–4 taps count as one
+  normal press (early dose or "nothing due"). Side effect: with nothing lit, a
+  single press answers about 1 s later. **Waiting for confirmation.**
+- **How the user gets the 6-digit code (Christian's question):** the box has no
+  screen. Proposed: the code is flashed into `secrets.h` and printed on a label
+  under the box and on a card that comes with it; the care partner pairs once
+  at setup. Alternative offered: no code ("Just Works"), pairing allowed only
+  during the 2-minute window opened by the 5 presses (still encrypted; weaker
+  against someone nearby at that moment). **Waiting for the choice.**
+
+**Update Oct 25 (later):**
+- **Code: on a label** (decided). The 6-digit passkey is flashed into
+  `secrets.h` and printed on a label under the box and on a card; the care
+  partner types it once at setup.
+- **Hold vs. 5 presses:** Christian asked which avoids confusion. Recommended
+  **hold 5 s**: an anxious patient taps repeatedly far more often than holding
+  for 5 s; single presses stay instant (5 presses would delay every lone press
+  by about 1 s); the LEDs filling up 1→6 show progress. Rule: with a dose lit, a
+  press (up to 10 s) always takes the dose and never opens pairing; with
+  nothing lit, 0.3–5 s = normal press, 5 s or more = pairing mode.
+- **Pairing-mode signal:** a running light (LEDs 1→6 chasing) instead of LEDs 1
+  and 6 blinking, so it cannot look like "take compartments 1 and 6".
+- Waiting for Christian's final choice (hold or presses).
+
+
+### 17.6 Phase 4 written (Oct 25), bench test pending
+
+Decided: **option A**, the **code on a label**, **hold 5 s** (Christian chose it
+over 5 presses after the comparison in 17.5), **running light 1→6** for
+pairing mode. Firmware **0.4.0**, compiles with no errors or warnings (55%
+flash).
+
+- **The code:** a random 6-digit `BLE_PASSKEY` for HS-0001 is in `secrets.h`
+  (git-ignored). Not written in these notes or the repo, by decision; print it
+  on the label under the box and on the card. `config.example.h` has a
+  placeholder.
+- `ble.cpp/h`: LE Secure Connections + MITM + bonding, identity keys exchanged
+  (Android changes its address every few minutes), characteristics need an
+  encrypted, authenticated link, the box asks for encryption on every connect.
+  **Pairing gate:** the library asks the firmware for the code; inside pairing
+  mode it gets the label code, outside it a random one, so a new phone can never
+  pair outside the window. A failed or missing pairing disconnects the phone; a
+  phone that has not paired within 30 s is dropped.
+- `healthsync_box.ino`: with nothing lit, holding 1–5 s fills the LEDs 1→6; at
+  5 s pairing mode opens (one beep, running light, 2 min). A press that starts
+  with a dose lit always takes the dose. Phone paired → two beeps, mode closes.
+- `console.cpp`: `pair`, `bonds`, `unpair`.
+- `BLE_PROTOCOL.md` §5 "Security" for Miko.
+
+### 17.7 Phase 4 bench test with nRF Connect, step by step (Christian)
+
+Setup: upload `healthsync_box.ino`, Serial Monitor 115200 / Newline, press
+**EN**. Expect `fw 0.4.0, Phase 4: secure Bluetooth` and `advertising as
+"HealthSync-0001", 0 paired phone(s)`. The 6-digit code is in `secrets.h`
+(`BLE_PASSKEY`).
+
+| # | Do | Expect |
+|---|---|---|
+| T1 | Without pairing mode: nRF Connect → SCAN → CONNECT. Android shows a pairing request: type the real code (or cancel) | Fails: Serial `phone not paired: rejected (pairing mode is closed)`, disconnected. Even the right code fails outside pairing mode |
+| T2 | With nothing lit, hold the button 5 s | LEDs fill up 1→6, one beep, then a running light; Serial `PAIRING MODE for 2 minutes` |
+| T3 | CONNECT; in Android's pairing request type the code from `secrets.h` | Serial `NEW PHONE PAIRED`, two beeps, running light stops. Then Request MTU 247, notifications on, write `{"op":"hello"}` → reply |
+| T4 | DISCONNECT, then CONNECT again | No code asked; Serial `paired phone, encrypted link`; `hello` works |
+| T5 | `unpair` in the Serial Monitor; on the phone: Settings → Bluetooth → HealthSync-0001 → Forget. Hold 5 s, connect, type a wrong code (e.g. 111111) | `pairing failed (wrong code?)`, disconnected |
+| T6 | `add 3 HH:MM` (now + 1 min); when LED 3 lights, hold the button 6 s | The dose is TAKEN (two beeps); pairing mode does **not** open |
+| T7 | Short press with nothing lit | `nothing due` (long beep), no pairing |
+| T8 | Open pairing mode and wait 2 minutes without connecting | Serial `Pairing mode closed`, running light stops |
+| T9 | Finally pair the phone again (T2 + T3) for the next tests | `bonds` → 1 |
+
+If Android shows the pairing request as a notification instead of a dialog,
+tap the notification. If nRF Connect shows old characteristics, use ⋮ →
+Refresh services after connecting.
+
+**Phase 4 bench results (Oct 25):**
+
+| Test | Result |
+|---|---|
+| T2 hold 5 s | ✅ `PAIRING MODE for 2 minutes` |
+| T3 pair with the code | ✅ `NEW PHONE PAIRED (passkey accepted)`, `Phone paired: pairing mode closed` |
+| T4 reconnect | ✅ `paired phone, encrypted link`, no code; `hello` → fw 0.4.0 |
+| T6 hold 6 s with a dose lit | ✅ `Dose TAKEN: compartment 1, 01:47 … on time`, `logged #10`; no pairing |
+| T8 timeout | ✅ `Pairing mode closed` |
+| T1, T5, T7 | not in the screenshots |
+
+Notes: `secrets.h` on disk has `BLE_PASSKEY` (line 10); Christian's editor tab
+showed an older copy (close and reopen it; do not save the old tab). The 60 s
+disconnect in nRF Connect is the idle drop (`BLE_IDLE_DISCONNECT_MS`), on
+purpose for connect-on-demand; can be raised to 3 min for testing.
+
+### 17.8 Change requests after Phase 4 (Oct 25), plan waiting for approval
+
+Christian asked for: (1) no early take (a press before the alarm might be an
+accident); (2) missed after 30 min, or an alarm every 5 min, or a better
+suggestion; (3) a different, long (not short) beep for every buzzer event.
+
+Proposed:
+1. **No early take.** A press with nothing lit → "nothing due" beep only,
+   nothing recorded. `EARLY_WINDOW_MIN` and the `early` timing go.
+2. **Keep missed at 60 min** (same as the app, the Worker and the care partner
+   alerts: late at 30, missed at 60; the paper says 60). **Alarm every 5 min**
+   instead of every minute, until taken or missed (12 alarms); the LED stays on.
+   Missed at 30 is possible but the box and the app would disagree between 30
+   and 60 min.
+3. **Beep patterns** (nothing shorter than 0.5 s): power on 1 × 1 s; dose alarm
+   3 × 0.8 s every 5 min; taken 2 × 0.6 s; nothing due 1 × 2 s; pairing mode
+   opened 4 × 0.5 s; phone paired 1 s + 0.5 s + 1 s. Missed stays silent.
+
+
+**Phase 4: COMPLETE (Oct 25).** Christian ran every test (T1–T9), including
+T1 (rejected outside pairing mode), T5 (wrong code) and T7 (short press).
+The 60 s idle disconnect stays: nRF Connect is only a test tool; the
+presentation uses the real app.
+
+### 17.9 Changes after Phase 4, done (Oct 25, firmware 0.4.1)
+
+Decided by Christian: missed stays at **60 min**; every buzzer event is **one
+straight (continuous) tone**, lengths chosen by Claude; whether to keep the
+early take left to Claude.
+
+- **Early take removed.** A press only takes a dose that is lit; with nothing
+  lit it takes nothing and plays the "nothing due" tone (a press before the
+  alarm may be an accident). Early logging stays an app-only action.
+- **Tones** (`config.h`, `TONE_*`), each a different length, none short:
+
+| Event | Tone |
+|---|---|
+| Dose alarm | 5 s, repeated every 5 min until taken or missed (+60 min) |
+| Phone paired | 3 s |
+| Pairing mode opened | 2 s |
+| Dose taken (button) | 1.5 s |
+| Power on | 1 s |
+| Nothing due / clock not set | 0.8 s |
+
+  A missed dose stays silent (LED off; the phone reports it later).
+- The tones no longer freeze the box: `buzzer_tone(ms)` plays in the
+  background (over the alarm); only the power-on tone blocks.
+- Files: `config.h`, `buzzer.cpp/h` (rewritten), `schedule.cpp/h`
+  (`schedule_take(nowLocal)`, no early branch), `healthsync_box.ino`,
+  `storage.h` (comment), `BLE_PROTOCOL.md` (timing `on_time`/`late` only, alarm
+  rule, signals), `HARDWARE_ASSESSMENT.md` 1.6, `HARDWARE_ARCHITECTURE.md` open
+  decision 4. Compiles with no errors or warnings, 55% flash.
+
+**Quick bench check for 0.4.1:**
+1. Upload, press EN → a 1 s tone at power on.
+2. `add 2 HH:MM` (now + 1 min) → LED 2 + a 5 s tone; 5 min later the 5 s tone
+   again.
+3. Press and let go → TAKEN, 1.5 s tone.
+4. `add 4 HH:MM` (now + 10 min) and press right away → `nothing due`, 0.8 s
+   tone; `status` still shows it `upcoming`; `log` has no new line.
+5. Hold 5 s with nothing lit → 2 s tone + running light. To hear the 3 s
+   "paired" tone: `unpair`, forget the box on the phone, then pair again.
+6. A dose left for 60 min (or a clock jump) → LED off, no sound.

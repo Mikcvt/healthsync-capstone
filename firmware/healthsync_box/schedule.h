@@ -32,11 +32,10 @@ void                 schedule_clear();                 // entries and the taken/
 // is also written to the dose log (storage.h).
 uint8_t schedule_update(uint32_t nowLocal);
 
-// The button. Marks every due dose taken and returns their compartments. If
-// none is due, takes the NEAREST dose time within EARLY_WINDOW_MIN instead
-// (all compartments at that same time) and sets `early`. Returns 0 if there
-// was nothing to take.
-uint8_t schedule_take(uint32_t nowLocal, bool &early);
+// The button. Marks every due (lit) dose taken and returns their compartments,
+// or 0 if none is due. Doses that are not lit yet are never taken early: a
+// press before the alarm may be an accident (Oct 25).
+uint8_t schedule_take(uint32_t nowLocal);
 
 // ── Phone sync (Phase 3) ─────────────────────────────────────────────────────
 // The phone replaces the whole schedule in one step: begin, one item per dose

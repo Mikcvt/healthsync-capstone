@@ -1,9 +1,10 @@
 # HealthSync box ↔ phone: Bluetooth protocol (DRAFT)
 
 > **Status:** draft by the box side (Christian), Oct 24, 2026, implemented in
-> firmware 0.3.0 (Phase 3). **For Miko to confirm or change** (DEV-27, open
-> questions M1–M4 and C1, C4 in `BLE_CONNECT_ON_DEMAND.md`). Nothing here is
-> final until both sides agree. **No security yet** (Phase 4, question C3).
+> firmware 0.3.0 (Phase 3); security added in firmware 0.4.0 (Phase 4, Oct 25).
+> **For Miko to confirm or change** (DEV-27, open questions M1–M4 and C1, C3,
+> C4 in `BLE_CONNECT_ON_DEMAND.md`). Nothing here is final until both sides
+> agree. Security: section 5.
 
 ## 1. Connection
 
@@ -16,6 +17,7 @@
 | **reply** characteristic | `c7b37ff8-2e2b-4156-8130-34df10d433e5` · box → phone · notify |
 | Packet size | The phone must request **MTU 247** after connecting. Every reply fits in one notification at MTU 247; at the default 23 the box cannot reply |
 | Idle | The box disconnects a phone that sends nothing for **60 s**, then advertises again |
+| Security | **Pairing required** (section 5): LE Secure Connections, passkey, bonding. Both characteristics need an encrypted, authenticated link |
 
 Every message is **one JSON object** with an `"op"` field, UTF-8, one per
 write or notification. The box answers every command with exactly one reply,
@@ -48,7 +50,7 @@ except `events` (several `event` replies, then `events_end`).
 | `comp` | Compartment 1–6 |
 | `date`, `time` | The dose's Manila date and time. **`{sid}_{date}_{time}` = the app's dose_log id** (`DoseLogModel.idFor`), so writing the event under that id can never create a duplicate |
 | `at` | When it was pressed, or marked missed (UTC, ISO 8601) |
-| `timing` | `on_time` (0–29 min), `late` (30–59 min), `early` (up to 30 min before, nearest dose time only); empty for missed |
+| `timing` | `on_time` (0–29 min) or `late` (30–59 min); empty for missed. The box never takes a dose early (since firmware 0.4.1, Oct 25): early logging stays an app-only action |
 | `sid` | Empty for dose times added from the bench console |
 
 Suggested mapping to Firestore (Miko to decide, M3): `taken` → `status:
@@ -75,9 +77,10 @@ disconnect
 - **Times:** the box keeps UTC on its DS3231 clock and compares dose times in
   Manila time (UTC+8), like the Worker.
 - **Alarm:** from the dose time until +60 min the compartment LED is on and
-  the buzzer gives 5 beeps a minute. A button press (held 0.3–10 s, then let
-  go) takes every lit dose. With nothing lit, a press takes the nearest dose
-  time within the next 30 min early. After +60 min the dose is `missed`.
+  the buzzer plays a 5 s tone, repeated every 5 min. A button press (held
+  0.3–10 s, then let go) takes every lit dose. A press with nothing lit takes
+  nothing (a press before the alarm may be an accident). After +60 min the
+  dose is `missed`.
 - **Re-sending the same schedule** keeps doses that are due right now lit
   (unchanged dose times keep their "added" time). A dose time added after its
   time today starts tomorrow.
@@ -86,10 +89,32 @@ disconnect
 - **No phone, no problem:** the box alarms and logs on its own (SD card, or
   flash without a card) and hands the events over at the next sync.
 
-## 5. Not decided yet
+## 5. Security (firmware 0.4.0, Oct 25)
 
-- Security (C3): passkey bonding or an app-level secret. Until then any phone
-  in range can connect.
+Answers C3 (decided by Christian, Oct 25: Bluetooth pairing with a passkey).
+
+| Item | Value |
+|---|---|
+| Method | LE Secure Connections, MITM protection, bonding. The box is "display only": its 6-digit passkey is printed on a label under the box and on its card; the user types it on the phone |
+| When a new phone can pair | Only during **pairing mode**: on the box, with no LED lit, hold the button **5 s** (LEDs fill up 1→6), then a **running light 1→6** shows for **2 minutes**. Outside pairing mode the box offers a random code, so pairing always fails |
+| After pairing | The phone reconnects at any time with **no code**, over an encrypted link. The box remembers up to 3 phones (the oldest is replaced) |
+| On every connect | The box asks for encryption at once. A paired phone re-encrypts silently; a phone that is not paired gets the Android pairing request |
+| Rejected | A phone that is not paired, or types a wrong code, is disconnected; one that does not pair within 30 s is dropped |
+| Box signals | Pairing mode opened: 2 s tone + running light. Phone paired: 3 s tone, pairing mode closes |
+
+**What the app does (Miko):**
+- Ask for the Bluetooth permissions only when the user chooses to pair a box
+  (M5).
+- On first use, Android shows its own "Bluetooth pairing request" dialog when
+  the box asks for encryption (or call `createBond()` first). The care
+  partner types the 6-digit code from the label. The app never stores or
+  sends the code.
+- After that, just connect: no dialog. If the box was reset or forgot the
+  phone, Android reports a bonding failure: show "Pair the box again (hold
+  its button 5 s)".
+- The messages in section 2 are unchanged.
+
+## 6. Not decided yet
 - When the app connects (M2) and which schedule wins offline (M4): the box
   simply takes whatever the last `sched_commit` sent.
 - Power saving (C2) may lengthen the advertising interval; the app should allow

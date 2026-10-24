@@ -1,18 +1,21 @@
-// buzzer.h
+// buzzer.h — one straight (continuous) tone per event, each a different length
+// (config.h, TONE_*). Nothing blocks except buzzer_beep_ms().
 #pragma once
 #include <stdint.h>
 
 void buzzer_init();
 
-// Alarm pattern: BEEP_COUNT short beeps now, then again every BEEP_REPEAT_MS.
-// Non-blocking — buzzer_update() must run every loop().
-void buzzer_start();     // (re)starts the pattern with a burst right now
-void buzzer_stop();      // silence at once
+// The dose alarm: a TONE_ALARM_MS tone now, then again every ALARM_REPEAT_MS.
+void buzzer_start();     // (re)starts the alarm with a tone right now
+void buzzer_stop();      // stops the alarm (a confirmation tone keeps playing)
 bool buzzer_running();
+
+// One tone of `ms` milliseconds (taken, nothing due, pairing...). It plays
+// over the alarm and does not stop the box from working meanwhile.
+void buzzer_tone(uint32_t ms);
+
+// Call every loop(): plays the alarm and the tones.
 void buzzer_update();
 
-// One short beep, blocking (self-test, confirmations).
-void buzzer_chirp();
-
-// One beep of `ms` milliseconds, blocking ("nothing due").
+// One tone of `ms` milliseconds, blocking. For the boot self-test only.
 void buzzer_beep_ms(uint32_t ms);
