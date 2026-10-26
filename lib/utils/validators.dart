@@ -112,13 +112,6 @@ class Validators {
     return null;
   }
 
-  /// Box compartments are physical: there are exactly eight.
-  static String? boxColumn(int? value) {
-    if (value == null) return 'Choose a compartment';
-    if (value < 1 || value > 8) return 'Choose a compartment from 1 to 8';
-    return null;
-  }
-
   /// Device serials are printed on the box lid and typed by hand.
   static String? deviceSerial(String? value) {
     final text = (value ?? '').trim().toUpperCase();

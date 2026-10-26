@@ -6,9 +6,9 @@ class ScheduleModel {
   final String patientRef;
   final String scheduledTime; // e.g. "08:00 AM" or "08:00"
   final List<int> daysOfWeek; // 1 = Monday, 7 = Sunday
-  /// The box compartment, 1–8, or null when the medicine is not in the box:
-  /// the patient has no box yet, or it is a liquid, inhaler or a ninth
-  /// medicine. Null must never be shown as a compartment.
+  /// The box compartment, 1–[boxCompartments], or null when the medicine is
+  /// not in the box: the patient has no box yet, or it is a liquid, inhaler
+  /// or a seventh medicine. Null must never be shown as a compartment.
   final int? matBoxColumn;
   final String caregiverDoctor;
   final DateTime startDate;
@@ -46,11 +46,18 @@ class ScheduleModel {
 
   bool get isInBox => matBoxColumn != null;
 
-  /// Anything outside 1–8 is treated as "not in the box" rather than trusted:
-  /// a stray 0 or 9 would otherwise light a compartment that does not exist.
+  /// Compartments in the box: 6 LEDs, and the firmware refuses compartments
+  /// 7 and 8 over Bluetooth (firmware/healthsync_box/BLE_PROTOCOL.md).
+  /// Earlier builds offered 8. Every screen takes the count from here.
+  static const boxCompartments = 6;
+
+  /// Anything outside 1–[boxCompartments] is treated as "not in the box"
+  /// rather than trusted: a stray 0, or a 7 or 8 from a build that offered
+  /// eight, would otherwise name a compartment that never lights. Such a
+  /// medicine shows as unplaced, so the care partner can put it in a real one.
   static int? parseColumn(Object? raw) {
     final value = (raw as num?)?.toInt();
-    if (value == null || value < 1 || value > 8) return null;
+    if (value == null || value < 1 || value > boxCompartments) return null;
     return value;
   }
 

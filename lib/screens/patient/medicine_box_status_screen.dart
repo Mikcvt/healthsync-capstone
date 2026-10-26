@@ -72,29 +72,30 @@ class MedicineBoxStatusScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      compartments.every((c) => !c.isAssigned)
-                          ? 'Your care partner has not placed any medicine in the '
-                              'box yet.'
-                          : 'An amber light means that compartment is lit on '
-                              'the box right now.',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                        height: 1.5,
-                        fontFamily: AppStyles.fontFamily,
-                      ),
-                    ),
+                    if (compartments.every((c) => !c.isAssigned))
+                      const Text(
+                        'Your care partner has not placed any medicine in the '
+                        'box yet.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                          height: 1.5,
+                          fontFamily: AppStyles.fontFamily,
+                        ),
+                      )
+                    else
+                      const _Legend(),
                     const SizedBox(height: 14),
                     GridView.count(
-                      crossAxisCount: 4,
+                      // Six compartments: two rows of three.
+                      crossAxisCount: 3,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 10,
                       // Tall enough for icon, column, a two-line name and the
-                      // pill count on a 360dp-wide phone; 0.82 overflowed.
-                      childAspectRatio: 0.66,
+                      // pill count on a 360dp-wide phone at 1.3x text.
+                      childAspectRatio: 0.8,
                       children: [
                         for (final compartment in compartments)
                           _CompartmentTile(
@@ -333,8 +334,9 @@ class _StatRow extends StatelessWidget {
   }
 }
 
-/// One of the eight compartments. Colour follows the LED column palette in
-/// `AppColors`: amber when lit, green when stocked and idle, grey when unused.
+/// One compartment. Amber when lit (the colour of the LED on the box), blue
+/// when in use, grey when empty; low stock is a red "Low" on the count. Keep
+/// [_Legend] in step with any change here.
 class _CompartmentTile extends StatelessWidget {
   final BoxCompartment compartment;
   final String medicineName;
@@ -355,15 +357,15 @@ class _CompartmentTile extends StatelessWidget {
     } else if (compartment.ledActive) {
       background = AppColors.ledActiveBg;
       accent = AppColors.ledActive;
-    } else if (compartment.isLowStock) {
-      background = AppColors.pendingAmberBg;
-      accent = AppColors.pendingAmber;
     } else {
       // A filled compartment, not lit: patient blue. Lit stays amber, the
-      // colour of the real LED on the box.
+      // colour of the real LED on the box. Low stock used to be a second,
+      // near-identical amber that the legend never explained (BUG-024); it
+      // is now a red "Low" on the pill count instead.
       background = AppColors.blueLight;
       accent = AppColors.patientBlue;
     }
+    final lowStock = compartment.isAssigned && compartment.isLowStock;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
@@ -413,19 +415,96 @@ class _CompartmentTile extends StatelessWidget {
           if (compartment.isAssigned) ...[
             const SizedBox(height: 3),
             Text(
-              '${compartment.pillsRemaining} left',
+              lowStock
+                  ? '${compartment.pillsRemaining} left · Low'
+                  : '${compartment.pillsRemaining} left',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textMuted,
+                color: lowStock ? AppColors.missedRed : AppColors.textMuted,
                 fontFamily: AppStyles.fontFamily,
               ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// What the tile colours mean (BUG-024). The old single line explained only
+/// amber, so a lit tile next to a blue one looked like a colour change.
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Wrap(
+      spacing: 14,
+      runSpacing: 6,
+      children: [
+        _LegendItem(
+          color: AppColors.ledActive,
+          background: AppColors.ledActiveBg,
+          label: 'Lit on the box now',
+        ),
+        _LegendItem(
+          color: AppColors.patientBlue,
+          background: AppColors.blueLight,
+          label: 'In use',
+        ),
+        _LegendItem(
+          color: AppColors.textMuted,
+          background: AppColors.ledEmpty,
+          label: 'Empty',
+        ),
+        _LegendItem(
+          color: AppColors.missedRed,
+          background: AppColors.missedRedBg,
+          label: '"Low": refill soon',
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final Color background;
+  final String label;
+
+  const _LegendItem({
+    required this.color,
+    required this.background,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: color.withValues(alpha: 0.6)),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontFamily: AppStyles.fontFamily,
+          ),
+        ),
+      ],
     );
   }
 }

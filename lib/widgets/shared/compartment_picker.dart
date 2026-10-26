@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/schedule_model.dart';
 
-/// Chooses where a medicine lives: one of the box's eight compartments, or
+/// Chooses where a medicine lives: one of the box's compartments, or
 /// "Not in the box".
 ///
 /// A compartment in [occupied] already holds another medicine and cannot be
@@ -31,12 +32,12 @@ class CompartmentPicker extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
+            crossAxisCount: 3,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: 0.95,
+            childAspectRatio: 1.15,
           ),
-          itemCount: 8,
+          itemCount: ScheduleModel.boxCompartments,
           itemBuilder: (context, index) {
             final column = index + 1;
             return _CompartmentTile(

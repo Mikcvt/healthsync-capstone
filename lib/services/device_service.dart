@@ -114,11 +114,11 @@ class DeviceService {
     await batch.commit();
   }
 
-  /// The physical box has exactly eight compartments, so the grid is always
-  /// eight entries — an unassigned column is shown as empty rather than
-  /// omitted, because the patient is looking at real hardware.
+  /// One entry per compartment of the physical box
+  /// ([ScheduleModel.boxCompartments]): an unassigned one is shown as empty
+  /// rather than omitted, because the patient is looking at real hardware.
   List<BoxCompartment> buildCompartmentGrid(List<ScheduleModel> schedules) {
-    return List<BoxCompartment>.generate(8, (index) {
+    return List<BoxCompartment>.generate(ScheduleModel.boxCompartments, (index) {
       final column = index + 1;
       final schedule =
           schedules.where((s) => s.matBoxColumn == column).firstOrNull;
@@ -130,7 +130,7 @@ class DeviceService {
   }
 }
 
-/// One compartment of the 8-column box, assigned or not.
+/// One compartment of the box, assigned or not.
 class BoxCompartment {
   final int columnNumber;
   final ScheduleModel? schedule;

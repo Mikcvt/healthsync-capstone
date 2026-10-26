@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../models/patient_medication_model.dart';
+import '../../models/schedule_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/schedule_provider.dart';
 import '../../services/device_service.dart';
@@ -25,7 +26,7 @@ class _BoxContext {
   static const unknown = _BoxContext(hasBox: false, occupied: {});
 
   int? get firstFree {
-    for (var column = 1; column <= 8; column++) {
+    for (var column = 1; column <= ScheduleModel.boxCompartments; column++) {
       if (!occupied.containsKey(column)) return column;
     }
     return null;

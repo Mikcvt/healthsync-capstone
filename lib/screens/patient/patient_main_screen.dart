@@ -167,7 +167,7 @@ class _PatientMainScreenState extends State<PatientMainScreen> {
             label: 'Schedule',
           ),
           const NavDestination(
-            // Eight compartments in a grid, like the box itself.
+            // Compartments in a grid, like the box itself.
             icon: CupertinoIcons.square_grid_2x2,
             activeIcon: CupertinoIcons.square_grid_2x2_fill,
             label: 'Box',

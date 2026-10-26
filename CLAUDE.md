@@ -19,7 +19,7 @@
 
 HealthSync helps patients take their medications on time using two components:
 
-1. **Smart medicine box (hardware)** — ESP32 microcontroller with 8 LED indicators. Each LED corresponds to one medicine compartment (column 1–8). At the scheduled dose time, the correct LED lights up to guide the patient. A push button on the box lets the patient confirm intake. DS3231 RTC handles offline scheduling. MicroSD card logs doses locally when offline and syncs to Firebase on reconnect.
+1. **Smart medicine box (hardware)** — ESP32 microcontroller with 6 LED indicators. Each LED corresponds to one medicine compartment (1–6). At the scheduled dose time, the correct LED lights up to guide the patient. A push button on the box lets the patient confirm intake. DS3231 RTC handles offline scheduling. MicroSD card logs doses locally when offline and syncs to Firebase on reconnect.
    **Box ↔ app link (Oct 22, 2026):** BLE between the box and the patient's phone, connect-on-demand. No Wi-Fi, no hotspot, no direct box-to-cloud link; box logs reach Firebase through the phone. Design pending confirmation by Miko and Christian: [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).
 
 2. **Flutter mobile app (software)** — Android app for patients and caregivers. Handles medication scheduling, dose reminders via FCM push notifications, adherence tracking, caregiver monitoring, and real-time sync with the medicine box via Firebase.
@@ -281,9 +281,10 @@ pat_med_ref     string (→ patient_medications)
 patient_ref     string (→ users)
 scheduled_time  string ("08:00 PM")
 days_of_week    array  (["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])
-mat_box_column  number (1–8) or null
+mat_box_column  number (1–6) or null  (ScheduleModel.boxCompartments; a stored 7 or 8
+                from an older build reads as "not in the box")
                 null = not in the box: no box paired yet, or a liquid,
-                inhaler or ninth medicine. Every dose time of one medicine
+                inhaler or seventh medicine. Every dose time of one medicine
                 shares one compartment. Never display null as a compartment.
 start_date      date
 end_date        date
@@ -520,7 +521,7 @@ compartment or an LED. An unpaired box keeps its compartment numbers.
 
 Add medicine, step 3 ("Storage & stock"):
   no box  → no grid; banner says reminders are phone-only
-  box     → grid of 8, taken compartments locked, plus "Not in the box";
+  box     → grid of 6, taken compartments locked, plus "Not in the box";
             defaults to the first free compartment, or none for a non-pill
 Compartments are moved per medicine on the caregiver's Smart box screen
 (patient_box_screen.dart), never per dose time. Edit-medicine shows the
@@ -548,22 +549,22 @@ ESP32 ↔ Firebase communication:
   - Auth:            ESP32 uses Firebase service account API key
 
 GPIO pin assignments:
-  LED Column 1  → GPIO 13
-  LED Column 2  → GPIO 14
-  LED Column 3  → GPIO 25
-  LED Column 4  → GPIO 26
-  LED Column 5  → GPIO 27
-  LED Column 6  → GPIO 32
-  LED Column 7  → GPIO 33
-  LED Column 8  → GPIO 4
-  Push button   → GPIO 5  (10kΩ pull-down to GND)
-  Active buzzer → GPIO 18
+  (from firmware/healthsync_box/config.h, which is the source of truth)
+  LED Compartment 1 → GPIO 13
+  LED Compartment 2 → GPIO 14
+  LED Compartment 3 → GPIO 25
+  LED Compartment 4 → GPIO 26
+  LED Compartment 5 → GPIO 32
+  LED Compartment 6 → GPIO 33
+  Push button   → GPIO 16  (6 mm normally-closed, to GND, internal pull-up)
+  Active buzzer → GPIO 17  (through an NPN transistor)
   DS3231 SDA    → GPIO 21
   DS3231 SCL    → GPIO 22
-  MicroSD MOSI  → GPIO 23
-  MicroSD MISO  → GPIO 19
-  MicroSD SCK   → GPIO 15
-  MicroSD CS    → GPIO 17
+  MicroSD MOSI  → GPIO 19  ┐ swapped compared with the ESP32 default,
+  MicroSD MISO  → GPIO 23  ┘ matching the wiring
+  MicroSD SCK   → GPIO 18
+  MicroSD CS    → GPIO 15
+  Built-in LED  → GPIO 2   (on while a phone is connected; bench aid)
 ```
 
 ---
@@ -659,7 +660,7 @@ existed as files. Nothing to build here.
 
 ## No phantom features
 
-This build has **8 LEDs, a push button, a buzzer, a DS3231 RTC and a microSD
+This build has **6 LEDs, a push button, a buzzer, a DS3231 RTC and a microSD
 card**. It has no heart-rate sensor, no pulse oximeter, no battery monitoring,
 no smartwatch and no SMS gateway.
 

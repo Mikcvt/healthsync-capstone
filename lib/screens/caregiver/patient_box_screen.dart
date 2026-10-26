@@ -401,7 +401,7 @@ class _Compartments extends StatelessWidget {
   /// order — the common case right after a box is paired.
   Future<void> _fillEmpty(BuildContext context) async {
     final free = [
-      for (var c = 1; c <= 8; c++)
+      for (var c = 1; c <= ScheduleModel.boxCompartments; c++)
         if (!_occupiedExcept(null).containsKey(c)) c,
     ];
     final unplaced = medications
