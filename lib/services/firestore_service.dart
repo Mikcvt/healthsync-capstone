@@ -133,11 +133,24 @@ class FirestoreService {
     return null;
   }
 
-  Future<String> addPatientMedication(PatientMedicationModel model) async {
-    final docRef = _db.collection('patient_medications').doc();
-    final newModel = model.copyWith(patMedId: docRef.id);
-    await docRef.set(newModel.toMap());
-    return docRef.id;
+  /// A new medicine and one schedule per dose time, in one batch (BUG-021).
+  /// Writing them one by one waited for the server 1 + N times in a row
+  /// before the success screen. Returns the commit for [settle].
+  Future<void> addMedicationWithSchedules(
+    PatientMedicationModel medication,
+    List<ScheduleModel> schedules,
+  ) {
+    final batch = _db.batch();
+    final medRef = _db.collection('patient_medications').doc();
+    batch.set(medRef, medication.copyWith(patMedId: medRef.id).toMap());
+    for (final schedule in schedules) {
+      final ref = _db.collection('schedules').doc();
+      batch.set(ref, {
+        ...schedule.copyWith(scheduleId: ref.id, patMedRef: medRef.id).toMap(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+    }
+    return batch.commit();
   }
 
   Future<void> updatePatientMedication(PatientMedicationModel model) async {
@@ -493,16 +506,6 @@ class FirestoreService {
               .map((doc) => ScheduleModel.fromFirestore(doc))
               .toList(),
         );
-  }
-
-  Future<String> addSchedule(ScheduleModel schedule) async {
-    final docRef = _db.collection('schedules').doc();
-    final newSchedule = schedule.copyWith(scheduleId: docRef.id);
-    await docRef.set({
-      ...newSchedule.toMap(),
-      'updated_at': FieldValue.serverTimestamp(),
-    });
-    return docRef.id;
   }
 
   Future<void> updateSchedule(ScheduleModel schedule) async {

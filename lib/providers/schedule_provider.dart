@@ -158,27 +158,31 @@ class ScheduleProvider extends ChangeNotifier {
         isActive: true,
       );
 
-      final patMedId = await _firestoreService.addPatientMedication(patMed);
-
-      // 2. Create Schedule(s) for each scheduled time
-      for (final time in _scheduledTimes) {
-        final schedule = ScheduleModel(
-          scheduleId: '',
-          patMedRef: patMedId,
-          patientRef: patientUid,
-          scheduledTime: time,
-          daysOfWeek: _daysOfWeek,
-          matBoxColumn: _matBoxColumn,
-          caregiverDoctor: _prescribingDoctor.trim(),
-          startDate: _startDate,
-          endDate: _endDate,
-          pillsRemaining: _pillsRemaining,
-          lowStockThreshold: _lowStockThreshold,
-          ledActive: false,
-          isActive: true,
-        );
-        await _firestoreService.addSchedule(schedule);
-      }
+      // 2. One schedule per dose time. Written with the medicine in one
+      // batch, which fills in both ids, and settled rather than awaited:
+      // the success screen no longer waits on 1 + N server round trips, and
+      // the list updates from the phone's copy at once (BUG-021).
+      final schedules = [
+        for (final time in _scheduledTimes)
+          ScheduleModel(
+            scheduleId: '',
+            patMedRef: '',
+            patientRef: patientUid,
+            scheduledTime: time,
+            daysOfWeek: _daysOfWeek,
+            matBoxColumn: _matBoxColumn,
+            caregiverDoctor: _prescribingDoctor.trim(),
+            startDate: _startDate,
+            endDate: _endDate,
+            pillsRemaining: _pillsRemaining,
+            lowStockThreshold: _lowStockThreshold,
+            ledActive: false,
+            isActive: true,
+          ),
+      ];
+      await _firestoreService.settle([
+        _firestoreService.addMedicationWithSchedules(patMed, schedules),
+      ]);
 
       _isSaving = false;
       resetForm();
