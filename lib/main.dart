@@ -61,10 +61,20 @@ class HealthSyncApp extends StatelessWidget {
           scaffoldBackgroundColor: AppColors.background,
           useMaterial3: true,
         ),
+        // The phone's font size still applies, up to [maxTextScale]. Past
+        // that, fixed-height buttons and the compartment grid cut text off
+        // (BUG-026); the welcome screen did at the largest setting.
+        builder: (context, child) => MediaQuery.withClampedTextScaling(
+          maxScaleFactor: maxTextScale,
+          child: child!,
+        ),
         home: const AuthGate(),
       ),
     );
   }
+
+  /// Raise only after retesting every screen at the new size.
+  static const maxTextScale = 1.3;
 }
 
 class AuthGate extends StatelessWidget {

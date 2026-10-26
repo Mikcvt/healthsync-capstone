@@ -291,13 +291,18 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       color: AppColors.welcomeMint,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'Works with the optional HealthSync medicine box',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontFamily: 'PlusJakartaSans',
+                    // Flexible so the line wraps at a large font size instead
+                    // of running off the screen (BUG-026).
+                    Flexible(
+                      child: Text(
+                        'Works with the optional HealthSync medicine box',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontFamily: 'PlusJakartaSans',
+                        ),
                       ),
                     ),
                   ],
