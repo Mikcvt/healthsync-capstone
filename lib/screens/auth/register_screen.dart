@@ -128,8 +128,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
+                // Fixed wording: the role's code name ("caregiver") is never
+                // shown on screen.
                 Text(
-                  'You are signing up as a ${widget.role.toUpperCase()} user.',
+                  isCaregiver
+                      ? 'You are signing up as a Care Partner.'
+                      : 'You are signing up as a patient.',
                   style: const TextStyle(
                     fontSize: 14,
                     color: AppColors.textSecondary,
@@ -189,10 +193,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Expanded(
                       child: TextFormField(
                         controller: _firstNameController,
-                        decoration: AppStyles.inputDecoration(
-                          'First name',
-                          hint: 'Juan',
-                        ),
+                        decoration: AppStyles.inputDecoration('First name'),
                         validator: (val) =>
                             val == null || val.trim().isEmpty ? 'Required' : null,
                       ),
@@ -201,10 +202,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Expanded(
                       child: TextFormField(
                         controller: _lastNameController,
-                        decoration: AppStyles.inputDecoration(
-                          'Last name',
-                          hint: 'Dela Cruz',
-                        ),
+                        decoration: AppStyles.inputDecoration('Last name'),
                         validator: (val) =>
                             val == null || val.trim().isEmpty ? 'Required' : null,
                       ),

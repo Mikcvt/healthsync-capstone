@@ -133,10 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  decoration: AppStyles.inputDecoration(
-                    'Password',
-                    hint: '••••••••',
-                  ).copyWith(
+                  decoration: AppStyles.inputDecoration('Password').copyWith(
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword ? Icons.visibility_off : Icons.visibility,

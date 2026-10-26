@@ -19,7 +19,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   Timer? _pollTimer;
   Timer? _resendTimer;
   int _resendSeconds = 0;
-  bool _isChecking = false;
+
+  /// True only while a check the user tapped for is running. The 4-second
+  /// background check is silent: it used to share this flag, so the button
+  /// flashed a spinner on its own, and stayed on one on a slow network.
+  bool _isManualCheck = false;
+
+  /// The check now running, tapped or background, so two never overlap.
+  Future<void>? _inFlight;
+
+  /// Set once the screen moves on, so a check that finishes late does not
+  /// navigate a second time.
+  bool _leaving = false;
 
   /// A corrected address awaiting confirmation, shown instead of the old one.
   String? _pendingEmail;
@@ -53,6 +64,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   /// route reveals it. When AuthGate itself shows this screen, there is
   /// nothing to pop and AuthGate rebuilds on its own.
   Future<void> _useDifferentAccount() async {
+    _leaving = true;
     _pollTimer?.cancel();
     _resendTimer?.cancel();
     final navigator = Navigator.of(context);
@@ -87,34 +99,69 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     }
   }
 
+  /// [showErrors] is true for a tap on the button and false for the
+  /// background check. Only a tap shows the spinner and the messages.
   Future<void> _checkVerification({required bool showErrors}) async {
-    if (_isChecking) return;
-    setState(() => _isChecking = true);
+    if (_leaving) return;
+    if (!showErrors) {
+      if (_inFlight != null) return;
+      await _track(_runCheck(showErrors: false));
+      return;
+    }
+
+    if (_isManualCheck) return;
+    setState(() => _isManualCheck = true);
+    try {
+      // A background check may be running: let it finish, then check once
+      // more so the tap gets its own answer.
+      final running = _inFlight;
+      if (running != null) await running;
+      if (!mounted || _leaving) return;
+      await _track(_runCheck(showErrors: true));
+    } finally {
+      if (mounted) setState(() => _isManualCheck = false);
+    }
+  }
+
+  Future<void> _track(Future<void> check) async {
+    _inFlight = check;
+    try {
+      await check;
+    } finally {
+      if (identical(_inFlight, check)) _inFlight = null;
+    }
+  }
+
+  Future<void> _runCheck({required bool showErrors}) async {
     try {
       final navigator = Navigator.of(context);
-      final verified = await context.read<AuthProvider>().reloadAndCheckEmailVerification();
+      // A stuck reload must not hold the button: give up after 10 s.
+      final verified = await context
+          .read<AuthProvider>()
+          .reloadAndCheckEmailVerification()
+          .timeout(const Duration(seconds: 10));
+      if (!mounted || _leaving) return;
       if (verified == null) {
         // Confirming a changed email ended this session: sign in again with
         // the new address, from the welcome screen.
+        _leaving = true;
         _pollTimer?.cancel();
         _resendTimer?.cancel();
-        if (!mounted) return;
         _showMessage('Your email was changed. Sign in with your new email address.');
         navigator.popUntil((route) => route.isFirst);
         return;
       }
-      if (verified && mounted) {
+      if (verified) {
+        _leaving = true;
         _pollTimer?.cancel();
         _continueToOnboarding();
-      } else if (showErrors && mounted) {
+      } else if (showErrors) {
         _showMessage('Email is not verified yet. Open the link in your inbox first.');
       }
     } catch (_) {
       if (showErrors && mounted) {
         _showMessage('We could not check verification status. Please try again.');
       }
-    } finally {
-      if (mounted) setState(() => _isChecking = false);
     }
   }
 
@@ -189,13 +236,13 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   width: double.infinity,
                   height: 54,
                   child: ElevatedButton(
-                    onPressed: _isChecking ? null : () => _checkVerification(showErrors: true),
+                    onPressed: _isManualCheck ? null : () => _checkVerification(showErrors: true),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.patientBlue,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: _isChecking
+                    child: _isManualCheck
                         ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('I verified my email'),
                   ),
