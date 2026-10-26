@@ -7,8 +7,39 @@ Every cause below was traced in the code on Oct 27, 2026, with file and line.
 The ones marked **(to confirm)** are likely causes that still need the
 reproduction listed on page 13 of the PDF.
 
-**Nothing has been changed yet.** The decisions below were agreed on Oct 27,
-2026; the fixes follow them.
+The decisions below were agreed on Oct 27, 2026; the fixes follow them.
+
+## Progress (Oct 27, 2026, branch `fixing-bugs-and-ble`, not pushed)
+
+| Item | Status | Commit |
+|------|--------|--------|
+| BUG-002, 003, 004, 005 | Fixed | `b4c2c24` |
+| BUG-016/017, 018/019, 020 | Fixed; unit tests in `test/input_rules_test.dart` | `b8a3ef2` |
+| BUG-025 | Fixed; **needs the rules deployed** | `53455ee` |
+| CR-06 | Done | `2ac697e` |
+| BUG-026 | Fixed for the welcome screen and capped app-wide at 1.3×; **retest every screen on a phone** | `4cc55e0` |
+| BUG-024 + D4 (6 compartments) | Fixed; CLAUDE.md corrected | `4d2164e` |
+| BUG-021 | Fixed (one batch) | `25aeb44` |
+| BUG-022/023 | Data side fixed; **needs the rules deployed**. The app's Bluetooth pairing flow is not started (no `flutter_blue_plus` yet) | `2af3113` |
+| BUG-007, 008, 010 | Waiting for the tester's recordings | – |
+
+Found and fixed along the way: Today's overview on Home updated only when the
+first patient's doses changed; Edit medicine silently kept the old stock when
+the new value was invalid; pairing wrote "online, synced now" for a box that
+had never been switched on.
+
+Before testing on a phone:
+- Deploy the rules (`firebase deploy --only firestore:rules`) and the Worker
+  (`POST /patients` now checks phone numbers).
+- Old test device documents have random ids. Pairing again switches them off
+  for that patient, but a serial typed on two accounts before this fix still
+  has two documents; delete the extras in the Firebase console.
+- `test/auth_flow_test.dart` and `test/widget_test.dart` fail, as before this
+  work: they start the whole app, which needs Firebase. Their files are
+  unchanged from `release`.
+
+Open for later: Home shows "No patients yet" when every patient is pending
+deletion (they are still on My Patients).
 
 ---
 
