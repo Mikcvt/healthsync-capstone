@@ -39,8 +39,13 @@ service cloud.firestore {
 
     // Only a patient's own caregiver may author their regimen. A patient never
     // authors their own, even if their user document claims edit rights.
+    // A patient whose account is pending deletion is paused (is_active false)
+    // until restored or purged: no medicine or schedule may change meanwhile
+    // (BUG-025). The Worker pauses and restores with the service account,
+    // which these rules do not limit.
     function mayAuthorFor(patientId) {
-      return canEditMedications() && isCaregiverOf(patientId);
+      return canEditMedications() && isCaregiverOf(patientId)
+        && get(/databases/$(database)/documents/users/$(patientId)).data.get('is_active', true) != false;
     }
 
     // Users collection

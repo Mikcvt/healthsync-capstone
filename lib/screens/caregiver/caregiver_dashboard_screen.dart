@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../models/caregiver_patient_link_model.dart';
 import '../../models/device_model.dart';
 import '../../models/dose_log_model.dart';
 import '../../models/notification_model.dart';
@@ -12,6 +13,7 @@ import '../../providers/caregiver_provider.dart';
 import '../../services/device_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/stream_combine.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
 import '../../widgets/shared/reminder_check_card.dart';
 import 'add_patient_screen.dart';
@@ -30,7 +32,6 @@ class CaregiverDashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<CaregiverProvider>();
     final user = context.watch<AuthProvider>().currentUserModel;
-    final links = provider.patientLinks;
     final firstName = user?.firstName.isNotEmpty == true
         ? user!.firstName
         : 'Care Partner';
@@ -38,77 +39,147 @@ class CaregiverDashboardScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: ListView(
-          // Clears the floating nav bar so the last card is not hidden by it.
-          padding: const EdgeInsets.fromLTRB(
-              20, 16, 20, FloatingNavBar.contentPadding),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Care Partner Dashboard',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
+        child: _ActivePatientLinks(
+          links: provider.patientLinks,
+          builder: (context, links) => ListView(
+            // Clears the floating nav bar so the last card is not hidden by it.
+            padding: const EdgeInsets.fromLTRB(
+                20, 16, 20, FloatingNavBar.contentPadding),
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Care Partner Dashboard',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Hello, $firstName',
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textPrimary,
+                        const SizedBox(height: 4),
+                        Text(
+                          'Hello, $firstName',
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        links.isEmpty
-                            ? 'No patients yet'
-                            : 'Monitoring ${links.length} '
-                                '${links.length == 1 ? 'patient' : 'patients'}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
+                        const SizedBox(height: 4),
+                        Text(
+                          links.isEmpty
+                              ? 'No patients yet'
+                              : 'Monitoring ${links.length} '
+                                  '${links.length == 1 ? 'patient' : 'patients'}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-
-            // Silent unless this phone would hide the caregiver's alerts.
-            const ReminderCheckCard(
-              onlyWhenProblem: true,
-              forCaregiverAlerts: true,
-            ),
-
-            if (links.isNotEmpty) ...[
-              _OverviewCard(links: links),
-              const SizedBox(height: 18),
-            ],
-
-            if (links.isEmpty)
-              _NoPatients(
-                onAdd: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AddPatientScreen()),
-                ),
-              )
-            else
-              ...links.map(
-                (link) => _PatientTodayCard(patientUid: link.patientRef),
+                ],
               ),
-          ],
+              const SizedBox(height: 18),
+  
+              // Silent unless this phone would hide the caregiver's alerts.
+              const ReminderCheckCard(
+                onlyWhenProblem: true,
+                forCaregiverAlerts: true,
+              ),
+  
+              if (links.isNotEmpty) ...[
+                _OverviewCard(links: links),
+                const SizedBox(height: 18),
+              ],
+  
+              if (links.isEmpty)
+                _NoPatients(
+                  onAdd: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AddPatientScreen()),
+                  ),
+                )
+              else
+                ...links.map(
+                  (link) => _PatientTodayCard(patientUid: link.patientRef),
+                ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Leaves out patients whose account is pending deletion (D5, BUG-025): Home
+/// is for today's doses, and theirs are cancelled. They stay on My Patients
+/// with the Restore button.
+///
+/// The stream is kept while the patient list is unchanged, and the last
+/// answer is used while a new one loads, so a deleted patient never flashes
+/// in.
+class _ActivePatientLinks extends StatefulWidget {
+  final List<CaregiverPatientLinkModel> links;
+  final Widget Function(
+      BuildContext context, List<CaregiverPatientLinkModel> links) builder;
+
+  const _ActivePatientLinks({required this.links, required this.builder});
+
+  @override
+  State<_ActivePatientLinks> createState() => _ActivePatientLinksState();
+}
+
+class _ActivePatientLinksState extends State<_ActivePatientLinks> {
+  late Stream<List<UserModel?>> _users;
+  late String _key;
+  Set<String> _pendingDeletion = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(_ActivePatientLinks oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_keyOf(widget.links) != _key) _subscribe();
+  }
+
+  static String _keyOf(List<CaregiverPatientLinkModel> links) =>
+      links.map((l) => l.patientRef).join(',');
+
+  void _subscribe() {
+    _key = _keyOf(widget.links);
+    final firestore = FirestoreService();
+    _users = combineLatestList([
+      for (final l in widget.links) firestore.streamUser(l.patientRef),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<UserModel?>>(
+      stream: _users,
+      builder: (context, snapshot) {
+        final users = snapshot.data;
+        if (users != null) {
+          _pendingDeletion = {
+            for (final u in users)
+              if (u != null && u.hasPendingDeletion) u.uid,
+          };
+        }
+        final active = widget.links
+            .where((l) => !_pendingDeletion.contains(l.patientRef))
+            .toList();
+        return widget.builder(context, active);
+      },
     );
   }
 }
@@ -644,20 +715,12 @@ class _AggregateCounts extends StatelessWidget {
     return 'Everyone is on track';
   }
 
-  /// Merges each patient's today-stream into one list-of-lists.
-  Stream<List<List<DoseLogModel>>> _combine() {
-    if (uids.isEmpty) return Stream.value(const []);
-    final streams =
-        uids.map((u) => firestore.streamPatientDoseLogs(u, dateStr: today));
-
-    return streams.skip(1).fold<Stream<List<List<DoseLogModel>>>>(
-      streams.first.map((logs) => [logs]),
-      (acc, next) => acc.asyncMap((soFar) async {
-        final latest = await next.first;
-        return [...soFar, latest];
-      }),
-    );
-  }
+  /// Merges each patient's today-stream into one list-of-lists. Any patient's
+  /// change updates the totals; the old fold only re-read patients after the
+  /// first when the first one changed.
+  Stream<List<List<DoseLogModel>>> _combine() => combineLatestList([
+        for (final u in uids) firestore.streamPatientDoseLogs(u, dateStr: today),
+      ]);
 }
 
 class _Stat extends StatelessWidget {

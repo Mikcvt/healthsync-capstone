@@ -196,19 +196,22 @@ class _PatientCardState extends State<_PatientCard> {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Medicines',
-                  icon: const Icon(Icons.medication_outlined,
-                      color: AppColors.caregiverGreen),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SetupMedicationsScreen(
-                        patientUid: widget.patientUid,
-                        patientName: displayName,
+                // Hidden while the account is pending deletion: medicines
+                // can only change after Restore (BUG-025).
+                if (patient == null || !patient.hasPendingDeletion)
+                  IconButton(
+                    tooltip: 'Medicines',
+                    icon: const Icon(Icons.medication_outlined,
+                        color: AppColors.caregiverGreen),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SetupMedicationsScreen(
+                          patientUid: widget.patientUid,
+                          patientName: displayName,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

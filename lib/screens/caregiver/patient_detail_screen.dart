@@ -28,6 +28,9 @@ class PatientDetailScreen extends StatelessWidget {
     final caregiver = context.watch<CaregiverProvider>();
     final patient = caregiver.selectedPatientUser;
     final patientName = patient?.fullName ?? 'Patient';
+    // Deleted and inside the 30-day window: nothing may change the regimen
+    // until the account is restored (BUG-025).
+    final pendingDeletion = patient?.hasPendingDeletion ?? false;
     final profile = caregiver.selectedPatientProfile;
     final link = caregiver.patientLinks
         .where((l) => l.patientRef == caregiver.selectedPatientUid)
@@ -280,6 +283,20 @@ class PatientDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
+              if (pendingDeletion) ...[
+                const Text(
+                  'This account is pending deletion. Restore it from My '
+                  'Patients to manage medicines.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.missedRed,
+                    fontFamily: AppStyles.fontFamily,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
               // Replaces a "Send message to {patient}" button that did nothing:
               // there is no messaging channel in this system, and the action a
               // caregiver actually needs from here is to edit the regimen.
@@ -287,7 +304,8 @@ class PatientDetailScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton.icon(
-                  onPressed: caregiver.selectedPatientUid == null
+                  onPressed: caregiver.selectedPatientUid == null ||
+                          pendingDeletion
                       ? null
                       : () => Navigator.of(context).push(
                             MaterialPageRoute(
@@ -316,7 +334,8 @@ class PatientDetailScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              if (caregiver.selectedPatientMedications.isNotEmpty)
+              if (caregiver.selectedPatientMedications.isNotEmpty &&
+                  !pendingDeletion)
                 SizedBox(
                   width: double.infinity,
                   height: 50,
