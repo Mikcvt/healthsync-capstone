@@ -1,0 +1,22 @@
+{
+  // Run and Debug (F5). "dev" is the everyday choice: it uses the dev
+  // Firebase project and dev Worker, never the Play app's (CLAUDE.md,
+  // "Environments").
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "HealthSync (dev)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--flavor", "dev"]
+    },
+    {
+      "name": "HealthSync (prod — live data)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "args": ["--flavor", "prod"]
+    }
+  ]
+}

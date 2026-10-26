@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'firebase_options.dart';
+import 'config/environment.dart';
 import 'constants/app_colors.dart';
 import 'constants/app_styles.dart';
 import 'providers/auth_provider.dart';
@@ -22,7 +22,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: AppEnvironment.firebaseOptions,
     );
     // Before any screen: dose actions decide from this whether to wait for the
     // server.
@@ -64,10 +64,21 @@ class HealthSyncApp extends StatelessWidget {
         // The phone's font size still applies, up to [maxTextScale]. Past
         // that, fixed-height buttons and the compartment grid cut text off
         // (BUG-026); the welcome screen did at the largest setting.
-        builder: (context, child) => MediaQuery.withClampedTextScaling(
-          maxScaleFactor: maxTextScale,
-          child: child!,
-        ),
+        builder: (context, child) {
+          final app = MediaQuery.withClampedTextScaling(
+            maxScaleFactor: maxTextScale,
+            child: child!,
+          );
+          // A dev build talks to the dev project; the corner banner keeps it
+          // from being mistaken for the Play app.
+          return AppEnvironment.isDev
+              ? Banner(
+                  message: 'DEV',
+                  location: BannerLocation.topEnd,
+                  child: app,
+                )
+              : app;
+        },
         home: const AuthGate(),
       ),
     );

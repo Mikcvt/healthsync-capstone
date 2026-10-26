@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import '../config/environment.dart';
 
 /// Raised when the Worker rejects a request. [code] is the machine-readable
 /// reason, so screens can tell "wrong code" apart from "expired code" without
@@ -46,12 +47,10 @@ class OtpRedemption {
 /// client cannot do safely: create patient accounts, mint custom tokens from
 /// OTP codes, push FCM to another user, and sweep missed doses on a cron.
 class ApiService {
-  /// Supplied at build time so a debug run can point at `wrangler dev`:
-  ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8787
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://healthsync-api.healthsync12.workers.dev',
-  );
+  /// The dev or production Worker, by build flavor ([AppEnvironment]). A
+  /// debug run can still point at `wrangler dev`:
+  ///   flutter run --flavor dev --dart-define=API_BASE_URL=http://10.0.2.2:8787
+  static String get baseUrl => AppEnvironment.workerUrl;
 
   static const Duration _timeout = Duration(seconds: 20);
 

@@ -59,6 +59,25 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    // Two environments that share nothing (CLAUDE.md, "Environments"):
+    //   prod  com.healthsyncteam.app      project healthsyncapp-b546b, Play
+    //   dev   com.healthsyncteam.app.dev  project healthsyncapp-dev, testing
+    // Each reads google-services.json from src/<flavor>/. The two apps install
+    // side by side. Build with --flavor prod or --flavor dev.
+    flavorDimensions += "environment"
+    productFlavors {
+        create("prod") {
+            dimension = "environment"
+            resValue("string", "app_name", "HealthSync")
+        }
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "HealthSync Dev")
+        }
+    }
 }
 
 flutter {

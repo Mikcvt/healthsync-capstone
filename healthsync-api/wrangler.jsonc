@@ -2,9 +2,21 @@
  * For more details on how to configure Wrangler, refer to:
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
+/**
+ * Two Workers that share nothing (CLAUDE.md, "Environments"):
+ *
+ *   npx wrangler deploy              → healthsync-api-dev  (dev project, testing)
+ *   npx wrangler deploy --env prod   → healthsync-api      (Play app's testers)
+ *
+ * The top level is DEV on purpose, so a deploy without flags can never reach
+ * the live app. Production only from the release branch, with its build.
+ * Each Worker has its own FIREBASE_SA_KEY secret and token cache:
+ *   npx wrangler secret put FIREBASE_SA_KEY < dev-key.json
+ *   npx wrangler secret put FIREBASE_SA_KEY --env prod < prod-key.json
+ */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "healthsync-api",
+	"name": "healthsync-api-dev",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-01",
 	"observability": {
@@ -25,9 +37,23 @@
 	"kv_namespaces": [
 		{
 			"binding": "TOKEN_CACHE",
-			"id": "482a8f2792e1418ba3d2620ba0f36f98"
+			"id": "1b814eb8511d47888b45eaef4a1fabfd" // dev
 		}
-	]
+	],
+
+	"env": {
+		// The live Worker, unchanged: same name, URL, secret and cache as before.
+		// Crons and the rest are inherited; kv_namespaces must be repeated.
+		"prod": {
+			"name": "healthsync-api",
+			"kv_namespaces": [
+				{
+					"binding": "TOKEN_CACHE",
+					"id": "482a8f2792e1418ba3d2620ba0f36f98"
+				}
+			]
+		}
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

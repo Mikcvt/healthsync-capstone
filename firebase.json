@@ -9,7 +9,7 @@
         "default": {
           "projectId": "healthsyncapp-b546b",
           "appId": "1:325518833196:android:85d7979ff767d03184c389",
-          "fileOutput": "android/app/google-services.json"
+          "fileOutput": "android/app/src/prod/google-services.json"
         }
       },
       "dart": {

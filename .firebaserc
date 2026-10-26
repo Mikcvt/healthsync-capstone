@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "healthsyncapp-b546b"
+    "default": "healthsyncapp-dev",
+    "dev": "healthsyncapp-dev",
+    "prod": "healthsyncapp-b546b"
   }
 }
