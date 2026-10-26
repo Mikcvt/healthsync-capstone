@@ -77,6 +77,11 @@ class DateFormatter {
     return toShortDate(dt);
   }
 
+  /// A box's last report: `"4 minutes ago"`, or `"Not connected yet"` for a
+  /// box that has never reported in.
+  static String lastSync(DateTime? dt) =>
+      dt == null ? 'Not connected yet' : toRelativeTime(dt);
+
   /// `"4 minutes ago"` — for device heartbeats and sync times.
   static String toRelativeTime(DateTime dt) {
     final seconds = DateTime.now().difference(dt).inSeconds;

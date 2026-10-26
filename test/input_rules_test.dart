@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:healthsync/models/device_model.dart';
 import 'package:healthsync/utils/dosage_strength.dart';
 import 'package:healthsync/utils/phone_format.dart';
 import 'package:healthsync/utils/validators.dart';
@@ -82,6 +83,42 @@ void main() {
       expect(Validators.stock('20', '50', alertWithinStock: true), isNotNull);
       // Edit: the count falls below the alert as doses are taken.
       expect(Validators.stock('2', '5'), isNull);
+    });
+  });
+
+  group('Box serial', () {
+    test('typed forms become HS-0001', () {
+      for (final input in ['HS-0001', 'hs-0001', 'HS0001', ' hs 0001 ']) {
+        expect(DeviceModel.normaliseSerial(input), 'HS-0001', reason: input);
+      }
+    });
+
+    test('validator refuses the test-round serials', () {
+      expect(Validators.deviceSerial('HS-0001'), isNull);
+      expect(Validators.deviceSerial('hs0001'), isNull);
+      expect(Validators.deviceSerial('ANYA100'), isNotNull);
+      expect(Validators.deviceSerial('10000000000000'), isNotNull);
+      expect(Validators.deviceSerial(''), isNotNull);
+    });
+  });
+
+  group('DeviceModel.isOnline', () {
+    DeviceModel box(String status, DateTime? lastSync) => DeviceModel(
+          deviceId: 'HS-0001',
+          deviceName: 'Box',
+          serialNumber: 'HS-0001',
+          status: status,
+          lastSync: lastSync,
+          createdAt: DateTime(2026),
+        );
+
+    test('needs a recent report, not just the stored status', () {
+      final now = DateTime.now();
+      expect(box('online', now).isOnline, isTrue);
+      expect(box('online', now.subtract(const Duration(days: 4))).isOnline,
+          isFalse);
+      expect(box('online', null).isOnline, isFalse);
+      expect(box('offline', now).isOnline, isFalse);
     });
   });
 

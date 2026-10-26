@@ -1,3 +1,4 @@
+import '../models/device_model.dart';
 import 'phone_format.dart';
 
 /// Form validators, returning null when the value is acceptable and a
@@ -113,12 +114,13 @@ class Validators {
   }
 
   /// Device serials are printed on the box lid and typed by hand.
+  /// `HS-` and 4 digits, e.g. `HS-0001` (BUG-022). The dash and case are
+  /// forgiven; see [DeviceModel.normaliseSerial].
   static String? deviceSerial(String? value) {
-    final text = (value ?? '').trim().toUpperCase();
+    final text = (value ?? '').trim();
     if (text.isEmpty) return 'Enter the serial number on the box';
-    if (text.length < 6) return 'That serial number looks too short';
-    if (!RegExp(r'^[A-Z0-9-]+$').hasMatch(text)) {
-      return 'Serial numbers use letters, numbers and dashes only';
+    if (!DeviceModel.serialPattern.hasMatch(DeviceModel.normaliseSerial(text))) {
+      return 'The serial looks like HS-0001: HS, a dash and 4 digits';
     }
     return null;
   }

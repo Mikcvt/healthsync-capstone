@@ -109,6 +109,9 @@ class AppStrings {
   static const String devicePaired = 'Medicine box paired.';
   static const String devicePairFailed =
       'Could not pair that box. Check the serial number and try again.';
+  static const String devicePairedElsewhere =
+      'This box is already paired to another account. A box can belong to '
+      'one patient only.';
   static const String deviceOnline = 'Online';
   static const String deviceOffline = 'Offline';
 

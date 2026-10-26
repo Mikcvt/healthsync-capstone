@@ -7,8 +7,11 @@ class DeviceModel {
   final String serialNumber;
   final String patientRef;
   final String status; // 'online', 'offline', 'pairing'
-  final DateTime lastSync;
-  final int columnsActive; // 1–8
+
+  /// When the box last reported in. Null until it ever has: pairing used to
+  /// write "now", so a box never switched on showed as synced a minute ago.
+  final DateTime? lastSync;
+  final int columnsActive; // 0–ScheduleModel.boxCompartments
   final String firmwareVersion;
   final DateTime createdAt;
   final bool isActive;
@@ -20,14 +23,34 @@ class DeviceModel {
     required this.serialNumber,
     this.patientRef = '',
     this.status = 'offline',
-    required this.lastSync,
+    this.lastSync,
     this.columnsActive = 0,
     this.firmwareVersion = 'v1.0.0',
     required this.createdAt,
     this.isActive = true,
   });
 
-  bool get isOnline => status == 'online';
+  /// Serials are `HS-` and 4 digits, as printed on the box label and set as
+  /// DEVICE_SERIAL in the firmware. Typed as `hs0001` or `HS 0001`, they are
+  /// stored as `HS-0001`, which is also the document id.
+  static final serialPattern = RegExp(r'^HS-\d{4}$');
+
+  static String normaliseSerial(String text) {
+    final compact = text.trim().toUpperCase().replaceAll(RegExp(r'[\s-]'), '');
+    final match = RegExp(r'^HS(\d{4})$').firstMatch(compact);
+    return match == null ? text.trim().toUpperCase() : 'HS-${match.group(1)}';
+  }
+
+  /// How long a report counts as "online". The Worker records a box at most
+  /// every 5 minutes, so two missed reports mean it is not connected.
+  static const onlineWindow = Duration(minutes: 10);
+
+  /// Online only with a recent report. The stored status alone said
+  /// "Online" next to "Last sync 4 days ago" (BUG-024 screenshot).
+  bool get isOnline =>
+      status == 'online' &&
+      lastSync != null &&
+      DateTime.now().difference(lastSync!) < onlineWindow;
 
   factory DeviceModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
@@ -45,8 +68,8 @@ class DeviceModel {
       lastSync: map['last_sync'] is Timestamp
           ? (map['last_sync'] as Timestamp).toDate()
           : (map['last_sync'] != null
-              ? DateTime.tryParse(map['last_sync'].toString()) ?? DateTime.now()
-              : DateTime.now()),
+              ? DateTime.tryParse(map['last_sync'].toString())
+              : null),
       columnsActive: (map['columns_active'] as num?)?.toInt() ?? 0,
       firmwareVersion: map['firmware_version'] as String? ?? 'v1.0.0',
       createdAt: map['created_at'] is Timestamp
@@ -66,7 +89,7 @@ class DeviceModel {
       'serial_number': serialNumber,
       'patient_ref': patientRef,
       'status': status,
-      'last_sync': Timestamp.fromDate(lastSync),
+      if (lastSync != null) 'last_sync': Timestamp.fromDate(lastSync!),
       'columns_active': columnsActive,
       'firmware_version': firmwareVersion,
       'created_at': Timestamp.fromDate(createdAt),

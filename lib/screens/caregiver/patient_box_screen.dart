@@ -528,7 +528,11 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final online = device.status == 'online';
+    final online = device.isOnline;
+    final connection = device.lastSync == null
+        ? 'Not connected yet'
+        : '${online ? AppStrings.deviceOnline : AppStrings.deviceOffline}'
+            ' · synced ${DateFormatter.toRelativeTime(device.lastSync!)}';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -557,9 +561,7 @@ class _DeviceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${device.serialNumber} · '
-                  '${online ? AppStrings.deviceOnline : AppStrings.deviceOffline}'
-                  ' · synced ${DateFormatter.toRelativeTime(device.lastSync)}',
+                  '${device.serialNumber} · $connection',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,

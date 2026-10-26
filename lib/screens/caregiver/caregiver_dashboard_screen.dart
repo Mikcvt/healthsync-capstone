@@ -432,13 +432,15 @@ class _PatientStatusLines extends StatelessWidget {
           if (box != null)
             _StatusLine(
               icon: Icons.inventory_2_outlined,
-              color: box.status == 'online'
+              color: box.isOnline
                   ? AppColors.takenGreen
                   : AppColors.textSecondary,
-              text: box.status == 'online'
+              text: box.isOnline
                   ? 'Medicine box online'
-                  : 'Medicine box last synced '
-                      '${DateFormatter.toRelativeTime(box.lastSync)}',
+                  : box.lastSync == null
+                      ? 'Medicine box not connected yet'
+                      : 'Medicine box last synced '
+                          '${DateFormatter.toRelativeTime(box.lastSync!)}',
             ),
         ];
         if (lines.isEmpty) return const SizedBox.shrink();

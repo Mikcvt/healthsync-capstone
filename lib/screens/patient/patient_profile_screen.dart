@@ -443,7 +443,7 @@ class _DeviceStatusCard extends StatelessWidget {
             const Divider(height: 26, thickness: 1, color: AppColors.borderGray),
             _StatusRow(
               label: 'Last sync',
-              value: DateFormatter.toRelativeTime(device!.lastSync),
+              value: DateFormatter.lastSync(device!.lastSync),
               active: device!.isOnline,
             ),
           ],

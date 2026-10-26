@@ -943,23 +943,61 @@ class FirestoreService {
         });
   }
 
+  /// Pairs the box [serialNumber] to [patientUid] (BUG-022/023).
+  ///
+  /// The serial is the document id, so a box can belong to one account only:
+  /// the rules refuse to take over another account's active box, which
+  /// arrives here as [BoxPairedElsewhereException]. The patient's earlier
+  /// boxes are switched off in the same batch; before, every pairing added
+  /// another active document and the screens showed an arbitrary one.
+  ///
+  /// Nothing is written about the connection: the box has not reported yet,
+  /// and pairing used to claim "online, synced just now".
   Future<void> pairDevice({
     required String patientUid,
     required String serialNumber,
     String deviceName = 'HealthSync Smart Box',
   }) async {
-    final docRef = _db.collection('devices').doc();
-    final device = DeviceModel(
-      deviceId: docRef.id,
-      deviceName: deviceName,
-      serialNumber: serialNumber.trim(),
-      patientRef: patientUid,
-      status: 'online',
-      lastSync: DateTime.now(),
-      columnsActive: 0,
-      createdAt: DateTime.now(),
-      isActive: true,
+    final serial = DeviceModel.normaliseSerial(serialNumber);
+    final previous = await _db
+        .collection('devices')
+        .where('patient_ref', isEqualTo: patientUid)
+        .where('is_active', isEqualTo: true)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in previous.docs) {
+      if (doc.id != serial) batch.update(doc.reference, {'is_active': false});
+    }
+    // Merge: re-pairing the same box keeps nothing stale but its id.
+    batch.set(
+      _db.collection('devices').doc(serial),
+      {
+        'device_id': serial,
+        'device_type': 'esp32_smart_box',
+        'device_name': deviceName,
+        'serial_number': serial,
+        'patient_ref': patientUid,
+        'status': 'offline',
+        'last_sync': FieldValue.delete(),
+        'columns_active': 0,
+        'created_at': FieldValue.serverTimestamp(),
+        'is_active': true,
+      },
+      SetOptions(merge: true),
     );
-    await docRef.set(device.toMap());
+    try {
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw const BoxPairedElsewhereException();
+      }
+      rethrow;
+    }
   }
+}
+
+/// The serial belongs to a box paired to another account.
+class BoxPairedElsewhereException implements Exception {
+  const BoxPairedElsewhereException();
 }

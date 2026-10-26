@@ -252,12 +252,22 @@ service cloud.firestore {
     }
 
     // Devices (ESP32 Smart Box)
+    // A box belongs to one account (BUG-023): the document id is the serial,
+    // so pairing a box another account holds is an update this refuses. A
+    // box switched off by a newer pairing (is_active false) can be claimed.
     match /devices/{deviceId} {
       allow read: if isOwner(resource.data.patient_ref)
         || isCaregiverOf(resource.data.patient_ref);
-      allow create: if isOwner(request.resource.data.patient_ref)
-        || isCaregiverOf(request.resource.data.patient_ref);
-      allow update, delete: if isOwner(resource.data.patient_ref)
+      allow create: if (isOwner(request.resource.data.patient_ref)
+          || isCaregiverOf(request.resource.data.patient_ref))
+        && request.resource.data.serial_number == deviceId;
+      allow update: if isOwner(resource.data.patient_ref)
+        || isCaregiverOf(resource.data.patient_ref)
+        || (resource.data.is_active == false
+          && request.resource.data.serial_number == deviceId
+          && (isOwner(request.resource.data.patient_ref)
+            || isCaregiverOf(request.resource.data.patient_ref)));
+      allow delete: if isOwner(resource.data.patient_ref)
         || isCaregiverOf(resource.data.patient_ref);
     }
   }

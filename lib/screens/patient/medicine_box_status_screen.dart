@@ -293,7 +293,7 @@ class _DeviceCard extends StatelessWidget {
           const Divider(height: 22, color: AppColors.borderGray),
           _StatRow(
             label: 'Last sync',
-            value: DateFormatter.toRelativeTime(device.lastSync),
+            value: DateFormatter.lastSync(device.lastSync),
           ),
         ],
       ),

@@ -343,6 +343,10 @@ class CaregiverProvider extends ChangeNotifier {
         serialNumber: serialNumber,
       );
       return true;
+    } on BoxPairedElsewhereException {
+      _errorMessage = AppStrings.devicePairedElsewhere;
+      notifyListeners();
+      return false;
     } catch (e) {
       debugPrint('pairSmartBox failed: $e');
       _errorMessage = AppStrings.devicePairFailed;
