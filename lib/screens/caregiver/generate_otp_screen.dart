@@ -196,10 +196,18 @@ class _GenerateOtpScreenState extends State<GenerateOtpScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'Send this code to them by text or email. They enter it on '
-                    'the welcome screen — there is nothing else for them to set up.',
-                    style: TextStyle(
+                  Text(
+                    widget.isNewPatient
+                        ? 'Send this code to them by text or email. They enter it '
+                            'on the welcome screen — there is nothing else for '
+                            'them to set up.'
+                        // CR-06: reached from Patient detail for a new phone.
+                        : 'For a first sign-in, or a new or reset phone. Send '
+                            'this code to them; they tap "I have a code" on the '
+                            'welcome screen and their account opens with '
+                            'everything in it. A phone that is still signed in '
+                            'stays signed in.',
+                    style: const TextStyle(
                       fontSize: 14,
                       color: AppColors.textSecondary,
                       fontFamily: 'PlusJakartaSans',

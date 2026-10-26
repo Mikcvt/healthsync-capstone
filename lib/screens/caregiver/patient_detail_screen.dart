@@ -8,6 +8,8 @@ import '../../providers/caregiver_provider.dart';
 import '../../utils/date_formatter.dart';
 import '../../utils/dose_status_display.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../utils/phone_format.dart';
+import 'generate_otp_screen.dart';
 import 'patient_history_screen.dart';
 import 'patient_schedule_screen.dart';
 import 'reports_screen.dart';
@@ -276,7 +278,10 @@ class PatientDetailScreen extends StatelessWidget {
                     ),
                     if (patient?.phone.isNotEmpty == true) ...[
                       const SizedBox(height: 12),
-                      _InfoTile(label: 'Phone', value: patient!.phone),
+                      _InfoTile(
+                        label: 'Phone',
+                        value: PhPhone.display(patient!.phone),
+                      ),
                     ],
                   ],
                 ),
@@ -367,6 +372,44 @@ class PatientDetailScreen extends StatelessWidget {
                 _TreatmentCompleteBanner(
                   completedAt: profile!.treatmentCompletedAt!,
                 ),
+
+              // CR-06: for a patient on a reset or new phone. A code works
+              // once, so this shows the unused code if there is one and
+              // makes a new one otherwise. It used to be reachable only from
+              // a key icon on the medicines screen.
+              if (!pendingDeletion) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => GenerateOtpScreen(
+                          patientUid: caregiver.selectedPatientUid!,
+                          patientName: patientName,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.key_rounded),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.caregiverGreen,
+                      side: const BorderSide(color: AppColors.borderGray),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    label: const Text(
+                      'Sign-in code for a new phone',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
