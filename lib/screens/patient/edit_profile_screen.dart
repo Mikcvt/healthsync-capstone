@@ -5,8 +5,10 @@ import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/patient_provider.dart';
+import '../../utils/phone_format.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../utils/validators.dart';
+import '../../widgets/shared/ph_phone_field.dart';
 
 /// Lets a patient edit their own details.
 ///
@@ -35,6 +37,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSaving = false;
 
+  /// A saved number that could not be read, so its field starts empty.
+  bool _phoneUnreadable = false;
+  bool _emergencyPhoneUnreadable = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,14 +52,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     _firstName = TextEditingController(text: user?.firstName ?? '');
     _lastName = TextEditingController(text: user?.lastName ?? '');
-    _phone = TextEditingController(text: user?.phone ?? '');
+    _phone = TextEditingController(text: PhPhone.forField(user?.phone));
+    _phoneUnreadable = PhPhone.isUnreadable(user?.phone);
     _conditions =
         TextEditingController(text: profile?.medicalConditions.join(', ') ?? '');
     _allergies =
         TextEditingController(text: profile?.allergies.join(', ') ?? '');
     _emergencyContact =
         TextEditingController(text: profile?.emergencyContact ?? '');
-    _emergencyPhone = TextEditingController(text: profile?.emergencyPhone ?? '');
+    _emergencyPhone =
+        TextEditingController(text: PhPhone.forField(profile?.emergencyPhone));
+    _emergencyPhoneUnreadable = PhPhone.isUnreadable(profile?.emergencyPhone);
   }
 
   @override
@@ -82,14 +91,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final identitySaved = await auth.updateProfile(
       firstName: _firstName.text,
       lastName: _lastName.text,
-      phone: _phone.text,
+      phone: PhPhone.toStored(_phone.text),
     );
 
     final clinicalSaved = await patient.saveProfileDetails(
       medicalConditions: _conditions.text,
       allergies: _allergies.text,
       emergencyContact: _emergencyContact.text.trim(),
-      emergencyPhone: _emergencyPhone.text.trim(),
+      emergencyPhone: PhPhone.toStored(_emergencyPhone.text),
     );
 
     if (!mounted) return;
@@ -159,14 +168,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                TextFormField(
+                PhPhoneField(
                   controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  decoration: AppStyles.inputDecoration(
-                    'Phone number',
-                    hint: 'Optional',
-                  ),
-                  validator: (v) => Validators.phone(v),
+                  hadUnreadable: _phoneUnreadable,
                 ),
                 const SizedBox(height: 26),
 
@@ -217,14 +221,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                TextFormField(
+                PhPhoneField(
                   controller: _emergencyPhone,
-                  keyboardType: TextInputType.phone,
-                  decoration: AppStyles.inputDecoration(
-                    'Emergency contact number',
-                    hint: 'Optional',
-                  ),
-                  validator: (v) => Validators.phone(v),
+                  label: 'Emergency contact number',
+                  hadUnreadable: _emergencyPhoneUnreadable,
                 ),
                 const SizedBox(height: 28),
 

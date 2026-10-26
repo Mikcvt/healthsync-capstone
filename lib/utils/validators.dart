@@ -1,3 +1,5 @@
+import 'phone_format.dart';
+
 /// Form validators, returning null when the value is acceptable and a
 /// user-facing message otherwise — the shape `TextFormField.validator` expects.
 ///
@@ -44,15 +46,13 @@ class Validators {
     return null;
   }
 
-  /// Optional by design — a managed patient often has no phone of their own,
-  /// and the caregiver is the contact.
-  static String? phone(String? value, {bool isRequired = false}) {
-    final text = value?.trim() ?? '';
-    if (text.isEmpty) return isRequired ? 'Enter a phone number' : null;
-    final digits = text.replaceAll(RegExp(r'[\s()+-]'), '');
-    if (!RegExp(r'^\d{7,15}$').hasMatch(digits)) {
-      return 'Enter a valid phone number';
-    }
+  /// A Philippine mobile number as typed after the fixed `+63`: 10 digits
+  /// starting with 9. See [PhPhone]. Optional unless [isRequired], by design:
+  /// a managed patient often has no phone of their own.
+  static String? phPhone(String? value, {bool isRequired = false}) {
+    final digits = PhPhone.localDigits(value);
+    if (digits == '') return isRequired ? 'Enter a phone number' : null;
+    if (digits == null) return 'Enter the 10 digits after +63, starting with 9';
     return null;
   }
 
@@ -64,6 +64,40 @@ class Validators {
     if (text.length != 8) return 'The code is 8 characters long';
     if (!RegExp(r'^HS[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$').hasMatch(text)) {
       return 'That does not look like a HealthSync code';
+    }
+    return null;
+  }
+
+  /// Largest amount on hand and low-stock alert (BUG-020). The fields also
+  /// stop typing at 3 and 2 digits.
+  static const maxOnHand = 999;
+  static const maxLowStockAlert = 99;
+
+  /// The amount on hand and the low-stock alert, checked together.
+  ///
+  /// [alertWithinStock] refuses an alert above the amount on hand, which would
+  /// fire the moment the medicine is saved. Only Add medicine sets it: on Edit,
+  /// the count falls below the alert as doses are taken, and that must not
+  /// block every other edit to the medicine.
+  static String? stock(
+    String? onHand,
+    String? alert, {
+    String onHandLabel = 'the amount on hand',
+    bool alertWithinStock = false,
+  }) {
+    final count = int.tryParse(onHand?.trim() ?? '');
+    final threshold = int.tryParse(alert?.trim() ?? '');
+    if (count == null || threshold == null) {
+      return 'Enter $onHandLabel and the low-stock alert as whole numbers.';
+    }
+    if (count < 0 || count > maxOnHand) {
+      return 'Enter $onHandLabel as 0 to $maxOnHand.';
+    }
+    if (threshold < 0 || threshold > maxLowStockAlert) {
+      return 'Set the low-stock alert to 0 to $maxLowStockAlert.';
+    }
+    if (alertWithinStock && threshold > count) {
+      return 'The low-stock alert cannot be more than $onHandLabel.';
     }
     return null;
   }

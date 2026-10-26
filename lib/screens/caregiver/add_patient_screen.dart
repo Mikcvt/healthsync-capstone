@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/caregiver_provider.dart';
+import '../../utils/phone_format.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../widgets/shared/ph_phone_field.dart';
 import 'generate_otp_screen.dart';
 
 /// Creates a managed patient account on the caregiver's behalf.
@@ -56,11 +58,11 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
     final uid = await caregiver.createPatient(
       firstName: _firstName.text,
       lastName: _lastName.text,
-      phone: _phone.text,
+      phone: PhPhone.toStored(_phone.text),
       medicalConditions: _conditions.text,
       allergies: _allergies.text,
       emergencyContact: _emergencyContact.text,
-      emergencyPhone: _emergencyPhone.text,
+      emergencyPhone: PhPhone.toStored(_emergencyPhone.text),
     );
 
     if (!mounted) return;
@@ -172,11 +174,10 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              _Field(
+              PhPhoneField(
                 controller: _phone,
-                label: 'Phone number (optional)',
-                keyboardType: TextInputType.phone,
                 helper: 'Used if you send their code by SMS.',
+                accent: AppColors.caregiverGreen,
               ),
 
               const SizedBox(height: 24),
@@ -203,10 +204,10 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                 textCapitalization: TextCapitalization.words,
               ),
               const SizedBox(height: 12),
-              _Field(
+              PhPhoneField(
                 controller: _emergencyPhone,
                 label: 'Contact phone',
-                keyboardType: TextInputType.phone,
+                accent: AppColors.caregiverGreen,
               ),
 
               const SizedBox(height: 28),
@@ -273,18 +274,14 @@ class _SectionLabel extends StatelessWidget {
 class _Field extends StatelessWidget {
   final TextEditingController controller;
   final String label;
-  final String? helper;
   final int maxLines;
-  final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final String? Function(String?)? validator;
 
   const _Field({
     required this.controller,
     required this.label,
-    this.helper,
     this.maxLines = 1,
-    this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.validator,
   });
@@ -294,7 +291,6 @@ class _Field extends StatelessWidget {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
-      keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       validator: validator,
       style: const TextStyle(
@@ -302,14 +298,7 @@ class _Field extends StatelessWidget {
         color: AppColors.textPrimary,
         fontFamily: 'PlusJakartaSans',
       ),
-      decoration: AppStyles.inputDecoration(label).copyWith(
-        helperText: helper,
-        helperStyle: const TextStyle(
-          fontSize: 12,
-          color: AppColors.textMuted,
-          fontFamily: 'PlusJakartaSans',
-        ),
-      ),
+      decoration: AppStyles.inputDecoration(label),
     );
   }
 }

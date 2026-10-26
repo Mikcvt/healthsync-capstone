@@ -1,5 +1,6 @@
 import '../../constants/app_strings.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
@@ -10,6 +11,7 @@ import '../../services/device_service.dart';
 import '../../widgets/shared/compartment_picker.dart';
 import 'add_medicine_success_screen.dart';
 import '../../utils/snackbar_helper.dart';
+import '../../utils/validators.dart';
 
 /// What step 3 needs to know about the patient's box before it can offer
 /// compartments.
@@ -100,15 +102,18 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
       return;
     }
 
-    final pills = int.tryParse(_pillsCountController.text.trim());
-    final threshold = int.tryParse(_thresholdController.text.trim());
-    if (pills == null || pills < 0 || threshold == null || threshold < 0) {
-      SnackbarHelper.showWarning(
-        context,
-        'Enter the amount on hand and the low-stock alert as whole numbers.',
-      );
+    final stockError = Validators.stock(
+      _pillsCountController.text,
+      _thresholdController.text,
+      onHandLabel: _fitsInBox ? 'the pills on hand' : 'the doses on hand',
+      alertWithinStock: true,
+    );
+    if (stockError != null) {
+      SnackbarHelper.showWarning(context, stockError);
       return;
     }
+    final pills = int.parse(_pillsCountController.text.trim());
+    final threshold = int.parse(_thresholdController.text.trim());
 
     // The lookup has finished by the time Save can be tapped. A failed one
     // means phone reminders, never a guessed compartment.
@@ -257,6 +262,10 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
               TextFormField(
                 controller: _pillsCountController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(3),
+                ],
                 decoration: AppStyles.inputDecoration(
                   _fitsInBox ? 'Pills on hand' : 'Doses on hand',
                   hint: '30',
@@ -268,6 +277,10 @@ class _AddMedicineStep3ScreenState extends State<AddMedicineStep3Screen> {
               TextFormField(
                 controller: _thresholdController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(2),
+                ],
                 decoration: AppStyles.inputDecoration(
                   'Alert me when this many are left',
                   hint: '5',

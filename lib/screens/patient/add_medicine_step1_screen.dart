@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
 import '../../providers/schedule_provider.dart';
+import '../../utils/dosage_strength.dart';
+import '../../widgets/shared/dosage_strength_field.dart';
 import 'add_medicine_step2_screen.dart';
 
 class AddMedicineStep1Screen extends StatefulWidget {
@@ -17,11 +19,14 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _genericController = TextEditingController();
-  final _dosageController = TextEditingController(text: '500mg');
+  // No prefilled amount: '500mg' used to stay when the form changed to
+  // Liquid (BUG-018).
+  final _dosageController = TextEditingController();
   final _doctorController = TextEditingController();
   final _purposeController = TextEditingController();
 
   String _dosageForm = 'Tablet';
+  String _dosageUnit = DosageStrength.unitsFor('Tablet').first;
   final List<String> _forms = ['Tablet', 'Capsule', 'Liquid', 'Drops', 'Inhaler', 'Injection'];
 
   @override
@@ -41,7 +46,8 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
       medicationName: _nameController.text.trim(),
       genericName: _genericController.text.trim(),
       dosageForm: _dosageForm,
-      prescribedDosage: _dosageController.text.trim(),
+      prescribedDosage:
+          DosageStrength.format(_dosageController.text, _dosageUnit),
       prescribingDoctor: _doctorController.text.trim(),
       purpose: _purposeController.text.trim(),
     );
@@ -158,7 +164,12 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                       label: Text(f),
                       selected: selected,
                       onSelected: (val) {
-                        if (val) setState(() => _dosageForm = f);
+                        if (val) {
+                          setState(() {
+                            _dosageForm = f;
+                            _dosageUnit = DosageStrength.unitsFor(f).first;
+                          });
+                        }
                       },
                       selectedColor: AppColors.caregiverGreen,
                       labelStyle: TextStyle(
@@ -176,14 +187,12 @@ class _AddMedicineStep1ScreenState extends State<AddMedicineStep1Screen> {
                 const SizedBox(height: 18),
 
                 // Prescribed Dosage
-                TextFormField(
-                  controller: _dosageController,
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter dosage strength' : null,
-                  decoration: AppStyles.inputDecoration(
-                    'Dosage Strength *',
-                    hint: 'e.g., 500mg, 10ml, 1 puff',
-                    accent: AppColors.caregiverGreen,
-                  ),
+                DosageStrengthField(
+                  amountController: _dosageController,
+                  dosageForm: _dosageForm,
+                  unit: _dosageUnit,
+                  onUnitChanged: (u) => setState(() => _dosageUnit = u),
+                  label: 'Dosage Strength *',
                 ),
                 const SizedBox(height: 16),
 

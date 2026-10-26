@@ -22,6 +22,22 @@ interface CreatePatientBody {
 }
 
 /**
+ * A Philippine mobile number as `+639XXXXXXXXX`, the same rule as the app's
+ * PhPhone (BUG-016/017). Accepts the forms people type or paste (`0961…`,
+ * `639…`, `+63 961 …`). Returns '' for no number and null for one that is not
+ * a mobile number, so a client that skips the app's check still cannot store
+ * a 40-digit value.
+ */
+function normalisePhPhone(raw: string | undefined): string | null {
+	let digits = (raw ?? '').replace(/\D/g, '');
+	if (!digits) return '';
+	if (digits.length === 12 && digits.startsWith('63')) digits = digits.slice(2);
+	else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+	if (digits.length !== 10 || !digits.startsWith('9')) return null;
+	return `+63${digits}`;
+}
+
+/**
  * Managed patients have no real inbox, but Firebase Auth requires an email.
  * A routable-looking domain would risk mail actually being sent somewhere, so
  * this uses a reserved-by-RFC .invalid suffix.
@@ -64,6 +80,11 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 	if (!firstName || !lastName) {
 		return error("Please provide the patient's first and last name.", 400, 'missing_name');
 	}
+	const phone = normalisePhPhone(body.phone);
+	const emergencyPhone = normalisePhPhone(body.emergency_phone);
+	if (phone === null || emergencyPhone === null) {
+		return error('Enter phone numbers as the 10 digits after +63, starting with 9.', 400, 'invalid_phone');
+	}
 
 	const accessToken = await getAccessToken(sa, env.TOKEN_CACHE);
 	const db = new Firestore(sa.project_id, accessToken);
@@ -96,7 +117,7 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 		first_name: firstName,
 		last_name: lastName,
 		email: '',
-		phone: body.phone?.trim() ?? '',
+		phone,
 		can_edit_medications: false,
 		created_at: now,
 		is_active: true,
@@ -112,7 +133,7 @@ export async function handleCreatePatient(request: Request, env: Env): Promise<R
 		medical_conditions: splitList(body.medical_conditions),
 		allergies: splitList(body.allergies),
 		emergency_contact: body.emergency_contact?.trim() ?? '',
-		emergency_phone: body.emergency_phone?.trim() ?? '',
+		emergency_phone: emergencyPhone,
 		created_at: now,
 	});
 

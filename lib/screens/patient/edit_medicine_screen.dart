@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../constants/app_colors.dart';
@@ -10,9 +11,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/caregiver_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/dosage_strength.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../utils/validators.dart';
 import '../../widgets/shared/compartment_picker.dart';
+import '../../widgets/shared/dosage_strength_field.dart';
 
 /// Edits one dose of one medicine.
 ///
@@ -42,6 +45,8 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
   late TextEditingController _pillsController;
   late TextEditingController _thresholdController;
   late Set<int> _selectedDays;
+  late String _dosageUnit;
+  String? _unparsedDosage;
   bool _isSaving = false;
 
   static const List<String> _dayLabels = [
@@ -55,7 +60,13 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
     final schedule = widget.schedule;
 
     _nameController = TextEditingController(text: med?.medicationName ?? '');
-    _dosageController = TextEditingController(text: med?.prescribedDosage ?? '');
+    final dosage = DosageStrength.parse(med?.prescribedDosage);
+    _dosageController = TextEditingController(text: dosage?.amount ?? '');
+    _dosageUnit = dosage?.unit ??
+        DosageStrength.unitsFor(med?.dosageForm ?? 'Tablet').first;
+    // An older free-text value with no number ("as directed") is kept as it
+    // is unless an amount is typed.
+    _unparsedDosage = dosage == null ? med?.prescribedDosage : null;
     _instructionsController =
         TextEditingController(text: med?.instructions ?? '');
     _doctorController =
@@ -132,10 +143,25 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
       return;
     }
 
-    final pillsError =
-        Validators.positiveInt(_pillsController.text, 'pills remaining');
-    if (pillsError != null) {
-      SnackbarHelper.showError(context, pillsError);
+    final keepsUnparsedDosage =
+        _unparsedDosage != null && _dosageController.text.trim().isEmpty;
+    if (widget.medication != null && !keepsUnparsedDosage) {
+      final dosageError = DosageStrength.validateAmount(_dosageController.text);
+      if (dosageError != null) {
+        SnackbarHelper.showError(context, dosageError);
+        return;
+      }
+    }
+
+    // The alert may sit above the count here: it falls below the alert as
+    // doses are taken, and that must not block other edits.
+    final stockError = Validators.stock(
+      _pillsController.text,
+      _thresholdController.text,
+      onHandLabel: 'the pills remaining',
+    );
+    if (stockError != null) {
+      SnackbarHelper.showError(context, stockError);
       return;
     }
 
@@ -148,10 +174,8 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
     final updatedSchedule = schedule.copyWith(
       scheduledTime: _timeController.text.trim(),
       daysOfWeek: _selectedDays.toList()..sort(),
-      pillsRemaining:
-          int.tryParse(_pillsController.text) ?? schedule.pillsRemaining,
-      lowStockThreshold: int.tryParse(_thresholdController.text) ??
-          schedule.lowStockThreshold,
+      pillsRemaining: int.parse(_pillsController.text.trim()),
+      lowStockThreshold: int.parse(_thresholdController.text.trim()),
     );
 
     var saved = isCaregiver
@@ -165,7 +189,9 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
     if (saved && med != null) {
       final updatedMed = med.copyWith(
         medicationName: _nameController.text.trim(),
-        prescribedDosage: _dosageController.text.trim(),
+        prescribedDosage: keepsUnparsedDosage
+            ? _unparsedDosage
+            : DosageStrength.format(_dosageController.text, _dosageUnit),
         instructions: _instructionsController.text.trim(),
         prescribingDoctor: _doctorController.text.trim(),
       );
@@ -311,9 +337,12 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
                   decoration: AppStyles.inputDecoration('Medicine name'),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _dosageController,
-                  decoration: AppStyles.inputDecoration('Dosage (e.g. 500mg)'),
+                DosageStrengthField(
+                  amountController: _dosageController,
+                  dosageForm: widget.medication!.dosageForm,
+                  unit: _dosageUnit,
+                  onUnitChanged: (u) => setState(() => _dosageUnit = u),
+                  accent: AppColors.patientBlue,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -402,6 +431,10 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
                     child: TextFormField(
                       controller: _pillsController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
+                      ],
                       decoration: AppStyles.inputDecoration('Pills remaining'),
                     ),
                   ),
@@ -410,6 +443,10 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
                     child: TextFormField(
                       controller: _thresholdController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(2),
+                      ],
                       decoration: AppStyles.inputDecoration('Alert below'),
                     ),
                   ),

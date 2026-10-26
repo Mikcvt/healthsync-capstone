@@ -8,9 +8,11 @@ import '../../providers/caregiver_provider.dart';
 import '../../services/firestore_service.dart';
 import '../patient/change_password_screen.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/phone_format.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/shared/confirm_dialog.dart';
 import '../../widgets/shared/legal_links.dart';
+import '../../widgets/shared/ph_phone_field.dart';
 import '../../widgets/shared/reminder_check_card.dart';
 import '../../widgets/shared/warning_line.dart';
 
@@ -112,14 +114,20 @@ class _CaregiverSettingsScreenState extends State<CaregiverSettingsScreen> {
                         const SizedBox(height: 3),
                         Text(
                           user?.email ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 13,
                             color: AppColors.textSecondary,
                           ),
                         ),
+                        // One line: a number saved before the +63 rule (one
+                        // test account has 40 digits) cannot break the card.
                         if ((user?.phone ?? '').isNotEmpty)
                           Text(
-                            user!.phone,
+                            PhPhone.display(user!.phone),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -463,8 +471,12 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     final user = context.read<AuthProvider>().currentUserModel;
     _first = TextEditingController(text: user?.firstName ?? '');
     _last = TextEditingController(text: user?.lastName ?? '');
-    _phone = TextEditingController(text: user?.phone ?? '');
+    _phone = TextEditingController(text: PhPhone.forField(user?.phone));
+    _phoneUnreadable = PhPhone.isUnreadable(user?.phone);
   }
+
+  /// The saved number could not be read, so the field starts empty.
+  bool _phoneUnreadable = false;
 
   @override
   void dispose() {
@@ -484,7 +496,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     final success = await auth.updateProfile(
       firstName: _first.text.trim(),
       lastName: _last.text.trim(),
-      phone: _phone.text.trim(),
+      phone: PhPhone.toStored(_phone.text),
     );
     if (!mounted) return;
     if (success) {
@@ -524,11 +536,10 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
                   value == null || value.trim().isEmpty ? 'Required' : null,
             ),
             const SizedBox(height: 12),
-            TextFormField(
+            PhPhoneField(
               controller: _phone,
               enabled: !_saving,
-              decoration: AppStyles.inputDecoration('Phone number'),
-              keyboardType: TextInputType.phone,
+              hadUnreadable: _phoneUnreadable,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),

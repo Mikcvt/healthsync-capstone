@@ -5,8 +5,10 @@ import '../../constants/app_styles.dart';
 import '../../providers/auth_provider.dart';
 import 'email_verification_screen.dart';
 import 'login_screen.dart';
+import '../../utils/phone_format.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/shared/confirm_dialog.dart';
+import '../../widgets/shared/ph_phone_field.dart';
 
 class RegisterScreen extends StatefulWidget {
   /// The account this form creates. Caregiver is the only self-registering
@@ -52,7 +54,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       role: widget.role,
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
-      phone: _phoneController.text.trim(),
+      phone: PhPhone.toStored(_phoneController.text),
     );
 
     if (!mounted) return;
@@ -232,14 +234,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 14),
 
                 // Phone field
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: AppStyles.inputDecoration(
-                    'Phone number',
-                    hint: '+63 912 345 6789',
-                  ),
-                ),
+                PhPhoneField(controller: _phoneController),
                 const SizedBox(height: 14),
 
                 // Password field
