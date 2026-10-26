@@ -15,12 +15,12 @@ The decisions below were agreed on Oct 27, 2026; the fixes follow them.
 |------|--------|--------|
 | BUG-002, 003, 004, 005 | Fixed | `b4c2c24` |
 | BUG-016/017, 018/019, 020 | Fixed; unit tests in `test/input_rules_test.dart` | `b8a3ef2` |
-| BUG-025 | Fixed; **needs the rules deployed** | `53455ee` |
+| BUG-025 | Fixed; the rules guard goes out with the next build | `53455ee` |
 | CR-06 | Done | `2ac697e` |
 | BUG-026 | Fixed for the welcome screen and capped app-wide at 1.3×; **retest every screen on a phone** | `4cc55e0` |
 | BUG-024 + D4 (6 compartments) | Fixed; CLAUDE.md corrected | `4d2164e` |
 | BUG-021 | Fixed (one batch) | `25aeb44` |
-| BUG-022/023 | Data side fixed; **needs the rules deployed**. The app's Bluetooth pairing flow is not started (no `flutter_blue_plus` yet) | `2af3113` |
+| BUG-022/023 | Data side fixed; the rules go out with the next build. The app's Bluetooth pairing flow is not started (no `flutter_blue_plus` yet) | `2af3113` |
 | BUG-007, 008, 010 | Waiting for the tester's recordings | – |
 
 Found and fixed along the way: Today's overview on Home updated only when the
@@ -29,8 +29,14 @@ the new value was invalid; pairing wrote "online, synced now" for a box that
 had never been switched on.
 
 Before testing on a phone:
-- Deploy the rules (`firebase deploy --only firestore:rules`) and the Worker
-  (`POST /patients` now checks phone numbers).
+- **Do not deploy the rules or the Worker from this branch** (CLAUDE.md, "Live
+  app safety"): the Play closed beta (1.0.0+2) uses the same Firebase project
+  and Worker. They go out with the build that contains these fixes. Until
+  then, the in-app parts of BUG-025 and BUG-022/023 work; the server-side
+  guards do not. Checked against `release`: the rules stay compatible with
+  1.0.0+2 (devices create no longer requires id == serial, a TODO). Once
+  deployed, the Worker refuses an invalid phone number from 1.0.0+2 too, and
+  that build shows the Worker's message.
 - Old test device documents have random ids. Pairing again switches them off
   for that patient, but a serial typed on two accounts before this fix still
   has two documents; delete the extras in the Firebase console.

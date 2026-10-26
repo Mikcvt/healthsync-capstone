@@ -258,9 +258,12 @@ service cloud.firestore {
     match /devices/{deviceId} {
       allow read: if isOwner(resource.data.patient_ref)
         || isCaregiverOf(resource.data.patient_ref);
-      allow create: if (isOwner(request.resource.data.patient_ref)
-          || isCaregiverOf(request.resource.data.patient_ref))
-        && request.resource.data.serial_number == deviceId;
+      // The live 1.0.0+2 build still creates boxes under a random id, so
+      // create does not yet require id == serial. Add
+      //   && request.resource.data.serial_number == deviceId
+      // once every tester has a build from this branch.
+      allow create: if isOwner(request.resource.data.patient_ref)
+        || isCaregiverOf(request.resource.data.patient_ref);
       allow update: if isOwner(resource.data.patient_ref)
         || isCaregiverOf(resource.data.patient_ref)
         || (resource.data.is_active == false
