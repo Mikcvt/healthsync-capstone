@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
 import 'package:flutter/material.dart';
 import '../constants/app_strings.dart';
+import '../models/box_messages.dart';
 import '../models/patient_profile_model.dart';
 import '../models/patient_medication_model.dart';
 import '../models/schedule_model.dart';
@@ -829,6 +831,107 @@ class PatientProvider extends ChangeNotifier {
       status: undo.reportStatus,
       scheduleId: undo.scheduleId,
     );
+    // The box may still be beeping for this dose; BoxProvider syncs so it
+    // stops (BLE_CONNECT_ON_DEMAND.md, M2). After the Undo window, like the
+    // caregiver push, so an undone tap never silences the box.
+    if (!_doseFinalized.isClosed) _doseFinalized.add(undo.scheduleId);
+  }
+
+  final _doseFinalized = StreamController<String>.broadcast();
+
+  /// The schedule id of each Done or Skip once its Undo window has closed.
+  Stream<String> get doseFinalized => _doseFinalized.stream;
+
+  String? get patientUid => _patientUid;
+
+  /// A dose confirmed with the box button, arriving with a Bluetooth sync
+  /// (BLE_CONNECT_ON_DEMAND.md, M3).
+  ///
+  /// Written under the dose's own id (`{sid}_{date}_{time}`), so a repeated
+  /// sync can never create a second log. `logged_at` is the press time: a
+  /// sync after the Worker marked the dose missed is then allowed by the
+  /// existing rule (the patient acted before `missed_at`), and the Worker
+  /// sends the care partner a correction. A dose already decided in the app
+  /// is left as it is: the app's answer wins. A box `missed` is not written:
+  /// the Worker's sweep marks the same dose missed by the same rule.
+  ///
+  /// True when the event is dealt with (written, or deliberately left), so
+  /// the box may forget it. False only when it could not be written and the
+  /// next sync should try again.
+  Future<bool> recordBoxPress(BoxEvent event) async {
+    final uid = _patientUid;
+    if (uid == null) return false;
+    final id = event.doseLogId;
+    final scheduledAt = event.scheduledAt;
+    if (!event.isTaken || id == null || scheduledAt == null) return true;
+
+    final pressedAt = event.at ?? DateTime.now();
+    final schedule = scheduleById(event.scheduleId);
+    try {
+      final existing = await _firestoreService.getDoseLog(id);
+      if (existing != null &&
+          (existing.isTaken || existing.isSkipped || existing.isCancelled)) {
+        return true;
+      }
+      // No log and no schedule: the medicine was removed since. There is no
+      // dose left to attach the press to.
+      if (existing == null && schedule == null) return true;
+
+      final hasStock = schedule != null && schedule.pillsRemaining > 0;
+      final timing = event.timing == DoseTimingTag.late
+          ? DoseTimingTag.late
+          : DoseTimingTag.onTime;
+      final writes = <Future<void>>[];
+      if (existing != null) {
+        writes.add(_firestoreService.updateDoseLogFields(id, {
+          'status': DoseStatus.taken,
+          'taken_at': pressedAt,
+          'timing': timing,
+          'confirmed_via': 'button',
+          'logged_at': pressedAt,
+          'caregiver_notified': false,
+          'stock_counted': hasStock,
+        }));
+      } else {
+        writes.add(_firestoreService.setDoseLog(DoseLogModel(
+          doseLogId: id,
+          scheduleRef: event.scheduleId,
+          patientRef: uid,
+          scheduledDate: event.date,
+          scheduledTime: schedule!.scheduledTime,
+          scheduledAt: scheduledAt,
+          status: DoseStatus.taken,
+          takenAt: pressedAt,
+          timing: timing,
+          confirmedVia: 'button',
+          loggedAt: pressedAt,
+          recordedBy: uid,
+          createdAt: DateTime.now(),
+        )));
+        writes.add(_markStockCounted(id, hasStock));
+      }
+      if (hasStock) {
+        writes.add(
+            _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1));
+        _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+      }
+      await _firestoreService.settle(writes);
+      notifyListeners();
+      _reportDoseEvent(
+        doseLogId: id,
+        status: DoseStatus.taken,
+        scheduleId: event.scheduleId,
+      );
+      return true;
+    } on FirebaseException catch (e) {
+      // Refused by the rules (for example a dose missed before the press
+      // and not correctable). Retrying would be refused again.
+      debugPrint('recordBoxPress refused for $id: $e');
+      return true;
+    } catch (e) {
+      debugPrint('recordBoxPress failed for $id: $e');
+      return false;
+    }
   }
 
   /// Records a low-stock alert for the patient once stock reaches the
@@ -1349,6 +1452,7 @@ class PatientProvider extends ChangeNotifier {
   @override
   void dispose() {
     _cancelSubscriptions();
+    _doseFinalized.close();
     super.dispose();
   }
 }

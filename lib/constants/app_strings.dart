@@ -115,6 +115,45 @@ class AppStrings {
   static const String deviceOnline = 'Online';
   static const String deviceOffline = 'Offline';
 
+  // Medicine box over Bluetooth (BLE_CONNECT_ON_DEMAND.md)
+  static const String boxUnsupported =
+      'This phone does not support Bluetooth Low Energy, so it cannot connect '
+      'to the box. Reminders still work on this phone.';
+  static const String boxBluetoothOff =
+      'Bluetooth is off. Turn it on to connect to your box.';
+  static const String boxPermissionDenied =
+      'HealthSync needs the Nearby devices permission to find your box. Allow '
+      'it in Settings, then try again. (On Android 11 or older, allow '
+      'Location and turn Location on.)';
+  static const String boxNotFound =
+      'Box not found. Make sure it is switched on and within a few metres of '
+      'this phone.';
+  static const String boxPairingFailed =
+      'Pairing did not finish. Hold the box button for 5 seconds until the '
+      'lights run, then try again and type the 6-digit code from the label '
+      'within 30 seconds.';
+  static const String boxNotPaired =
+      'This phone is no longer paired with the box. Pair the box again: hold '
+      'its button for 5 seconds, then tap Pair again.';
+  static const String boxConnectionLost =
+      'The box stopped answering. Move closer and try again.';
+  static const String boxProtocolError =
+      'The box answered in a way this app does not understand. Its firmware '
+      'may need an update.';
+  static String boxWrongSerial(String paired, String account) =>
+      'This phone is paired with box $paired, but your account now uses box '
+      '$account. Pair this phone with $account.';
+  static const String boxPairNeedsInternet =
+      'Paired with the box, but could not save it to your account. Check your '
+      'internet connection and try again.';
+  static const String boxSynced = 'Box synced.';
+  static String boxSyncedWithPresses(int count) => count == 1
+      ? 'Box synced. 1 dose taken with the box button was saved.'
+      : 'Box synced. $count doses taken with the box button were saved.';
+  static String boxTooManyDoseTimes(int leftOut) =>
+      'The box holds 24 dose times; $leftOut more are reminded on this '
+      'phone only.';
+
   // OTP
   static const String otpInvalid = 'That code is not valid. Check it and try again.';
   static const String otpUsed =

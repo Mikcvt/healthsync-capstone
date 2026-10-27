@@ -3,15 +3,18 @@ import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/box_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../models/device_model.dart';
+import '../../services/box_link_service.dart';
 import '../../services/device_service.dart';
 import '../../utils/date_formatter.dart';
+import '../../utils/snackbar_helper.dart';
 import 'device_pairing_screen.dart';
 import '../../widgets/shared/floating_nav_bar.dart';
 import '../../widgets/shared/medicine_badge.dart';
 
-/// Live view of the physical 8-compartment box.
+/// Live view of the physical 6-compartment box, and the Sync button.
 ///
 /// Everything here comes from the `devices` and `schedules` streams. The
 /// previous version reported "Online · 84% battery · 4 minutes ago" as fixed
@@ -245,14 +248,69 @@ class _NoDeviceCard extends StatelessWidget {
   }
 }
 
+/// The box on the account and this phone's Bluetooth link to it
+/// (BoxProvider). The box is connect-on-demand, so there is no "online":
+/// what matters is whether this phone is paired with it and when they last
+/// synced.
 class _DeviceCard extends StatelessWidget {
   final DeviceModel device;
 
   const _DeviceCard({required this.device});
 
+  Future<void> _sync(BuildContext context) async {
+    final result = await context.read<BoxProvider>().syncNow();
+    if (!context.mounted) return;
+    if (result.ok) {
+      SnackbarHelper.showSuccess(context, result.message);
+    } else {
+      SnackbarHelper.showError(context, result.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isOnline = device.isOnline;
+    final box = context.watch<BoxProvider>();
+    final error = box.lastError;
+    final syncedRecently = device.lastSync != null &&
+        DateTime.now().difference(device.lastSync!) < DeviceModel.onlineWindow;
+
+    final String status;
+    final Color dot;
+    if (!box.isPairedHere) {
+      status = 'Not paired with this phone';
+      dot = AppColors.textMuted;
+    } else if (box.pairedBoxMismatch) {
+      status = 'Paired with another box';
+      dot = AppColors.missedRed;
+    } else if (box.isBusy) {
+      status = 'Syncing with the box…';
+      dot = AppColors.ledActive;
+    } else if (error != null) {
+      status = 'Last sync did not finish';
+      dot = AppColors.missedRed;
+    } else if (syncedRecently) {
+      status = 'Synced';
+      // Green is a status signal, so the dot keeps it; the rest of this
+      // patient screen is patient blue.
+      dot = AppColors.caregiverGreen;
+    } else {
+      status = 'Paired with this phone';
+      dot = AppColors.patientBlue;
+    }
+
+    final String? detail = !box.isPairedHere
+        ? 'Pair it so the box gets your schedule and the doses you take with '
+            'its button reach the app.'
+        : box.pairedBoxMismatch
+            ? AppStrings.boxWrongSerial(
+                box.pairedSerial ?? '', device.serialNumber)
+            : !box.isBusy && error != null
+                ? box.messageFor(error)
+                : box.lastNote;
+    final needsPairing = !box.isPairedHere ||
+        box.pairedBoxMismatch ||
+        error == BoxLinkError.notPaired;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -264,28 +322,34 @@ class _DeviceCard extends StatelessWidget {
               Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // Green = online is a status signal, so the dot keeps it;
-                  // the rest of this patient screen is patient blue.
-                  color:
-                      isOnline ? AppColors.caregiverGreen : AppColors.textMuted,
-                ),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: dot),
               ),
               const SizedBox(width: 10),
-              Text(
-                isOnline ? AppStrings.deviceOnline : AppStrings.deviceOffline,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: isOnline
-                      ? AppColors.patientBlue
-                      : AppColors.textSecondary,
-                  fontFamily: AppStyles.fontFamily,
+              Expanded(
+                child: Text(
+                  status,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    fontFamily: AppStyles.fontFamily,
+                  ),
                 ),
               ),
             ],
           ),
+          if (detail != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              detail,
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.5,
+                color: AppColors.textSecondary,
+                fontFamily: AppStyles.fontFamily,
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           _StatRow(label: 'Device', value: device.deviceName),
           const Divider(height: 22, color: AppColors.borderGray),
@@ -294,6 +358,60 @@ class _DeviceCard extends StatelessWidget {
           _StatRow(
             label: 'Last sync',
             value: DateFormatter.lastSync(device.lastSync),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: needsPairing
+                ? ElevatedButton.icon(
+                    onPressed: box.isBusy
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const DevicePairingScreen(),
+                              ),
+                            ),
+                    icon: const Icon(Icons.bluetooth_rounded, size: 20),
+                    label: Text(
+                      box.isPairedHere ? 'Pair again' : 'Pair this phone',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.patientBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: box.isBusy ? null : () => _sync(context),
+                    icon: box.isBusy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync_rounded, size: 20),
+                    label: Text(
+                      box.isBusy ? 'Syncing…' : 'Sync with box',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontFamily: AppStyles.fontFamily,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.patientBlue,
+                      side: const BorderSide(color: AppColors.patientBlue),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),

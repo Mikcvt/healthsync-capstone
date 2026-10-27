@@ -614,7 +614,9 @@ how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
 [x] edit_profile_screen.dart          saves to users + patient_profile
 [x] change_password_screen.dart
 [x] settings_screen.dart              device-local prefs via PreferencesService
-[x] device_pairing_screen.dart        serial entry → creates a devices doc
+[x] device_pairing_screen.dart        Bluetooth scan → Android pairing (label code)
+                                      → serial from the box → devices doc
+                                      (BoxProvider; not yet tested with a box)
 
 DELETED — a static duplicate of a working screen:
   intake_history_screen.dart   → use analytics_screen.dart

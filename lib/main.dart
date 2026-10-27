@@ -5,6 +5,7 @@ import 'config/environment.dart';
 import 'constants/app_colors.dart';
 import 'constants/app_styles.dart';
 import 'providers/auth_provider.dart';
+import 'providers/box_provider.dart';
 import 'providers/patient_provider.dart';
 import 'providers/caregiver_provider.dart';
 import 'providers/schedule_provider.dart';
@@ -46,6 +47,10 @@ class HealthSyncApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => PatientProvider()),
+        // The patient's Bluetooth link to their box; built on PatientProvider.
+        ChangeNotifierProvider(
+          create: (context) => BoxProvider(context.read<PatientProvider>()),
+        ),
         ChangeNotifierProvider(create: (_) => CaregiverProvider()),
         ChangeNotifierProvider(create: (_) => ScheduleProvider()),
       ],

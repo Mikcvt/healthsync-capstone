@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/app_styles.dart';
+import '../../providers/box_provider.dart';
 import '../../providers/patient_provider.dart';
 import '../../services/device_settings_service.dart';
 import '../../services/dose_launch_router.dart';
@@ -23,7 +24,8 @@ class PatientMainScreen extends StatefulWidget {
   State<PatientMainScreen> createState() => _PatientMainScreenState();
 }
 
-class _PatientMainScreenState extends State<PatientMainScreen> {
+class _PatientMainScreenState extends State<PatientMainScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   bool _openingAlarm = false;
 
@@ -41,17 +43,30 @@ class _PatientMainScreenState extends State<PatientMainScreen> {
   void initState() {
     super.initState();
     DoseLaunchRouter.instance.pendingScheduleId.addListener(_openPendingAlarm);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _openPendingAlarm();
       _maybeShowBackgroundHint();
+      // Sync with the medicine box when the app opens (BoxProvider; quiet,
+      // and only if this phone is paired with one).
+      if (mounted) context.read<BoxProvider>().syncOnOpen();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     DoseLaunchRouter.instance.pendingScheduleId
         .removeListener(_openPendingAlarm);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Brought back from the background counts as opening the app.
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<BoxProvider>().syncOnOpen();
+    }
   }
 
   /// Opens the alarm screen for a tapped reminder — the only place Snooze is

@@ -68,6 +68,47 @@ class PreferencesService {
   Future<void> setBackgroundHintShown() =>
       _setBool(_keyBackgroundHintShown, true);
 
+  // The medicine box this phone is paired with over Bluetooth, per account.
+  // Device-local by nature: the Bluetooth pairing belongs to this phone, and
+  // another phone signed in to the same account has to pair on its own.
+  static String _keyBoxRemoteId(String uid) => 'box_remote_id_$uid';
+  static String _keyBoxSerial(String uid) => 'box_serial_$uid';
+
+  /// The box paired on this phone for [uid], or null.
+  Future<({String remoteId, String serial})?> pairedBox(String uid) async {
+    try {
+      final store = await _store;
+      final remoteId = store.getString(_keyBoxRemoteId(uid));
+      final serial = store.getString(_keyBoxSerial(uid));
+      if (remoteId == null || serial == null) return null;
+      return (remoteId: remoteId, serial: serial);
+    } catch (e) {
+      debugPrint('PreferencesService.pairedBox failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> setPairedBox(String uid,
+      {required String remoteId, required String serial}) async {
+    try {
+      final store = await _store;
+      await store.setString(_keyBoxRemoteId(uid), remoteId);
+      await store.setString(_keyBoxSerial(uid), serial);
+    } catch (e) {
+      debugPrint('PreferencesService.setPairedBox failed: $e');
+    }
+  }
+
+  Future<void> clearPairedBox(String uid) async {
+    try {
+      final store = await _store;
+      await store.remove(_keyBoxRemoteId(uid));
+      await store.remove(_keyBoxSerial(uid));
+    } catch (e) {
+      debugPrint('PreferencesService.clearPairedBox failed: $e');
+    }
+  }
+
   Future<void> _setBool(String key, bool value) async {
     try {
       final store = await _store;

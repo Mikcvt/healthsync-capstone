@@ -76,10 +76,11 @@ Recorded, not answered. Each has an owner.
 
 | # | Question | Status |
 |---|---|---|
-| M1 | Is pairing and sync on the patient's phone only? | Open |
-| M2 | When does the app connect? Suggested: on app open, on schedule change, on a manual Sync button. | Open |
-| M3 | How do box dose events reach Firestore, and how does the Worker's missed-dose sweep treat a dose the box logged but has not synced? A late sync could cause a false missed-dose alert. | Open |
-| M4 | Which schedule wins if it changes while the box is offline? Suggested: the phone, with a version number. | Open |
+| M1 | Is pairing and sync on the patient's phone only? | **Decided Oct 27 (Miko): yes, the patient's phone only.** The care partner still assigns compartments and sees box doses through Firebase |
+| M2 | When does the app connect? Suggested: on app open, on schedule change, on a manual Sync button. | **Decided Oct 27 (Miko): on app open, right after Done or Skip in the app (sends `app_done` so the box stops beeping), and on a manual Sync button.** No background service |
+| M3 | How do box dose events reach Firestore, and how does the Worker's missed-dose sweep treat a dose the box logged but has not synced? A late sync could cause a false missed-dose alert. | **Decided Oct 27 (Miko): the phone writes each event under `{sid}_{date}_{time}`: `taken` → status taken, `confirmed_via: "button"`, `taken_at` and `logged_at` = the press time, the box's `timing`, one pill off. A late sync after the sweep marked it missed is allowed by the existing rule (`logged_at < missed_at`) and the care partner gets the existing correction notice. No Worker or rules change. A box `missed` never overwrites a final status from the app** |
+| M4 | Which schedule wins if it changes while the box is offline? Suggested: the phone, with a version number. | **Decided Oct 27: the phone.** `sched_ver` = the newest `schedules.updated_at`; the phone resends when it differs |
+| M7 | How is a box paired in the app? | **Decided Oct 27 (Miko): scan for nearby `HealthSync-…` boxes, type the 6-digit label code once (Android's own dialog), and read the serial from `hello`.** Replaces typing the serial |
 | M5 | Android 12+ and older Bluetooth permission flow. Does it affect the Play listing, Data safety form, or privacy policy? Check before the production application. | Open |
 | M6 | One box per patient, up to 3 patients per care partner. | Open |
 
@@ -199,6 +200,48 @@ its owner.
 | X10 | No Wi-Fi code | The firmware on this branch has Wi-Fi + WiFiManager (Phases 1 and 3), and a local `secrets.h` holds the setup hotspot password. Code was not changed by this doc update | `firmware/healthsync_box/net.cpp`, `secrets.h` |
 
 ---
+
+## 10a. App side built (Oct 27, 2026, branch `fixing-bugs-and-ble`)
+
+Built to M1–M4 and M7 above and to `firmware/healthsync_box/BLE_PROTOCOL.md`
+(firmware 0.4.1). **Not yet tested with a real box.**
+
+| Part | File |
+|---|---|
+| Bluetooth package `flutter_blue_plus` 1.34.5 (2.x clashes with `connectivity_plus` over a Linux-only dependency) | `pubspec.yaml` |
+| Permissions: BLUETOOTH_SCAN (neverForLocation), BLUETOOTH_CONNECT; BLUETOOTH, BLUETOOTH_ADMIN, ACCESS_FINE_LOCATION capped at API 30; `bluetooth_le` not required | `android/app/src/main/AndroidManifest.xml` |
+| Link: scan by service UUID, connect at MTU 247, bond, JSON request/reply | `lib/services/box_link_service.dart` |
+| Messages (hello, sched_item, event) | `lib/models/box_messages.dart` |
+| Schedule sent to the box and its version (`hs1-` + FNV-1a of what is sent; `updated_at` is not stamped when a compartment moves) | `lib/utils/box_schedule.dart` |
+| Pairing, sync, triggers (app open/resume at most every 2 min, after Done/Skip once Undo closes, Sync button) | `lib/providers/box_provider.dart` |
+| Button presses → dose logs (`confirmed_via: "button"`, one pill off); box `missed` is left to the Worker | `PatientProvider.recordBoxPress` |
+| Screens: scan-and-tap pairing; Box tab status + Sync / Pair this phone | `device_pairing_screen.dart`, `medicine_box_status_screen.dart` |
+| Unit tests (schedule, version, events, ids) | `test/box_sync_test.dart` |
+
+No rules, index or Worker change: a late box press passes the existing
+`logged_at < missed_at` rule. The care partner's correction notice still says
+"Their phone was offline"; box-specific wording would be a Worker change.
+The care partner's Smart box screen still adds a box by serial; the patient
+then pairs their phone from the Box tab ("Pair this phone").
+
+### How to test with the box (dev app only)
+
+1. Flash firmware 0.4.1 with Christian's `secrets.h` (serial + 6-digit code).
+2. Install `app-dev-debug.apk`, sign in as a dev patient whose care partner
+   put a medicine in a compartment.
+3. Box: hold the button 5 s until the lights run. App: Box tab → Pair a box →
+   Search → tap the box → type the code in Android's dialog (within 30 s).
+4. Expect: "Medicine box paired.", the serial on the Box tab, and on the box's
+   serial console `Schedule replaced by the phone`.
+5. At a dose time press the box button, then tap Sync with box: the dose shows
+   taken (via the box button) and the care partner gets the push.
+6. Tap Done in the app while the box beeps: within about 10 s (after the Undo
+   toast) the box goes quiet.
+7. Re-open the app: it syncs quietly (built-in LED on GPIO 2 lights while
+   connected).
+8. Failure paths: Bluetooth off, box switched off ("Box not found"), wrong
+   code ("Pairing did not finish"), and "Forget the box on this phone" then
+   Sync ("Pair this phone").
 
 ## 10. Docs changed for this decision (Oct 22, 2026)
 
