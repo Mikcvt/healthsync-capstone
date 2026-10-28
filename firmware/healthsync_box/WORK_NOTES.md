@@ -30,7 +30,7 @@ never talks to the cloud; the phone relays to Firebase.
 | 2 Dose log on the SD card | ✅ Passed Oct 24, including the no-card fallback (§14) |
 | 3 Bluetooth server | ✅ Passed Oct 24 with nRF Connect, firmware 0.3.0 (§15). T5 (re-send while lit) checked by Christian on the bench, Oct 25 |
 | 4 Security | ✅ Passed Oct 25 (fw 0.4.0): passkey pairing (code on the label), hold 5 s → pairing mode, running light (§17). Then fw 0.4.1: one straight tone per event, alarm every 5 min, no early take (§17.9) |
-| 5 With Miko's app + battery | Next: box-only part (power saving, status signals, current measurement). The app part waits for Miko's Bluetooth work (7.1.x) |
+| 5 With Miko's app + battery | Miko's app with Bluetooth is now on our branch (§18, Oct 28): test it with the real box. Box-only part next: power saving, status signals, current measurement; push-button changes |
 | 6 Final box | Waits for the print (HW-19) |
 | 7 Hardware papers | Later (HW-07, HW-21, HW-12, DEF-03) |
 
@@ -1702,3 +1702,88 @@ early take left to Claude.
 5. Hold 5 s with nothing lit → 2 s tone + running light. To hear the 3 s
    "paired" tone: `unpair`, forget the box on the phone, then pair again.
 6. A dose left for 60 min (or a clock jump) → LED off, no sound.
+
+
+---
+
+## 18. Miko's app branch brought in (Oct 28)
+
+**What:** Miko's branch `fixing-bugs-and-ble` (12 commits, Oct 27) was built
+on our last push (`0b3697c`), so it already contained all box work. **None of
+his commits touched `firmware/`** (checked commit by commit; the firmware is
+identical, 0.4.1). Christian asked to bring in everything except firmware
+changes, which here means the whole branch: **fast-forwarded**
+`feature/medbox-integration` to `88aa746` (no merge commit, no conflicts).
+Not pushed yet (end of day).
+
+**What it brings (app side, Miko):**
+- **Bluetooth in the app** (`flutter_blue_plus` 1.34.5): `box_link_service.dart`
+  (scan by our service UUID, connect at MTU 247, Android pairing dialog with the
+  label code, JSON request/reply), `box_messages.dart`, `box_schedule.dart`,
+  `box_provider.dart`, `PatientProvider.recordBoxPress`, new pairing screen and
+  Box tab (status, Sync, "Pair this phone"), unit tests `test/box_sync_test.dart`.
+- **Checked against our firmware: it matches** — same UUIDs, MTU 247, `hello` →
+  `set_time` → schedule only when its version differs (`sched_begin` / items /
+  `sched_commit`) → `events` → saved to Firestore → `ack` → `app_done` for doses
+  decided in the app. `sid` ≤ 24, `HH:MM` 24 h, days 1–7 (empty = every day),
+  version `hs1-` + 16 hex (≤ 31). A box `taken` becomes the dose log
+  `{sid}_{date}_{time}` with `confirmed_via: "button"`, one pill off; the app's
+  own final answer wins; `ack` only after saving; events without a `sid` are
+  skipped safely; a box `missed` is left to the Worker's sweep.
+- **Decisions in `BLE_CONNECT_ON_DEMAND.md`:** M1 patient's phone only; M2 sync
+  on app open (at most every 2 min), after Done/Skip once Undo closes, and a
+  Sync button; M3 as above; M4 the phone's schedule wins; M7 pair by scanning +
+  label code, serial read from `hello`.
+- **Dev environment:** Android flavors `dev` ("HealthSync Dev", package
+  `.dev`, installs next to the Play app) and `prod`; dev Firebase project
+  **`healthsyncapp-dev`**, dev Worker `healthsync-api-dev`. VS Code Run:
+  "HealthSync (dev)". A build without a flavor stays production.
+- **Bug fixes** (BUG_FIX_PLAN.md): 6 compartments everywhere (BUG-024/D4), one
+  box per account and no made-up "online" (BUG-022/023), inputs, text size,
+  sign-in code button, and more. `CLAUDE.md` now lists our real pins.
+
+**Small notes found while reading:**
+- `BLE_CONNECT_ON_DEMAND.md` M4 says `sched_ver` = newest `updated_at`, but the
+  code (and its own §10a) uses a hash of what is sent (`hs1-…`). The code is
+  right (moving a compartment does not stamp `updated_at`); the M4 line is
+  outdated (Miko's doc).
+- If a phone lost its pairing, a quiet sync connects first and the box asks
+  for encryption, so Android may briefly show a pairing dialog before the app
+  says "Pair this phone". Harmless.
+- `healthsync-api/.dev.vars` on this PC holds the **production** key, while
+  `wrangler.jsonc` now defaults to the dev Worker. We do not run the Worker, so
+  no effect; mention it if anyone runs `wrangler dev` here.
+
+**Miko's test steps with the real box (dev app only, BLE_CONNECT_ON_DEMAND.md §10a):**
+1. Box on firmware 0.4.1 with Christian's `secrets.h`.
+2. Install the dev app (`app-dev-debug.apk`), sign in as a **dev** patient whose
+   care partner put a medicine in a compartment (in `healthsyncapp-dev`).
+3. Box: hold the button 5 s (running light). App: Box tab → Pair a box →
+   Search → tap the box → type the code in Android's dialog (within 30 s).
+4. Expect "Medicine box paired.", the serial on the Box tab, and on the Serial
+   Monitor `Schedule replaced by the phone`.
+5. At a dose time press the box button, then Sync: the dose shows taken via
+   the box button; the care partner gets the push.
+6. Tap Done in the app while the box beeps: within about 10 s the box goes
+   quiet (`app_done`).
+7. Re-open the app: it syncs quietly (built-in LED lights while connected).
+8. Failure paths: Bluetooth off, box off ("Box not found"), wrong code
+   ("Pairing did not finish"), forget on this phone then Sync ("Pair this
+   phone").
+
+**Getting the dev app (Oct 28):** the repo has no APK, only the build
+instructions (`flutter build apk --debug --flavor dev`). Building here failed at
+`flutter pub get`: Miko's `pubspec.lock` needs Flutter ≥ 3.44 and this PC has
+3.41.6 (same as ACTION_PLAN.md §1.1; we do not change the app's packages).
+`flutter upgrade` was NOT run: our project sits inside `C:lutter`, which is the
+Flutter SDK's own git repo, so upgrading in place is a risk to the project
+folder. **Decided (Christian): option A**, ask Miko for `app-dev-debug.apk` and
+whether the dev Worker (`healthsync-api-dev`) is deployed ("Add patient" needs
+it). Fallback B: a second Flutter ≥ 3.44 in its own folder, used only for the
+build. Nothing changed in the repo.
+
+**Test accounts needed (dev project only):** a Care Partner (signs up) → adds a
+patient → one tablet a few minutes ahead in compartment 2 → patient code →
+sign out → "I have a code". One phone is enough.
+
+**Next (Christian):** discuss, then Phase 5 and the push-button changes.
