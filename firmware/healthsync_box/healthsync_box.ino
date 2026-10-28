@@ -14,8 +14,12 @@
 //            2 minutes (running light 1→6, 2 s tone); a phone pairs → 3 s tone
 //   Tones    one straight tone per event, each a different length (config.h)
 //   Serial   bench commands (console.h)
+// Phase 5 (box part, Oct 29): power saving (CPU 80 MHz, loop rests 10 ms,
+//          advertising every ~0.5 s) and status flashes without a laptop: with
+//          nothing lit, all LEDs flash every 10 s, 1× = clock not set, 2× = no
+//          SD card (config.h).
 //
-// Next phases (WORK_NOTES.md §12): 5 with the app + battery.
+// Next phases (WORK_NOTES.md §12): rest of 5 with the app + battery.
 // No logic beyond wiring the modules together lives here.
 
 #include "config.h"
@@ -38,6 +42,7 @@ static uint32_t _lastHeld     = 0;      // button hold time in the previous loop
 static uint32_t _lastSecond   = 0;      // for the "holding..." debug prints
 static bool     _stuckWarned  = false;
 static bool     _clockWarned  = false;
+static bool     _clockOk      = false;  // the clock is set (checked once a second in tick())
 static bool     _holdEligible = false;  // this press began with nothing lit: it may open pairing
 static bool     _holdPairing  = false;  // this press opened pairing; its release does nothing else
 static bool     _overlayShown = false;  // the LEDs show the hold progress or the running light
@@ -57,7 +62,8 @@ static void showDoses(uint8_t lit) {
 
 // Once a second, and right after anything changes.
 static void tick() {
-    if (!rtc_time_valid()) {
+    _clockOk = rtc_time_valid();
+    if (!_clockOk) {
         if (!_clockWarned) {
             Serial.println("Clock not set: no alarms. Type  time YYYY-MM-DD HH:MM  (Manila time)");
             _clockWarned = true;
@@ -150,13 +156,28 @@ static void watchButton() {
     _lastHeld = held;
 }
 
-// Pairing mode shows a running light 1→6 (never mistaken for a dose, which
-// lights one steady LED). A due dose always has priority on the LEDs.
+// How many times the LEDs flash for the most serious problem; 0 = none.
+static int statusFlashes() {
+    if (!_clockOk) return 1;                  // clock not set or not found: no alarms
+    if (!storage_sd_ok()) return 2;           // no SD card: doses wait in flash
+    return 0;
+}
+
+// Pairing mode shows a running light 1→6 and a problem flashes all LEDs (neither
+// is mistaken for a dose, which lights one steady LED). A due dose always has
+// priority on the LEDs, then pairing mode, then the problem flashes.
 static void showOverlay() {
     bool holding = button_down_ms() >= PAIRING_HOLD_SHOW_MS && _holdEligible && !_holdPairing;
     if (holding) return;                                      // watchButton draws the fill-up
+    int flashes = _shownMask == 0 ? statusFlashes() : 0;
     if (ble_pairing_active() && _shownMask == 0) {
         leds_set(1 << ((millis() / PAIRING_CHASE_MS) % LED_COUNT));
+        _overlayShown = true;
+    } else if (flashes) {
+        uint32_t t    = millis() % STATUS_WARN_EVERY_MS;
+        uint32_t step = STATUS_FLASH_ON_MS + STATUS_FLASH_OFF_MS;
+        bool on = t < flashes * step && t % step < STATUS_FLASH_ON_MS;
+        leds_set(on ? (1 << LED_COUNT) - 1 : 0);
         _overlayShown = true;
     } else if (_overlayShown) {
         _overlayShown = false;
@@ -165,9 +186,12 @@ static void showOverlay() {
 }
 
 void setup() {
+    setCpuFrequencyMhz(CPU_MHZ);              // power saving (config.h), before Bluetooth starts
     Serial.begin(115200);
     delay(300);
-    Serial.println("\n=== HealthSync Box booting (fw " FIRMWARE_VERSION ", Phase 4: secure Bluetooth) ===");
+    Serial.println("\n=== HealthSync Box booting (fw " FIRMWARE_VERSION ", Phase 5: power saving) ===");
+    Serial.printf("Power: CPU %lu MHz, loop rests %d ms%s\n", (unsigned long)getCpuFrequencyMhz(),
+                  LOOP_IDLE_MS, POWER_SAVE ? "" : "  (POWER_SAVE 0: full speed)");
 
     leds_init();
     buzzer_init();
@@ -195,8 +219,10 @@ void setup() {
 void loop() {
     if (console_update()) tick();
 
+    bool busy = false;                        // a phone command arrived: no rest this loop
     char cmd[BLE_COMMAND_MAX];
     while (ble_next_command(cmd, sizeof(cmd))) {
+        busy = true;
         Serial.printf("BLE > %s\n", cmd);
         if (protocol_handle(cmd)) tick();
     }
@@ -214,4 +240,8 @@ void loop() {
     }
     showOverlay();
     buzzer_update();
+
+    // Power saving: with nothing to do, rest; the CPU sleeps until the next
+    // interrupt. A sync with the phone runs at full pace.
+    if (!busy && LOOP_IDLE_MS) delay(LOOP_IDLE_MS);
 }

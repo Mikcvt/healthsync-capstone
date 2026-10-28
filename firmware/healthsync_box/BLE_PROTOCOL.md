@@ -117,5 +117,6 @@ Answers C3 (decided by Christian, Oct 25: Bluetooth pairing with a passkey).
 ## 6. Not decided yet
 - When the app connects (M2) and which schedule wins offline (M4): the box
   simply takes whatever the last `sched_commit` sent.
-- Power saving (C2) may lengthen the advertising interval; the app should allow
-  a few seconds to find the box.
+- Power saving (C2): since firmware 0.5.0 (Oct 29) the box advertises every
+  500–550 ms (was NimBLE's fast default). The app's 8–12 s scans still find it
+  in about a second; nothing changes in the messages.

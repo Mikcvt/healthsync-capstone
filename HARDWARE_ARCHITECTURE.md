@@ -315,7 +315,9 @@ Side USB port (5 V) ──► 134N3P ──charges──► 18650 (3.7 V nominal
 134N3P's 5 V boost (about 85% efficient), gives about 1,600–1,900 mAh at 5 V.
 At about 60 mA that is **roughly one day per charge**. Several days needs power
 saving in Phase 5 (light sleep, slower CPU, longer Bluetooth advertising
-interval; open question C2). With a flat battery the box stops until it is
+interval; open question C2). **Firmware 0.5.0 (Oct 29):** CPU 80 MHz, the loop
+rests between checks, advertising every ~0.5 s; automatic light sleep is not
+available in this ESP32 core. Measurement pending (WORK_NOTES §19.5). With a flat battery the box stops until it is
 charged; the DS3231 keeps the time, and the schedule and dose log are kept in
 flash and on the SD card.
 

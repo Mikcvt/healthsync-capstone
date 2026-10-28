@@ -139,10 +139,17 @@ void ble_begin(const char *name, uint32_t passkey) {
     adv->enableScanResponse(true);
     adv->setAdvertisementData(advData);
     adv->setScanResponseData(scanData);
+    if (BLE_ADV_MIN_UNITS) {                  // power saving (config.h); also used after
+        adv->setMinInterval(BLE_ADV_MIN_UNITS);   // every disconnect
+        adv->setMaxInterval(BLE_ADV_MAX_UNITS);
+    }
     adv->start();
 
     Serial.printf("Bluetooth: advertising as \"%s\", %d paired phone(s)\n", name,
                   NimBLEDevice::getNumBonds());
+    if (BLE_ADV_MIN_UNITS)
+        Serial.printf("Bluetooth: advertising every %d-%d ms (power saving)\n",
+                      BLE_ADV_MIN_UNITS * 5 / 8, BLE_ADV_MAX_UNITS * 5 / 8);
 }
 
 void ble_update() {

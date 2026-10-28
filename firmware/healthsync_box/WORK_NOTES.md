@@ -17,7 +17,7 @@
 
 ---
 
-## ★ Start here — status at the end of October 25, 2026
+## ★ Start here — status on October 29, 2026
 
 **Design:** the box talks to the patient's phone over **Bluetooth,
 connect-on-demand** (`BLE_CONNECT_ON_DEMAND.md`). The box has no Wi-Fi and
@@ -30,7 +30,7 @@ never talks to the cloud; the phone relays to Firebase.
 | 2 Dose log on the SD card | ✅ Passed Oct 24, including the no-card fallback (§14) |
 | 3 Bluetooth server | ✅ Passed Oct 24 with nRF Connect, firmware 0.3.0 (§15). T5 (re-send while lit) checked by Christian on the bench, Oct 25 |
 | 4 Security | ✅ Passed Oct 25 (fw 0.4.0): passkey pairing (code on the label), hold 5 s → pairing mode, running light (§17). Then fw 0.4.1: one straight tone per event, alarm every 5 min, no early take (§17.9) |
-| 5 With Miko's app + battery | Miko's app with Bluetooth is now on our branch (§18, Oct 28): test it with the real box. Box-only part next: power saving, status signals, current measurement; push-button changes |
+| 5 With Miko's app + battery | 🔄 Box part written Oct 29, fw 0.5.0 (§19): power saving + status flashes; **bench test and current measurement pending**. Real-app test waits for Miko's dev APK (§18). Push-button changes: to discuss next session |
 | 6 Final box | Waits for the print (HW-19) |
 | 7 Hardware papers | Later (HW-07, HW-21, HW-12, DEF-03) |
 
@@ -45,11 +45,10 @@ fixed by turning it round.
 section 5 security: passkey pairing), implemented in firmware 0.4.1. Christian tells Miko to pull this branch.
 
 **Next session, in order:**
-1. Quick bench check of firmware 0.4.1 (§17.9): the new tones, no early take.
-2. Phase 5, box-only part (no need to wait for Miko): power saving (battery
-   life, now about one day), status signals without a laptop, measure the real
-   current. The app part of Phase 5 waits for Miko's Bluetooth work.
-3. Still to confirm on the bench (HARDWARE_ARCHITECTURE.md 4.7): buzzer 5 V or
+1. Discuss Christian's push-button changes.
+2. Bench test of firmware 0.5.0 (§19.4) and the current measurement (§19.5).
+3. When Miko sends `app-dev-debug.apk`: the real-app test (§18).
+4. Still to confirm on the bench (HARDWARE_ARCHITECTURE.md 4.7): buzzer 5 V or
    3.3 V type; microSD module type and which pin feeds it.
 
 **Pairing code:** box HS-0001's 6-digit code is in `secrets.h` (`BLE_PASSKEY`, git-ignored) and goes on the label; it is not written in the repo.
@@ -59,7 +58,7 @@ ArduinoJson 7.4.3, RTClib; Worker packages installed (`npm ci`). Christian's
 phone has nRF Connect. The Firebase key is in `healthsync-api/.dev.vars`
 (git-ignored); the box does not use it.
 
-**Git:** work up to Oct 25 is pushed to `feature/medbox-integration` (end of Oct 25).
+**Git:** work up to Oct 29 is pushed to `feature/medbox-integration`.
 `main` and `release` are untouched. Before each session, check GitHub for
 teammates' pushes and show what changed before merging.
 
@@ -1787,3 +1786,114 @@ patient → one tablet a few minutes ahead in compartment 2 → patient code →
 sign out → "I have a code". One phone is enough.
 
 **Next (Christian):** discuss, then Phase 5 and the push-button changes.
+
+---
+
+## 19. Phase 5, box part: power saving and status flashes (Oct 29, fw 0.5.0)
+
+**Asked by Christian (Oct 29):** "start doing phase 5, then save it, next time
+we'll discuss the push button and check it", then push so the phase is saved.
+Written and compiled; **not yet tested on the bench**. The push button was
+not touched (its changes are for next session).
+
+### 19.1 What this core allows (checked Oct 29)
+
+ESP32 core 3.3.12 is built **without automatic light sleep** (`CONFIG_PM_ENABLE`
+off), so the ESP32 cannot sleep by itself while Bluetooth is on. **Bluetooth
+modem sleep is already on** (`CONFIG_BTDM_CTRL_MODEM_SLEEP`, main-crystal
+clock): the radio already sleeps between packets. Light sleep with Bluetooth
+would also need a 32 kHz crystal on GPIO 32/33, which are LEDs 5 and 6. Deep
+sleep would make the box unfindable by the phone between wake-ups (it changes
+connect-on-demand; open question C2), so it is not used.
+
+### 19.2 What changed (`POWER_SAVE 1` in `config.h`)
+
+| Change | Before | Now | Why |
+|---|---|---|---|
+| CPU speed | 240 MHz | **80 MHz** (`CPU_MHZ`) | The biggest saving; 80 MHz is the lowest Bluetooth allows. Set at boot, before Bluetooth starts |
+| loop() | ran nonstop | **rests 10 ms** when no phone command came (`LOOP_IDLE_MS`) | The CPU sleeps until the next interrupt. The button (80 ms debounce, 0.3 s press), tones and running light are unaffected; a sync runs at full pace |
+| Advertising | NimBLE default (fast, tens of ms) | **every 500–550 ms** (`BLE_ADV_MIN/MAX_UNITS`) | Fewer radio bursts. Miko's app scans 8 s (sync) or 12 s (pairing), so it still finds the box in about a second |
+
+`POWER_SAVE 0` brings back the old behaviour (240 MHz, no rest, fast
+advertising), only for the "before" measurement. Both settings compile with no
+warnings (55% flash).
+
+**Not changed:** the Bluetooth protocol, the app side, the button, the tones,
+the alarm and the dose log. `hello` now reports `"fw":"0.5.0"` (the app only
+displays it).
+
+### 19.3 Status flashes without a laptop
+
+With **no dose lit and no pairing mode**, a problem flashes **all six LEDs**
+every 10 s, with no sound. It can't be mistaken for a dose (one steady LED) or
+for pairing mode (a running light).
+
+| Flashes | Problem | Ends when |
+|---|---|---|
+| 1 | Clock not set, or DS3231 not found: **the box cannot alarm** | The phone syncs (`set_time`) or `time …` is typed on the console |
+| 2 | No SD card: doses are kept in flash (up to 32) | A card is found at the next boot |
+
+Only the most serious problem shows. Settings: `STATUS_WARN_EVERY_MS`,
+`STATUS_FLASH_ON_MS`, `STATUS_FLASH_OFF_MS`. The clock check moved into the
+once-a-second tick (no I2C read every loop).
+
+**Files:** `config.h` (version 0.5.0, power and status settings),
+`healthsync_box.ino` (CPU speed, loop rest, `statusFlashes()`, `showOverlay()`),
+`ble.cpp` (advertising interval), `BLE_PROTOCOL.md` §6,
+`HARDWARE_ARCHITECTURE.md` Step 5.
+`.gitignore`: `build/` added. arduino-cli also writes the compiled firmware
+into `healthsync_box/build/`, and that binary holds the pairing code from
+`secrets.h`, so it must never be committed.
+
+### 19.4 Bench test, step by step (Christian, next session)
+
+1. Upload `healthsync_box` and open the Serial Monitor (115200). Expect
+   `fw 0.5.0, Phase 5: power saving`, `Power: CPU 80 MHz, loop rests 10 ms`
+   and `Bluetooth: advertising every 500-550 ms (power saving)`.
+2. Normal check: `add 2 HH:MM` (now + 1 min) → LED 2 + 5 s tone; press and
+   let go → TAKEN + 1.5 s tone. Hold 5 s with nothing lit → fill-up, running
+   light, 2 s tone. (Everything as in 0.4.1.)
+3. nRF Connect: scan → `HealthSync-0001` still appears within 1–2 s;
+   connect and send `{"op":"hello"}` → `"fw":"0.5.0"`.
+4. **2 flashes:** power off, take out the SD card, power on → the card warning
+   on Serial, and every 10 s all LEDs flash twice. Add a dose a minute ahead:
+   while it is lit, no flashing. Put the card back and restart → no flashing.
+5. **1 flash:** unplug the DS3231 and restart → `Clock not set` and every 10 s
+   all LEDs flash once. (Or, with the DS3231 in: it only shows when the clock
+   lost its time.) Plug it back, restart, type `time YYYY-MM-DD HH:MM` if asked
+   → the flashing stops.
+6. Pairing still wins: with the flashes showing, hold 5 s → running light, not
+   the flashes.
+
+### 19.5 Measuring the real current (Christian, next session)
+
+Tools: a **USB power meter** (the small USB "doctor" stick) is easiest; or a
+multimeter on **mA** in series with the 5 V wire.
+
+1. **USB meter:** charger or laptop → USB meter → ESP32's USB. (This also counts
+   the ESP32 board's USB chip, a few mA, which the battery also powers.)
+   **Multimeter:** red lead in the mA socket; break the 5 V wire from the
+   134N3P to the ESP32 VIN and put the meter in between. Never across the
+   battery.
+2. With `POWER_SAVE 0` uploaded, nothing lit, no phone connected: wait 30 s
+   and note the reading (**before, idle**).
+3. Upload with `POWER_SAVE 1`: note the same reading (**after, idle**).
+4. Also note for `POWER_SAVE 1`: one LED lit (a dose due), the buzzer sounding,
+   and a phone connected (nRF Connect).
+5. Write the numbers here. Battery life ≈ 1,600–1,900 mAh ÷ the idle mA (for
+   example, 30 mA → about 2½ days).
+
+| Case | POWER_SAVE 0 | POWER_SAVE 1 |
+|---|---|---|
+| Idle (nothing lit, no phone) | | |
+| One LED lit | — | |
+| Buzzer on | — | |
+| Phone connected | — | |
+
+### 19.6 Still open in Phase 5
+
+- The push-button changes (next session, Christian).
+- The real-app test (§18, waiting for Miko's dev APK).
+- If the measured current is still too high: the SD card could be switched off
+  between writes, and the built-in LED (GPIO 2, on while connected) turned off
+  in the finished box.
