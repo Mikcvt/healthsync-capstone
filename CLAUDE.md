@@ -577,7 +577,7 @@ path reaches Firestore, and its failure path shows a message through
 
 That rule exists because the previous checklist marked `device_pairing_screen`
 and `patient_profile_setup_screen` as done when neither saved anything, which is
-how they reached Phase 4 unnoticed. See `PHASE_4.5_REMEDIATION.md`.
+how they reached Phase 4 unnoticed. See `docs/archive/PHASE_4.5_REMEDIATION.md`.
 
 ### AUTH screens
 ```
@@ -905,7 +905,7 @@ App side: lib/services/api_service.dart is the ONLY place that calls the Worker.
    creates a missing dose log under the Worker's own deterministic id, which
    stopped a duplicate pending copy from being swept as missed.
 
-✅ Caregiver alerts (Oct 2026, CAREGIVER_ALERTS_FIX.md): a missed dose whose
+✅ Caregiver alerts (Oct 2026, docs/archive/CAREGIVER_ALERTS_FIX.md): a missed dose whose
    alert failed or overflowed the per-run cap was never retried; a lost Done
    report never reached the caregiver; runs could exceed 50 subrequests; the
    push channel did not exist on the caregiver phone; tokens were not

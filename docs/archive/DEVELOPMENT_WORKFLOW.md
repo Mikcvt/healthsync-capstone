@@ -185,7 +185,7 @@ overrun.
 ## Phase 7 — ESP32 integration (Nov 14–20, 1 week)
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box talks to the
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box talks to the
 > patient's phone over BLE, connect-on-demand: no Wi-Fi, no Worker device
 > endpoints, no device secret. The plan below (route the ESP32 through the
 > Worker, poll every 30 s, button posts to the Worker) is kept for the

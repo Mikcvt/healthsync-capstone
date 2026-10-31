@@ -82,7 +82,7 @@ The tracker also lists the button as a **6 mm NC (normally closed) panel
 button**, which explains the Oct 20 "held when untouched, up when pressed"
 symptom: the firmware may need pressed = HIGH instead of a rewire.
 
-Full task-by-task review: `TRACKER_REVIEW_2026-10-22.md`.
+Full task-by-task review: `docs/archive/TRACKER_REVIEW_2026-10-22.md`.
 
 **Confirmed by Christian, Oct 22:** Bluetooth is final, and the button on the
 board is the **6 mm NC panel button**. So: no rewire; the firmware reads
@@ -224,7 +224,7 @@ Box ──own Wi-Fi──► Cloudflare Worker ──► Firestore ◄── App
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
 > [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). These phases
 > assume Wi-Fi polling of the Worker, a Wi-Fi setup hotspot and a device key.
-> The new firmware tasks are in ACTION_PLAN.md Step 7. Kept for the record.
+> The new firmware tasks are in docs/archive/ACTION_PLAN.md Step 7. Kept for the record.
 
 | Phase | Goal | Status |
 |---|---|---|

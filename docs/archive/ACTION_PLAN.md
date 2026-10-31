@@ -15,7 +15,7 @@
 > **Oct 22, 2026: the box transport changed.** The medbox now talks to the
 > patient's phone over **BLE, connect-on-demand**: no Wi-Fi, no hotspot, no
 > direct box-to-cloud link, no device secret. See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). Tasks below that were
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Tasks below that were
 > built on the Wi-Fi/Worker link (1.5, 2.2, 2.3, 2.5, 2.6, 2.7, 3.2, 4.5, and
 > parts of 1.4 and 6.1) are marked **SUPERSEDED** and kept for the record.
 > The new tasks are in **Step 7**.
@@ -81,7 +81,7 @@ firmware cannot compile.
 ### 1.4 Compile the firmware from the command line 🤖
 
 > **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). A command-line
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). A command-line
 > compile is still useful, but WiFiManager is no longer needed; the proposed
 > firmware uses NimBLE-Arduino (pending confirmation by Miko and Christian).
 
@@ -96,7 +96,7 @@ firmware cannot compile.
 ### 1.5 Put the Firebase key in `healthsync-api/.dev.vars` 👤
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The key was needed so
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The key was needed so
 > a local Worker could answer the box's `/state` polls; the box no longer
 > calls the Worker. Kept for the record.
 
@@ -115,7 +115,7 @@ firmware cannot compile.
 ## Step 2: Medicine box firmware and Worker
 
 > **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). Tasks 2.2 (Wi-Fi
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). Tasks 2.2 (Wi-Fi
 > setup test), 2.3 (Phase 1 via the Worker), 2.5 (button → Worker), 2.6
 > (offline via Worker/NTP) and 2.7 (device key) are superseded and kept for
 > the record. 2.1 (button wiring) and 2.4 (debug prints) concern the bench
@@ -260,7 +260,7 @@ rewritten, not just routed:
 ### 3.2 A box never shows as offline 🤖 🔒 (Worker change)
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). There is no box
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). There is no box
 > heartbeat to the Worker. What "online/last seen" means for a BLE box is
 > part of the sync design (Miko). Kept for the record.
 
@@ -328,7 +328,7 @@ Found on Oct 20:
 ### 4.5 Point the box at production 🤖 (after 4.3)
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box has no Worker
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The box has no Worker
 > URL. Kept for the record.
 
 - `WORKER_BASE_URL` in `config.h`: `http://192.168.1.11:8787` →
@@ -387,7 +387,7 @@ Found on Oct 20:
 ### 6.1 Fix CLAUDE.md's hardware section
 
 > **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** See
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The rows about
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md). The rows about
 > polling `/device/{serial}/state` and the Phase 5 device key no longer
 > apply; CLAUDE.md now carries SUPERSEDED markers instead. The pin rows are
 > still open, and the button pin is now disputed (BLE_CONNECT_ON_DEMAND.md
@@ -443,7 +443,7 @@ the Worker endpoint list.
 ## Step 7: BLE connect-on-demand (Oct 22, 2026 decision)
 
 The transport is decided; the design is **proposed, pending confirmation by
-Miko and Christian** ([BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md)).
+Miko and Christian** ([BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md)).
 Every task below is **Not started / pending confirmation**. Nothing here is
 done.
 
@@ -496,7 +496,7 @@ done.
 > **SUPERSEDED in part by the Oct 22, 2026 BLE decision.** The box rows
 > below (1.5, 2.2, 2.3, 2.5, 2.6, 2.7, 4.5) follow the old Wi-Fi/Worker link.
 > The BLE work follows the dates in
-> [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md) §5.
+> [BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md) §5.
 
 ```
 1.1 → 1.2 → 1.3 → 1.4          today, Claude alone (1.1 needs your OK)

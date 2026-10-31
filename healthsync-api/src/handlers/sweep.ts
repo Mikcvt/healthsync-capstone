@@ -7,7 +7,7 @@
  * This is the job that genuinely cannot live in the app: a dose must be marked
  * missed whether or not anyone's phone is awake. It also backstops
  * /dose-events: any taken, skipped or missed dose whose caregiver alert did not
- * land is retried here (CAREGIVER_ALERTS_FIX.md).
+ * land is retried here (docs/archive/CAREGIVER_ALERTS_FIX.md).
  */
 
 import { Firestore } from '../lib/firestore';

@@ -311,7 +311,7 @@ All of these must be complete before any release can be reviewed.
 | S16 | Android 10, 13 and 14+ devices or emulators all install and run | [ ] |
 | S17 | Phone set to a **non-Manila time zone** → today's cards still show taken doses as done (the Oct 9 fix) | [ ] |
 
-- [ ] Triage `bug to fix.md`. Only crashes, red error screens and lost doses
+- [x] Triage `docs/archive/bug to fix.md` (Nov 1: all 10 verified fixed). Only crashes, red error screens and lost doses
       block 1.0.0. Everything else goes to 1.0.1.
 - [ ] Delete or fix `test/widget_test.dart`. It's still the default counter
       test and always fails. **(after Nov 1 OK)**
@@ -395,7 +395,7 @@ decided or done.
 
 - [x] "Could not record this dose": dose-log read rule fixed and deployed
 - [x] Caregiver alerts: retry pass, read cache, alert budget, push channel,
-      token refresh and sign-out cleanup (see `CAREGIVER_ALERTS_FIX.md`)
+      token refresh and sign-out cleanup (see `docs/archive/CAREGIVER_ALERTS_FIX.md`)
 - [x] Firestore rules and indexes deployed; Worker deployed
 - [x] Dashboard showed Done/Skip for a dose already taken on phones not set
       to Manila time: cards now match their dose log by id

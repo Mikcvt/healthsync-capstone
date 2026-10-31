@@ -28,7 +28,7 @@
 - Remove `USE_EXACT_ALARM`.
 - Check the merged manifest and make sure `com.google.android.gms.permission.AD_ID` is absent. We declared no advertising ID in Play Console.
 - Confirm `INTERNET` is present and there is no cleartext traffic (`usesCleartextTraffic`).
-- **Open (Oct 22, 2026 BLE decision, not started / pending confirmation):** the box now talks to the phone over BLE ([BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md)). Bluetooth permissions are not in the manifest yet, the Data safety form and privacy policy must be checked for them, and a BLE update after the Oct 30 freeze needs a freeze-exception decision. Tracked in `RELEASE_TODO.md` section 10.
+- **Open (Oct 22, 2026 BLE decision, not started / pending confirmation):** the box now talks to the phone over BLE ([BLE_CONNECT_ON_DEMAND.md](../../BLE_CONNECT_ON_DEMAND.md)). Bluetooth permissions are not in the manifest yet, the Data safety form and privacy policy must be checked for them, and a BLE update after the Oct 30 freeze needs a freeze-exception decision. Tracked in `RELEASE_TODO.md` section 10.
 
 ## 3. Branding and version
 - App label is "HealthSync".
