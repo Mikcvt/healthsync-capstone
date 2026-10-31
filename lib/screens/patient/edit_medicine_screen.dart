@@ -73,8 +73,17 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
         TextEditingController(text: med?.prescribingDoctor ?? '');
     _timeController =
         TextEditingController(text: schedule?.scheduledTime ?? '08:00 AM');
-    _pillsController =
-        TextEditingController(text: '${schedule?.pillsRemaining ?? 30}');
+    // The medicine's count: the lowest copy among its dose times (each stores
+    // one). Saving writes it to all of them (FirestoreService.updateSchedule).
+    var pillsLeft = schedule?.pillsRemaining ?? 30;
+    if (schedule != null && schedule.patMedRef.isNotEmpty) {
+      for (final s in context.read<CaregiverProvider>().selectedPatientSchedules) {
+        if (s.patMedRef == schedule.patMedRef && s.pillsRemaining < pillsLeft) {
+          pillsLeft = s.pillsRemaining;
+        }
+      }
+    }
+    _pillsController = TextEditingController(text: '$pillsLeft');
     _thresholdController =
         TextEditingController(text: '${schedule?.lowStockThreshold ?? 5}');
     _selectedDays = {...?schedule?.daysOfWeek};

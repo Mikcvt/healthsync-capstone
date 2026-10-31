@@ -19,8 +19,11 @@
 #define BUZZER_PIN 17
 // One straight (continuous) tone per event, each a different length (Oct 25):
 #define TONE_ALARM_MS        5000UL   // a dose is due: 5 s tone ...
-#define ALARM_REPEAT_MS    300000UL   // ... repeated every 5 min until taken or missed (+60 min)
+#define ALARM_PAUSE_MS       2000UL   // ... 2 s pause, tone again, and so on (Oct 31, Miko) ...
+#define ALARM_BEEP_FOR_MIN       30   // ... for 30 min after the dose time; then the LED alone
+                                      // stays lit until taken, done in the app, or missed (+60)
 #define TONE_PAIRED_MS       3000UL   // a phone paired
+#define TONE_RECONNECT_MS     500UL   // an already paired phone connected during pairing mode
 #define TONE_PAIRING_MS      2000UL   // pairing mode opened
 #define TONE_TAKEN_MS        1500UL   // dose taken with the button
 #define TONE_POWER_ON_MS     1000UL   // power on (self-test)
@@ -57,7 +60,7 @@
 #define SD_CS_PIN   15
 
 // ── Bluetooth (Phase 3) — the protocol is in BLE_PROTOCOL.md ─────────────────
-#define FIRMWARE_VERSION       "0.4.1"
+#define FIRMWARE_VERSION       "0.4.2"
 #define BLE_SERVICE_UUID       "908a611a-cdae-4717-843a-8929f91d551b"
 #define BLE_COMMAND_UUID       "a8672cae-3524-49a5-9a57-696fd57e7b72"   // phone → box (write)
 #define BLE_REPLY_UUID         "c7b37ff8-2e2b-4156-8130-34df10d433e5"   // box → phone (notify)

@@ -204,7 +204,27 @@ its owner.
 ## 10a. App side built (Oct 27, 2026, branch `fixing-bugs-and-ble`)
 
 Built to M1–M4 and M7 above and to `firmware/healthsync_box/BLE_PROTOCOL.md`
-(firmware 0.4.1). **Not yet tested with a real box.**
+(firmware 0.4.1).
+
+**Tested with the bench box HS-0001 on Oct 30, 2026** (dev app, Xiaomi
+23129RA5FL, Android 15, box log read over USB):
+
+| Test | Result |
+|---|---|
+| Pair: hold 5 s, scan, Android passkey dialog | Passed ("NEW PHONE PAIRED"); first sync ran in the same connection |
+| First sync | Clock set; Christian's 6 test dose times replaced; 17 old test events collected and acked (none written: no schedule id) |
+| Schedule change | A medicine in compartment 2 reached the box on Sync (3 dose times; a time already past today starts tomorrow) |
+| Box button → app | 18:15 press logged on the box (#25, on_time), collected on Sync, acked |
+| App Done → box | 18:20: after the Undo window the app synced by itself; box: "Dose done in the app ... alarm off", nothing logged |
+| Reconnect | Every later connect re-encrypted with no code |
+
+Found on the way: the box's DS3231 and button were disconnected at first
+(fixed in wiring); with the clock missing the box refuses the schedule, so the
+app now checks `clock_ok` after `set_time`, still collects the presses and shows
+"Box clock not working". Christian's `secrets.h` was not on this PC, so it was
+recreated (serial HS-0001, new pairing code given to Miko) and firmware 0.4.1
+reflashed; saved pairings, schedule and log survived. Still to check: the
+patient's dose card and pill count for a box press, and the care partner's push.
 
 | Part | File |
 |---|---|

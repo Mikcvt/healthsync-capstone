@@ -52,6 +52,15 @@ class DeviceModel {
       lastSync != null &&
       DateTime.now().difference(lastSync!) < onlineWindow;
 
+  /// How long without a sync before the box may be flat or switched off.
+  /// The phone syncs at every app open, so a day of silence means the box
+  /// has not answered. There is no battery reading on this box.
+  static const staleAfter = Duration(hours: 24);
+
+  /// Synced before, but not for [staleAfter].
+  bool get isSyncStale =>
+      lastSync != null && DateTime.now().difference(lastSync!) >= staleAfter;
+
   factory DeviceModel.fromFirestore(DocumentSnapshot doc) {
     final data = (doc.data() as Map<String, dynamic>?) ?? {};
     return DeviceModel.fromMap(data, doc.id);

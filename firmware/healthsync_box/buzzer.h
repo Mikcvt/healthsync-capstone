@@ -5,7 +5,7 @@
 
 void buzzer_init();
 
-// The dose alarm: a TONE_ALARM_MS tone now, then again every ALARM_REPEAT_MS.
+// The dose alarm: TONE_ALARM_MS on, ALARM_PAUSE_MS off, repeated until stopped.
 void buzzer_start();     // (re)starts the alarm with a tone right now
 void buzzer_stop();      // stops the alarm (a confirmation tone keeps playing)
 bool buzzer_running();

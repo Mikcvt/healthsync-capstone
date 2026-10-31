@@ -107,6 +107,9 @@ class MedicineBoxStatusScreen extends StatelessWidget {
                                 ? ''
                                 : patient
                                     .medicationNameFor(compartment.schedule!),
+                            pillsLeft: compartment.schedule == null
+                                ? 0
+                                : patient.pillsLeftFor(compartment.schedule!),
                           ),
                       ],
                     ),
@@ -273,6 +276,9 @@ class _DeviceCard extends StatelessWidget {
     final error = box.lastError;
     final syncedRecently = device.lastSync != null &&
         DateTime.now().difference(device.lastSync!) < DeviceModel.onlineWindow;
+    // No battery reading on this box (BOX_HARDWARE_FIXES.md, D3), so a long
+    // silence is the only sign it may be flat or switched off (D6).
+    final stale = device.isSyncStale;
 
     final String status;
     final Color dot;
@@ -288,6 +294,12 @@ class _DeviceCard extends StatelessWidget {
     } else if (error != null) {
       status = 'Last sync did not finish';
       dot = AppColors.missedRed;
+    } else if (box.clockMissing) {
+      status = "Box clock not working";
+      dot = AppColors.missedRed;
+    } else if (stale) {
+      status = 'Last synced ${DateFormatter.toRelativeTime(device.lastSync!)}';
+      dot = AppColors.pendingAmber;
     } else if (syncedRecently) {
       status = 'Synced';
       // Green is a status signal, so the dot keeps it; the rest of this
@@ -306,7 +318,9 @@ class _DeviceCard extends StatelessWidget {
                 box.pairedSerial ?? '', device.serialNumber)
             : !box.isBusy && error != null
                 ? box.messageFor(error)
-                : box.lastNote;
+                : stale && !box.isBusy
+                    ? AppStrings.boxStale
+                    : box.lastNote;
     final needsPairing = !box.isPairedHere ||
         box.pairedBoxMismatch ||
         error == BoxLinkError.notPaired;
@@ -459,9 +473,14 @@ class _CompartmentTile extends StatelessWidget {
   final BoxCompartment compartment;
   final String medicineName;
 
+  /// The medicine's count (PatientProvider.pillsLeftFor), not one dose
+  /// time's copy.
+  final int pillsLeft;
+
   const _CompartmentTile({
     required this.compartment,
     required this.medicineName,
+    required this.pillsLeft,
   });
 
   @override
@@ -483,7 +502,8 @@ class _CompartmentTile extends StatelessWidget {
       background = AppColors.blueLight;
       accent = AppColors.patientBlue;
     }
-    final lowStock = compartment.isAssigned && compartment.isLowStock;
+    final lowStock = compartment.isAssigned &&
+        pillsLeft <= compartment.schedule!.lowStockThreshold;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
@@ -533,9 +553,7 @@ class _CompartmentTile extends StatelessWidget {
           if (compartment.isAssigned) ...[
             const SizedBox(height: 3),
             Text(
-              lowStock
-                  ? '${compartment.pillsRemaining} left · Low'
-                  : '${compartment.pillsRemaining} left',
+              lowStock ? '$pillsLeft left · Low' : '$pillsLeft left',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

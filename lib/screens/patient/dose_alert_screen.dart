@@ -163,7 +163,7 @@ class _DoseAlertScreenState extends State<DoseAlertScreen> {
     final snoozeActive = log?.isSnoozeActive ?? false;
     final canSnooze = !snoozeActive &&
         (phase == DosePhase.dueNow || phase == DosePhase.late);
-    final outOfStock = schedule.pillsRemaining <= 0;
+    final outOfStock = patient.pillsLeftFor(schedule) <= 0;
     final badge = DoseStatusDisplay.badgeFor(log, slot.scheduledAt, now);
 
     return Scaffold(

@@ -508,14 +508,48 @@ class FirestoreService {
         );
   }
 
+  /// Saves one dose time, and its stock on every other dose time of the same
+  /// medicine.
+  ///
+  /// The pill count is the medicine's, but it is stored on each schedule; a
+  /// stock edit on one dose time left the others showing the old count, and
+  /// so did every dose taken (found with the bench box, Oct 30).
   Future<void> updateSchedule(ScheduleModel schedule) async {
-    await _db
-        .collection('schedules')
-        .doc(schedule.scheduleId)
-        .update({
-          ...schedule.toMap(),
-          'updated_at': FieldValue.serverTimestamp(),
-        });
+    final siblings = schedule.patMedRef.isEmpty || schedule.patientRef.isEmpty
+        ? const <QueryDocumentSnapshot<Map<String, dynamic>>>[]
+        : (await _db
+                .collection('schedules')
+                .where('patient_ref', isEqualTo: schedule.patientRef)
+                .where('pat_med_ref', isEqualTo: schedule.patMedRef)
+                .where('is_active', isEqualTo: true)
+                .get())
+            .docs;
+    final batch = _db.batch();
+    batch.update(_db.collection('schedules').doc(schedule.scheduleId), {
+      ...schedule.toMap(),
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+    for (final doc in siblings) {
+      if (doc.id == schedule.scheduleId) continue;
+      batch.update(doc.reference, {
+        'pills_remaining': schedule.pillsRemaining,
+        'low_stock_threshold': schedule.lowStockThreshold,
+      });
+    }
+    await batch.commit();
+  }
+
+  /// Sets the pill count on every dose time of one medicine at once. An
+  /// absolute value, not an increment, so dose times whose counts drifted
+  /// apart (each used to count only its own doses) agree again.
+  Future<void> setPillsRemaining(Iterable<String> scheduleIds, int value) async {
+    final batch = _db.batch();
+    for (final id in scheduleIds.toSet()) {
+      batch.update(_db.collection('schedules').doc(id), {
+        'pills_remaining': value < 0 ? 0 : value,
+      });
+    }
+    await batch.commit();
   }
 
   Future<void> updateScheduleLed(String scheduleId, bool ledActive) async {

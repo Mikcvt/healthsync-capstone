@@ -115,6 +115,8 @@ class _PatientScheduleScreenState extends State<PatientScheduleScreen> {
                         final schedule = schedules[index];
                         return _DoseRow(
                           schedule: schedule,
+                          pillsLeft: _pillsLeft(
+                              caregiver.selectedPatientSchedules, schedule),
                           medicineName:
                               caregiver.medicationNameFor(schedule),
                           log: _logFor(logs, schedule.scheduleId),
@@ -127,6 +129,19 @@ class _PatientScheduleScreenState extends State<PatientScheduleScreen> {
         ),
       ),
     );
+  }
+
+  /// The medicine's pill count: the lowest copy among its dose times, which
+  /// each store one (PatientProvider.pillsLeftFor, same rule).
+  int _pillsLeft(List<ScheduleModel> all, ScheduleModel schedule) {
+    var left = schedule.pillsRemaining;
+    if (schedule.patMedRef.isEmpty) return left;
+    for (final s in all) {
+      if (s.patMedRef == schedule.patMedRef && s.pillsRemaining < left) {
+        left = s.pillsRemaining;
+      }
+    }
+    return left;
   }
 
   DoseLogModel? _logFor(List<DoseLogModel> logs, String scheduleId) {
@@ -249,8 +264,12 @@ class _DoseRow extends StatelessWidget {
   /// "Pending" — pending implies it is already due.
   final bool isFuture;
 
+  /// The medicine's count, not this dose time's own copy.
+  final int pillsLeft;
+
   const _DoseRow({
     required this.schedule,
+    required this.pillsLeft,
     required this.medicineName,
     required this.log,
     required this.isFuture,
@@ -312,13 +331,13 @@ class _DoseRow extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${schedule.isInBox ? 'Compartment ${schedule.matBoxColumn}' : 'Not in the box'} · '
-                  '${schedule.pillsRemaining} left',
+                  '$pillsLeft left',
                   style: TextStyle(
                     fontSize: 12,
-                    color: schedule.isLowStock
+                    color: pillsLeft <= schedule.lowStockThreshold
                         ? AppColors.pendingAmber
                         : AppColors.textSecondary,
-                    fontWeight: schedule.isLowStock
+                    fontWeight: pillsLeft <= schedule.lowStockThreshold
                         ? FontWeight.w700
                         : FontWeight.w400,
                     fontFamily: AppStyles.fontFamily,

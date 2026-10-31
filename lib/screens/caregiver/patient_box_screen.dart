@@ -528,23 +528,29 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final online = device.isOnline;
+    // The box syncs through the patient's phone now and then (Bluetooth), so
+    // it is never "online"; when it last synced is what the care partner can
+    // act on. A day of silence may mean a flat or switched-off box: there is
+    // no battery reading (BOX_HARDWARE_FIXES.md, D3 and D6).
+    final stale = device.isSyncStale;
     final connection = device.lastSync == null
-        ? 'Not connected yet'
-        : '${online ? AppStrings.deviceOnline : AppStrings.deviceOffline}'
-            ' · synced ${DateFormatter.toRelativeTime(device.lastSync!)}';
+        ? 'Not synced yet'
+        : 'Synced ${DateFormatter.toRelativeTime(device.lastSync!)}';
+    final accent = stale ? AppColors.pendingAmber : AppColors.caregiverGreen;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.greenLight,
+        color: stale ? AppColors.pendingAmberBg : AppColors.greenLight,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: AppColors.caregiverGreen.withValues(alpha: 0.3)),
+        border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle_rounded,
-              color: AppColors.caregiverGreen, size: 28),
+          Icon(
+            stale ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+            color: accent,
+            size: 28,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -568,6 +574,18 @@ class _DeviceCard extends StatelessWidget {
                     fontFamily: AppStyles.fontFamily,
                   ),
                 ),
+                if (stale) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    AppStrings.boxStaleCaregiver,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.45,
+                      color: AppColors.textSecondary,
+                      fontFamily: AppStyles.fontFamily,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

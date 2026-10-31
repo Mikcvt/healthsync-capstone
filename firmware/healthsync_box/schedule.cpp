@@ -254,6 +254,16 @@ uint8_t schedule_update(uint32_t nowLocal) {
     return lit;
 }
 
+bool schedule_beeping(uint32_t nowLocal) {
+    bool beep = false;
+    forEachDose(nowLocal, -1, 0, [&](const ScheduleEntry &e, uint32_t day, uint32_t start) {
+        if (nowLocal < start || nowLocal >= start + ALARM_BEEP_FOR_MIN * 60UL) return;
+        if (findHandled(day, e.minute, e.compartment)) return;
+        beep = true;
+    });
+    return beep;
+}
+
 uint8_t schedule_take(uint32_t nowLocal) {
     uint8_t taken = 0;
 

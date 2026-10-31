@@ -32,6 +32,11 @@ void                 schedule_clear();                 // entries and the taken/
 // is also written to the dose log (storage.h).
 uint8_t schedule_update(uint32_t nowLocal);
 
+// Whether the buzzer should sound: a lit dose whose time was less than
+// ALARM_BEEP_FOR_MIN ago. After that the LED stays lit, silently (Oct 31).
+// Measured from the dose time, so a restart mid-alarm does not beep longer.
+bool schedule_beeping(uint32_t nowLocal);
+
 // The button. Marks every due (lit) dose taken and returns their compartments,
 // or 0 if none is due. Doses that are not lit yet are never taken early: a
 // press before the alarm may be an accident (Oct 25).

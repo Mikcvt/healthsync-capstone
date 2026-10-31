@@ -146,6 +146,17 @@ class AppStrings {
   static const String boxPairNeedsInternet =
       'Paired with the box, but could not save it to your account. Check your '
       'internet connection and try again.';
+  static const String boxClockMissing =
+      "The box's clock is not working, so it cannot light or ring at dose "
+      'times. Check the DS3231 clock wiring (SDA to GPIO 21, SCL to GPIO 22). '
+      'Reminders on this phone still work.';
+  static const String boxStale =
+      'The box has not answered for over a day. Check that it is charged and '
+      'switched on, keep this phone near it, then tap Sync with box. Reminders '
+      'on this phone still work.';
+  static const String boxStaleCaregiver =
+      "The patient's box has not synced for over a day. It may need charging, "
+      'or the patient may not have opened the app near it.';
   static const String boxSynced = 'Box synced.';
   static String boxSyncedWithPresses(int count) => count == 1
       ? 'Box synced. 1 dose taken with the box button was saved.'

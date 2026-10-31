@@ -69,8 +69,14 @@ class BoxProvider extends ChangeNotifier {
   /// Why the last sync failed, until one succeeds.
   BoxLinkError? get lastError => _lastError;
 
-  /// A note from the last sync worth showing (dose times left out).
+  /// A note from the last sync worth showing (dose times left out, or the
+  /// box's clock not working).
   String? get lastNote => _lastNote;
+
+  /// The last sync found the box's clock (DS3231) not keeping time: the box
+  /// cannot light or ring at dose times until it is fixed.
+  bool get clockMissing => _clockMissing;
+  bool _clockMissing = false;
 
   /// The account's box and the one paired here differ: the care partner
   /// paired another box from their phone.
@@ -104,6 +110,7 @@ class BoxProvider extends ChangeNotifier {
       _lastSyncedAt = null;
       _lastError = null;
       _lastNote = null;
+      _clockMissing = false;
       if (uid != null) unawaited(_load(uid));
       return;
     }
@@ -165,6 +172,10 @@ class BoxProvider extends ChangeNotifier {
     if (uid == null) return const BoxActionResult(false, AppStrings.genericError);
     if (_busy) return const BoxActionResult(false, AppStrings.boxConnectionLost);
     _busy = true;
+    // Pairing syncs too. Without this, returning from Android's pairing
+    // dialog counted as opening the app and synced again a second later
+    // (seen on the bench box, Oct 30).
+    _lastAttempt = DateTime.now();
     notifyListeners();
 
     BoxSession? session;
@@ -201,9 +212,11 @@ class BoxProvider extends ChangeNotifier {
       final saved = await _runSync(session, hello);
       return BoxActionResult(
         true,
-        saved > 0
-            ? '${AppStrings.devicePaired} ${AppStrings.boxSyncedWithPresses(saved)}'
-            : AppStrings.devicePaired,
+        [
+          AppStrings.devicePaired,
+          if (saved > 0) AppStrings.boxSyncedWithPresses(saved),
+          if (_clockMissing) AppStrings.boxClockMissing,
+        ].join(' '),
       );
     } on BoxLinkException catch (e) {
       debugPrint('Box pairing failed: $e');
@@ -266,6 +279,15 @@ class BoxProvider extends ChangeNotifier {
         throw const BoxLinkException(BoxLinkError.notPaired, 'other box');
       }
       final saved = await _runSync(session, hello);
+      if (_clockMissing) {
+        // Synced, but the box cannot ring: shown as a problem, not success.
+        return BoxActionResult(
+          false,
+          saved > 0
+              ? '${AppStrings.boxSyncedWithPresses(saved)} ${AppStrings.boxClockMissing}'
+              : AppStrings.boxClockMissing,
+        );
+      }
       return BoxActionResult(
         true,
         saved > 0 ? AppStrings.boxSyncedWithPresses(saved) : AppStrings.boxSynced,
@@ -342,9 +364,16 @@ class BoxProvider extends ChangeNotifier {
       'utc': now.toUtc().millisecondsSinceEpoch ~/ 1000,
     });
 
+    // A box whose DS3231 is missing or miswired answers "ok" to set_time but
+    // keeps no time, so it cannot ring, and it refuses sched_commit ("set_time
+    // first"). Asked again, it says so in clock_ok. Its button presses are
+    // still collected below (found on the bench box, Oct 30).
+    final after = hello.clockOk ? hello : await _hello(session);
+    _clockMissing = !after.clockOk;
+
     // The schedule, only if it changed (M4: the phone wins).
     final plan = BoxSchedulePlan.build(_patient.schedules, today: now);
-    if (hello.scheduleVersion != plan.version) {
+    if (!_clockMissing && hello.scheduleVersion != plan.version) {
       await session.send({
         'op': 'sched_begin',
         'ver': plan.version,
@@ -355,9 +384,11 @@ class BoxProvider extends ChangeNotifier {
       }
       await session.send({'op': 'sched_commit'});
     }
-    _lastNote = plan.leftOut > 0
-        ? AppStrings.boxTooManyDoseTimes(plan.leftOut)
-        : null;
+    _lastNote = _clockMissing
+        ? AppStrings.boxClockMissing
+        : plan.leftOut > 0
+            ? AppStrings.boxTooManyDoseTimes(plan.leftOut)
+            : null;
 
     final saved = await _collectEvents(session, hello.acked);
     await _sendAppDone(session, now);

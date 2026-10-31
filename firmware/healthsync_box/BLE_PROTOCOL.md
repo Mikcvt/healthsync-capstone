@@ -76,8 +76,9 @@ disconnect
 
 - **Times:** the box keeps UTC on its DS3231 clock and compares dose times in
   Manila time (UTC+8), like the Worker.
-- **Alarm:** from the dose time until +60 min the compartment LED is on and
-  the buzzer plays a 5 s tone, repeated every 5 min. A button press (held
+- **Alarm:** from the dose time until +60 min the compartment LED is on. The
+  buzzer plays 5 s on, 2 s off, for the first 30 min, then stays silent while
+  the LED stays lit (firmware 0.4.2, Oct 31; was a 5 s tone every 5 min). A button press (held
   0.3–10 s, then let go) takes every lit dose. A press with nothing lit takes
   nothing (a press before the alarm may be an accident). After +60 min the
   dose is `missed`.
@@ -100,7 +101,7 @@ Answers C3 (decided by Christian, Oct 25: Bluetooth pairing with a passkey).
 | After pairing | The phone reconnects at any time with **no code**, over an encrypted link. The box remembers up to 3 phones (the oldest is replaced) |
 | On every connect | The box asks for encryption at once. A paired phone re-encrypts silently; a phone that is not paired gets the Android pairing request |
 | Rejected | A phone that is not paired, or types a wrong code, is disconnected; one that does not pair within 30 s is dropped |
-| Box signals | Pairing mode opened: 2 s tone + running light. Phone paired: 3 s tone, pairing mode closes |
+| Box signals | Pairing mode opened: 2 s tone + running light. New phone paired: 3 s tone, pairing mode closes. An already paired phone connects: 0.5 s tone, pairing mode closes (0.4.2). A short press with no dose lit cancels pairing mode (0.4.2) |
 
 **What the app does (Miko):**
 - Ask for the Bluetooth permissions only when the user chooses to pair a box

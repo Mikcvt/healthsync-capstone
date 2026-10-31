@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseException;
 import 'package:flutter/material.dart';
 import '../constants/app_strings.dart';
@@ -62,6 +63,9 @@ class DoseUndo {
   /// Whether a pill was counted off, to give back on Undo.
   final bool decremented;
 
+  /// The medicine's pill count before the action, restored on Undo.
+  final int? pillsBefore;
+
   /// The low-stock notification this action raised, hidden again on Undo.
   final String? lowStockNotifId;
 
@@ -76,6 +80,7 @@ class DoseUndo {
     required this.restore,
     required this.reportStatus,
     this.decremented = false,
+    this.pillsBefore,
     this.lowStockNotifId,
     this.ledWasActive = false,
   });
@@ -289,6 +294,34 @@ class PatientProvider extends ChangeNotifier {
           'partner can update the count after refilling.'
       : 'Your stock count is at 0. Ask your care partner to update it after '
           'refilling.';
+
+  /// Every active dose time of the medicine [schedule] belongs to, [schedule]
+  /// included. They share one pill count.
+  List<ScheduleModel> _doseTimesOf(ScheduleModel schedule) {
+    final same = schedule.patMedRef.isEmpty
+        ? <ScheduleModel>[]
+        : _schedules.where((s) => s.patMedRef == schedule.patMedRef).toList();
+    if (!same.any((s) => s.scheduleId == schedule.scheduleId)) {
+      same.add(schedule);
+    }
+    return same;
+  }
+
+  /// Pills left of the medicine [schedule] belongs to.
+  ///
+  /// Stock belongs to the medicine but is stored on each dose time, and each
+  /// dose used to count off only its own copy: a medicine taken three times a
+  /// day still showed its full count on the box tile (bench box, Oct 30). The
+  /// lowest copy is the truest; every dose now writes all of them.
+  int pillsLeftFor(ScheduleModel schedule) =>
+      _doseTimesOf(schedule).map((s) => s.pillsRemaining).reduce(math.min);
+
+  /// Sets the medicine's count to [value] on all of its dose times.
+  Future<void> _setStock(ScheduleModel schedule, int value) =>
+      _firestoreService.setPillsRemaining(
+        _doseTimesOf(schedule).map((s) => s.scheduleId),
+        value,
+      );
 
   /// Records on the dose log whether it took a pill off the count. The Worker
   /// reads `stock_counted: false` to skip a repeat "Out of stock" alert: the
@@ -622,7 +655,8 @@ class PatientProvider extends ChangeNotifier {
       // app thinks is left: the patient may have refilled the box or bought a
       // new pack. Blocking lost a real dose and pushed it toward "missed".
       // The count simply stays at 0 (see below).
-      final hasStock = schedule.pillsRemaining > 0;
+      final pillsLeft = pillsLeftFor(schedule);
+      final hasStock = pillsLeft > 0;
 
       final now = DateTime.now();
       final timing = DoseTiming.timingFor(
@@ -683,9 +717,8 @@ class PatientProvider extends ChangeNotifier {
           _firestoreService.updateScheduleLed(schedule.scheduleId, false));
       String? notifId;
       if (hasStock) {
-        writes.add(
-            _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1));
-        notifId = _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+        writes.add(_setStock(schedule, pillsLeft - 1));
+        notifId = _alertIfStockLow(uid, schedule, pillsLeft - 1);
       }
       final synced = await _firestoreService.settle(writes);
 
@@ -699,6 +732,7 @@ class PatientProvider extends ChangeNotifier {
           reportStatus: DoseStatus.taken,
           // Undo gives a pill back only if this dose took one.
           decremented: hasStock,
+          pillsBefore: pillsLeft,
           lowStockNotifId: notifId,
           ledWasActive: ledWasActive,
         ),
@@ -792,6 +826,7 @@ class PatientProvider extends ChangeNotifier {
     _errorMessage = null;
     try {
       final notifId = undo.lowStockNotifId;
+      final schedule = scheduleById(undo.scheduleId);
       await _firestoreService.settle([
         // undone_at: when Undo was tapped. Offline, this reaches the server
         // long after the 2-minute Undo window, judged by the server's clock;
@@ -801,7 +836,9 @@ class PatientProvider extends ChangeNotifier {
           'undone_at': DateTime.now(),
         }),
         if (undo.decremented)
-          _firestoreService.incrementPillsRemaining(undo.scheduleId, 1),
+          schedule != null && undo.pillsBefore != null
+              ? _setStock(schedule, undo.pillsBefore!)
+              : _firestoreService.incrementPillsRemaining(undo.scheduleId, 1),
         if (notifId != null) _firestoreService.deactivateNotification(notifId),
         if (undo.ledWasActive)
           _firestoreService.updateScheduleLed(undo.scheduleId, true),
@@ -877,7 +914,8 @@ class PatientProvider extends ChangeNotifier {
       // dose left to attach the press to.
       if (existing == null && schedule == null) return true;
 
-      final hasStock = schedule != null && schedule.pillsRemaining > 0;
+      final pillsLeft = schedule == null ? 0 : pillsLeftFor(schedule);
+      final hasStock = schedule != null && pillsLeft > 0;
       final timing = event.timing == DoseTimingTag.late
           ? DoseTimingTag.late
           : DoseTimingTag.onTime;
@@ -911,9 +949,8 @@ class PatientProvider extends ChangeNotifier {
         writes.add(_markStockCounted(id, hasStock));
       }
       if (hasStock) {
-        writes.add(
-            _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1));
-        _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+        writes.add(_setStock(schedule, pillsLeft - 1));
+        _alertIfStockLow(uid, schedule, pillsLeft - 1);
       }
       await _firestoreService.settle(writes);
       notifyListeners();
@@ -1101,7 +1138,8 @@ class PatientProvider extends ChangeNotifier {
     }
     final schedule = _liveSchedule(slot);
     // As with Done: an empty count does not block a dose the patient took.
-    final hasStock = schedule.pillsRemaining > 0;
+    final pillsLeft = pillsLeftFor(schedule);
+    final hasStock = pillsLeft > 0;
 
     try {
       final existing = await _firestoreService.getDoseLog(slot.doseLogId);
@@ -1143,12 +1181,11 @@ class PatientProvider extends ChangeNotifier {
         else
           _firestoreService.updateDoseLogFields(slot.doseLogId, fields),
         _firestoreService.updateScheduleLed(schedule.scheduleId, false),
-        if (hasStock)
-          _firestoreService.decrementPillsRemaining(schedule.scheduleId, 1),
+        if (hasStock) _setStock(schedule, pillsLeft - 1),
         _markStockCounted(slot.doseLogId, hasStock),
       ];
       if (hasStock) {
-        _alertIfStockLow(uid, schedule, schedule.pillsRemaining - 1);
+        _alertIfStockLow(uid, schedule, pillsLeft - 1);
       }
       await _firestoreService.settle(writes);
 

@@ -120,8 +120,8 @@ class ScheduleScreen extends StatelessWidget {
                                 const SizedBox(height: 4),
                                 Text(
                                   showCol
-                                      ? '${sch.scheduledTime} · ${sch.pillsRemaining} left'
-                                      : '${sch.scheduledTime} · ${patientProvider.doseInstructionFor(sch)} · ${sch.pillsRemaining} left',
+                                      ? '${sch.scheduledTime} · ${patientProvider.pillsLeftFor(sch)} left'
+                                      : '${sch.scheduledTime} · ${patientProvider.doseInstructionFor(sch)} · ${patientProvider.pillsLeftFor(sch)} left',
                                   style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                                 ),
                               ],

@@ -630,8 +630,8 @@ class _DoseCard extends StatelessWidget {
       DateFormatter.doseDayTime(slot.scheduledAt, now: now),
       provider.doseInstructionFor(schedule),
       if (open)
-        schedule.pillsRemaining > 0
-            ? '${schedule.pillsRemaining} left'
+        provider.pillsLeftFor(schedule) > 0
+            ? '${provider.pillsLeftFor(schedule)} left'
             : 'Empty · refill',
     ].join(' · ');
 

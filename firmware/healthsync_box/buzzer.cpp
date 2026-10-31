@@ -48,9 +48,12 @@ void buzzer_update() {
         else _toneUntil = 0;
     }
     if (!on && _running) {
+        // 5 s tone, 2 s pause, repeated (Oct 31). How long it keeps going is
+        // decided by showDoses(): it stops the alarm 30 min after the dose time.
+        const uint32_t cycle = TONE_ALARM_MS + ALARM_PAUSE_MS;
         uint32_t elapsed = now - _alarmStart;
-        if (elapsed >= ALARM_REPEAT_MS) {          // time for the next alarm tone
-            _alarmStart += ALARM_REPEAT_MS * (elapsed / ALARM_REPEAT_MS);
+        if (elapsed >= cycle) {
+            _alarmStart += cycle * (elapsed / cycle);
             elapsed = now - _alarmStart;
         }
         on = elapsed < TONE_ALARM_MS;

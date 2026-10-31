@@ -71,12 +71,14 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             _server->disconnect(info.getConnHandle());
             return;
         }
-        _secure   = true;
-        _evSecure = true;
+        // The "new phone" event is set before _secure, so loop() never sees a
+        // secure link without it and mistakes a new phone for a returning one.
         if (_codeGiven) {          // a new phone just paired with the passkey
             _evPaired    = true;
             _pairedEvent = true;
         }
+        _secure   = true;
+        _evSecure = true;
     }
 };
 

@@ -28,7 +28,11 @@ class MedicineDetailScreen extends StatelessWidget {
     final currentSchedule = schedule == null
         ? (patientProvider.schedules.isNotEmpty ? patientProvider.schedules.first : null)
         : patientProvider.scheduleById(schedule!.scheduleId) ?? schedule;
-    final outOfStock = (currentSchedule?.pillsRemaining ?? 1) <= 0;
+    // The medicine's count, shared by all its dose times.
+    final pillsLeft = currentSchedule == null
+        ? null
+        : patientProvider.pillsLeftFor(currentSchedule);
+    final outOfStock = (pillsLeft ?? 1) <= 0;
     final inBox = currentSchedule != null &&
         patientProvider.showsCompartment(currentSchedule);
     final medName = fallbackName ?? 'Medication Details';
@@ -177,7 +181,7 @@ class MedicineDetailScreen extends StatelessWidget {
                     _DetailRow(
                       icon: Icons.medical_services_outlined,
                       title: 'Pills Remaining',
-                      value: '${currentSchedule?.pillsRemaining ?? 30} pills left',
+                      value: '${pillsLeft ?? 30} pills left',
                     ),
                     const Divider(height: 20, color: AppColors.borderGray),
                     _DetailRow(

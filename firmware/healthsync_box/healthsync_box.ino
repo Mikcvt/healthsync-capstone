@@ -43,11 +43,12 @@ static bool     _holdPairing  = false;  // this press opened pairing; its releas
 static bool     _overlayShown = false;  // the LEDs show the hold progress or the running light
 
 // LEDs and buzzer follow the due compartments; a newly due dose starts a fresh
-// burst of beeps.
-static void showDoses(uint8_t lit) {
+// burst of beeps. The buzzer stops 30 min after the dose time while the LED
+// stays lit (schedule_beeping; Oct 31).
+static void showDoses(uint8_t lit, bool beep) {
     leds_set(lit);
     bool newlyLit = (lit & ~_shownMask) != 0;
-    if (lit) {
+    if (lit && beep) {
         if (newlyLit || !buzzer_running()) buzzer_start();
     } else {
         buzzer_stop();
@@ -62,11 +63,13 @@ static void tick() {
             Serial.println("Clock not set: no alarms. Type  time YYYY-MM-DD HH:MM  (Manila time)");
             _clockWarned = true;
         }
-        showDoses(0);
+        showDoses(0, false);
         return;
     }
     _clockWarned = false;
-    showDoses(schedule_update(rtc_now_local()));
+    uint32_t now = rtc_now_local();
+    uint8_t lit = schedule_update(now);
+    showDoses(lit, schedule_beeping(now));
 }
 
 static void openPairing() {
@@ -85,6 +88,14 @@ static void onPress(uint32_t heldMs) {
     }
     if (heldMs > BUTTON_CONFIRM_MAX_MS) {
         Serial.println("Button: held too long, ignored");
+        return;
+    }
+    // A short press while the pairing lights run (and no dose is lit) cancels
+    // pairing mode (Oct 31). With a dose lit the press takes the dose, as always.
+    if (ble_pairing_active() && _shownMask == 0) {
+        ble_pairing_close();
+        Serial.println("Button: pairing mode cancelled");
+        buzzer_tone(TONE_NOTHING_MS);
         return;
     }
     if (!rtc_time_valid()) {
@@ -205,6 +216,13 @@ void loop() {
         ble_pairing_close();
         Serial.println("Phone paired: pairing mode closed");
         buzzer_tone(TONE_PAIRED_MS);          // 3 s: paired
+    } else if (ble_pairing_active() && ble_secure()) {
+        // A phone that was already paired reconnects with no code, so the
+        // "paired" event never comes; pairing mode used to run its full 2
+        // minutes after it had connected (Miko, Oct 31).
+        ble_pairing_close();
+        Serial.println("Paired phone connected: pairing mode closed");
+        buzzer_tone(TONE_RECONNECT_MS);       // 0.5 s
     }
     watchButton();
 
