@@ -18,8 +18,8 @@
 // ── Buzzer (active, through an NPN transistor; HIGH = sound) ─────────────────
 #define BUZZER_PIN 17
 // One straight (continuous) tone per event, each a different length (Oct 25):
-#define TONE_ALARM_MS        5000UL   // a dose is due: 5 s tone ...
-#define ALARM_PAUSE_MS       2000UL   // ... 2 s pause, tone again, and so on (Oct 31, Miko) ...
+#define TONE_ALARM_MS        5000UL   // a dose is due: 5 s tone, the spoken prompt (voice.h) ...
+#define ALARM_PAUSE_MS       5000UL   // ... 5 s pause, tone again, and so on (Nov 3, Miko; was 2 s) ...
 #define ALARM_BEEP_FOR_MIN       30   // ... for 30 min after the dose time; then the LED alone
                                       // stays lit until taken, done in the app, or missed (+60)
 #define TONE_PAIRED_MS       3000UL   // a phone paired
@@ -60,7 +60,7 @@
 #define SD_CS_PIN   15
 
 // ── Bluetooth (Phase 3) — the protocol is in BLE_PROTOCOL.md ─────────────────
-#define FIRMWARE_VERSION       "0.4.2"
+#define FIRMWARE_VERSION       "0.4.3"
 #define BLE_SERVICE_UUID       "908a611a-cdae-4717-843a-8929f91d551b"
 #define BLE_COMMAND_UUID       "a8672cae-3524-49a5-9a57-696fd57e7b72"   // phone → box (write)
 #define BLE_REPLY_UUID         "c7b37ff8-2e2b-4156-8130-34df10d433e5"   // box → phone (notify)
@@ -83,6 +83,30 @@
 // ── Dose log (Phase 2) ────────────────────────────────────────────────────────
 #define LOG_FILE         "/doselog.jsonl"   // one JSON line per taken/missed dose
 #define LOG_FALLBACK_MAX 32                 // events kept in flash while there is no SD card
+
+// ── Voice: DFPlayer Mini + one 8 Ω speaker (VOICE_CLIPS.md) ──────────────────
+// Every prompt follows its tone. Bench-tested Nov 2: volume 30, no brownout.
+// No DFPlayer, or no answer at boot: the box keeps its tones alone.
+#define DF_TX_PIN   27      // ESP32 → 1 kΩ → DFPlayer pin 2 RX
+#define DF_RX_PIN   34      // DFPlayer pin 3 TX → ESP32 (input-only pin)
+#define DF_BUSY_PIN 35      // DFPlayer pin 16 BUSY: LOW while a clip plays (input-only pin)
+#define VOICE_FOLDER  1     // /01/ = English
+#define VOICE_VOLUME 30     // of 30
+#define VOICE_EVERY_ROUND_MS  300000UL   // the prompt plays every alarm round for 5 min ...
+#define VOICE_EVERY_NTH_ROUND        3   // ... then every 3rd round (Nov 3, Miko)
+#define VOICE_CLIP_MAX_MS      10000UL   // a clip that plays longer is treated as ended
+#define VOICE_ROUND_MAX_MS     20000UL   // the alarm waits at most this long for its prompt
+
+// Clip numbers: /01/NNN.mp3
+#define CLIP_TAKE_MEDICINE      1   // "Please take your medicine."
+#define CLIP_COMPARTMENT        2   // "Compartment"
+#define CLIP_AND                3   // "and"
+#define CLIP_NUMBER_BASE       10   // 011 "one" ... 016 "six"
+#define CLIP_CONFIRMED         51   // "Dose confirmed."
+#define CLIP_PAIRING_MODE      61   // "Pairing mode."
+#define CLIP_PHONE_CONNECTED   62   // "Phone connected."
+#define CLIP_PAIRING_CANCELLED 63   // "Pairing cancelled."
+#define CLIP_READY             71   // "HealthSync med box is ready. Please pair or sync your phone."
 
 // ── DS3231 RTC ────────────────────────────────────────────────────────────────
 #define RTC_SDA_PIN 21

@@ -5,14 +5,19 @@
 // Phase 3: the phone syncs over Bluetooth (ble.h, protocol.h, BLE_PROTOCOL.md):
 //          time, schedule, dose events + ack, "done in the app".
 // Phase 4: only a paired phone can connect (passkey on the box label).
-//   Boot     self-test (LEDs 1→6, 1 s tone), DS3231 clock, stored schedule
-//   Each s   due compartments (from the clock + schedule) → LED on and a 5 s
-//            tone every 5 min; 60 min after its time a dose is missed (LED off)
-//   Button   press and let go (0.3–10 s): every lit dose is taken (1.5 s tone).
-//            Nothing lit: nothing is taken, never early (0.8 s tone).
+//   Boot     self-test (LEDs 1→6, 1 s tone), DS3231 clock, stored schedule,
+//            then "HealthSync med box is ready. Please pair or sync your phone."
+//   Each s   due compartments (from the clock + schedule) → LED on and alarm
+//            rounds: 5 s tone, "Please take your medicine. Compartment one.",
+//            5 s pause (voice every round for 5 min, then every 3rd round);
+//            silent after 30 min; 60 min after its time a dose is missed (LED off)
+//   Button   press and let go (0.3–10 s): every lit dose is taken (1.5 s tone,
+//            "Dose confirmed."). Nothing lit: nothing is taken, never early (0.8 s tone).
 //            Nothing lit, held 5 s (LEDs fill up 1→6): pairing mode for
-//            2 minutes (running light 1→6, 2 s tone); a phone pairs → 3 s tone
-//   Tones    one straight tone per event, each a different length (config.h)
+//            2 minutes (running light 1→6, 2 s tone, "Pairing mode."); a phone
+//            pairs → 3 s tone, "Phone connected."
+//   Tones    one straight tone per event, each a different length (config.h);
+//            a spoken prompt always follows its tone (voice.h, VOICE_CLIPS.md)
 //   Serial   bench commands (console.h)
 //
 // Next phases (WORK_NOTES.md §12): 5 with the app + battery.
@@ -21,6 +26,7 @@
 #include "config.h"
 #include "leds.h"
 #include "buzzer.h"
+#include "voice.h"
 #include "button.h"
 #include "rtc_clock.h"
 #include "schedule.h"
@@ -49,7 +55,8 @@ static void showDoses(uint8_t lit, bool beep) {
     leds_set(lit);
     bool newlyLit = (lit & ~_shownMask) != 0;
     if (lit && beep) {
-        if (newlyLit || !buzzer_running()) buzzer_start();
+        if (newlyLit || !buzzer_running()) buzzer_start(lit);
+        else buzzer_set_lit(lit);
     } else {
         buzzer_stop();
     }
@@ -75,6 +82,7 @@ static void tick() {
 static void openPairing() {
     ble_pairing_open(PAIRING_WINDOW_MS);
     buzzer_tone(TONE_PAIRING_MS);
+    voice_say_one(CLIP_PAIRING_MODE, TONE_PAIRING_MS);
     Serial.println("PAIRING MODE for 2 minutes: connect the phone and type the 6-digit code "
                    "from the box label");
 }
@@ -96,6 +104,7 @@ static void onPress(uint32_t heldMs) {
         ble_pairing_close();
         Serial.println("Button: pairing mode cancelled");
         buzzer_tone(TONE_NOTHING_MS);
+        voice_say_one(CLIP_PAIRING_CANCELLED, TONE_NOTHING_MS);
         return;
     }
     if (!rtc_time_valid()) {
@@ -105,9 +114,10 @@ static void onPress(uint32_t heldMs) {
     }
 
     uint8_t taken = schedule_take(rtc_now_local());   // only lit doses, never early
-    tick();                                   // LEDs off and the alarm stops first
+    tick();                                   // LEDs off and the alarm (and its prompt) stop first
     if (taken) {
         buzzer_tone(TONE_TAKEN_MS);           // 1.5 s: taken
+        voice_say_one(CLIP_CONFIRMED, TONE_TAKEN_MS);
     } else {
         Serial.println("Button: nothing due (nothing is taken before its alarm)");
         buzzer_tone(TONE_NOTHING_MS);         // 0.8 s: nothing due
@@ -193,6 +203,15 @@ void setup() {
     storage_begin();                          // before the schedule: a dose missed while the
     schedule_begin();                         // box was off is logged on the first tick
     console_begin();
+    // The speaker on top of the Bluetooth radio can pull a weak 5 V supply down
+    // (Nov 3, laptop USB at volume 30: a reset loop, so no alarm at all). After
+    // a brownout reset the box runs on tones alone until the next power-on.
+    if (esp_reset_reason() == ESP_RST_BROWNOUT) {
+        Serial.println("WARNING: the last reset was a brownout (speaker on a weak 5 V supply?): "
+                       "voice off until the next power-on, tones only");
+    } else {
+        voice_begin();                        // the player has had its ~1.5 s to start by now
+    }
 
     // Bluetooth name: "HealthSync-" + the serial without "HS-" (HS-0001 → HealthSync-0001).
     String name = DEVICE_SERIAL;
@@ -201,6 +220,9 @@ void setup() {
 
     tick();
     _lastTick = millis();
+    // Once per power-on (Miko, Nov 3): never after a brownout, crash or watchdog
+    // restart. A dose already due at power-on speaks for itself instead.
+    if (esp_reset_reason() == ESP_RST_POWERON && !buzzer_running()) voice_say_one(CLIP_READY);
 }
 
 void loop() {
@@ -216,6 +238,7 @@ void loop() {
         ble_pairing_close();
         Serial.println("Phone paired: pairing mode closed");
         buzzer_tone(TONE_PAIRED_MS);          // 3 s: paired
+        voice_say_one(CLIP_PHONE_CONNECTED, TONE_PAIRED_MS);
     } else if (ble_pairing_active() && ble_secure()) {
         // A phone that was already paired reconnects with no code, so the
         // "paired" event never comes; pairing mode used to run its full 2
@@ -223,6 +246,7 @@ void loop() {
         ble_pairing_close();
         Serial.println("Paired phone connected: pairing mode closed");
         buzzer_tone(TONE_RECONNECT_MS);       // 0.5 s
+        voice_say_one(CLIP_PHONE_CONNECTED, TONE_RECONNECT_MS);
     }
     watchButton();
 
@@ -232,4 +256,5 @@ void loop() {
     }
     showOverlay();
     buzzer_update();
+    voice_update();
 }

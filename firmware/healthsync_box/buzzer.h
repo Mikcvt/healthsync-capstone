@@ -5,9 +5,11 @@
 
 void buzzer_init();
 
-// The dose alarm: TONE_ALARM_MS on, ALARM_PAUSE_MS off, repeated until stopped.
-void buzzer_start();     // (re)starts the alarm with a tone right now
-void buzzer_stop();      // stops the alarm (a confirmation tone keeps playing)
+// The dose alarm, in rounds: TONE_ALARM_MS on, the spoken prompt for the lit
+// compartments (voice.h), ALARM_PAUSE_MS off, repeated until stopped.
+void buzzer_start(uint8_t lit);   // (re)starts the alarm with a tone right now
+void buzzer_set_lit(uint8_t lit); // the compartments changed; the alarm goes on
+void buzzer_stop();               // stops the alarm (a confirmation tone keeps playing)
 bool buzzer_running();
 
 // One tone of `ms` milliseconds (taken, nothing due, pairing...). It plays
