@@ -7,9 +7,12 @@ import '../constants/app_strings.dart';
 import '../models/box_messages.dart';
 import '../models/device_model.dart';
 import '../services/box_link_service.dart';
+import '../services/box_watch_service.dart';
 import '../services/device_service.dart';
 import '../services/preferences_service.dart';
 import '../utils/box_schedule.dart';
+import '../utils/box_watch.dart';
+import '../utils/date_formatter.dart';
 import 'patient_provider.dart';
 
 /// What a pairing or a sync the patient asked for came to, for a SnackBar.
@@ -25,7 +28,9 @@ class BoxActionResult {
 ///
 /// Decided Oct 27, 2026: only the patient's phone talks to the box (M1). It
 /// connects when the app opens, after a Done or Skip in the app, and on the
-/// Sync button (M2), then disconnects. Each sync:
+/// Sync button (M2), then disconnects. Dev builds also sync every minute
+/// while a box dose is due, in the background too (BoxWatchService). Each
+/// sync:
 ///
 ///   hello → set_time → the schedule if it changed → the box's logged doses,
 ///   saved to Firestore, then acked → app_done for doses decided in the app
@@ -37,6 +42,7 @@ class BoxProvider extends ChangeNotifier {
   final BoxLinkService _link = BoxLinkService();
   final PreferencesService _prefs = PreferencesService();
   final DeviceService _devices = DeviceService();
+  final BoxWatchService _watch = BoxWatchService.instance;
 
   String? _uid;
   ({String remoteId, String serial})? _paired;
@@ -49,6 +55,9 @@ class BoxProvider extends ChangeNotifier {
   DateTime? _lastSyncedAt;
   BoxLinkError? _lastError;
   String? _lastNote;
+
+  bool _watching = false;
+  bool _watchChanging = false;
 
   StreamSubscription<String>? _finalizedSub;
 
@@ -111,6 +120,7 @@ class BoxProvider extends ChangeNotifier {
       _lastError = null;
       _lastNote = null;
       _clockMissing = false;
+      if (_watching) unawaited(_stopWatch());
       if (uid != null) unawaited(_load(uid));
       return;
     }
@@ -245,7 +255,71 @@ class BoxProvider extends ChangeNotifier {
     _paired = null;
     _lastSyncedAt = null;
     _lastError = null;
+    if (_watching) unawaited(_stopWatch());
     notifyListeners();
+  }
+
+  // ── background watch (dev builds) ───────────────────────────────────────
+
+  /// The app came on screen or is leaving it: the only moments Android lets
+  /// a foreground service start. Starts the watch while a box dose is still
+  /// to come today, all day (Miko, Nov 3), and stops it when none is left.
+  void appVisibilityChanged() {
+    if (!_watch.isSupported || _watchChanging || _patient.isLoading) return;
+    final plan = _watchPlan();
+    if (plan.isNeeded) {
+      unawaited(_startWatch(plan));
+    } else if (_watching) {
+      unawaited(_stopWatch());
+    }
+  }
+
+  BoxWatchPlan _watchPlan() {
+    if (_paired == null || pairedBoxMismatch || _patient.device == null) {
+      return const BoxWatchPlan();
+    }
+    final now = DateTime.now();
+    return BoxWatchPlan.build(
+      [
+        ..._patient.slotsForDay(now.subtract(const Duration(days: 1))),
+        ..._patient.slotsForDay(now),
+      ],
+      now,
+      inBox: _patient.showsCompartment,
+    );
+  }
+
+  Future<void> _startWatch(BoxWatchPlan plan) async {
+    _watchChanging = true;
+    try {
+      _watching = await _watch.start(_watchText(plan), onTick: _onWatchTick);
+    } finally {
+      _watchChanging = false;
+    }
+  }
+
+  Future<void> _stopWatch() async {
+    _watching = false;
+    await _watch.stop();
+  }
+
+  /// About once a minute while the watch runs, in the background too.
+  void _onWatchTick() {
+    if (_patient.isLoading) return;
+    final plan = _watchPlan();
+    if (!plan.isNeeded) {
+      unawaited(_stopWatch());
+      return;
+    }
+    unawaited(_watch.update(_watchText(plan)));
+    if (plan.dueNow) unawaited(_sync(quiet: true));
+  }
+
+  String _watchText(BoxWatchPlan plan) {
+    final next = plan.next;
+    return plan.dueNow || next == null
+        ? AppStrings.boxWatchDue
+        : AppStrings.boxWatchNext(DateFormatter.toClockLabel(next));
   }
 
   // ── a sync ──────────────────────────────────────────────────────────────
@@ -478,6 +552,7 @@ class BoxProvider extends ChangeNotifier {
   void dispose() {
     _patient.removeListener(_onPatientChanged);
     _finalizedSub?.cancel();
+    if (_watching) unawaited(_stopWatch());
     super.dispose();
   }
 }

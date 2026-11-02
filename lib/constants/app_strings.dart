@@ -161,6 +161,17 @@ class AppStrings {
   static String boxSyncedWithPresses(int count) => count == 1
       ? 'Box synced. 1 dose taken with the box button was saved.'
       : 'Box synced. $count doses taken with the box button were saved.';
+  // Background box watch (dev builds): the foreground-service notification.
+  static const String boxWatchChannelName = 'Medicine box watch';
+  static const String boxWatchChannelDescription =
+      'Shown while HealthSync waits for a dose to be confirmed on the '
+      'medicine box.';
+  static const String boxWatchTitle = 'HealthSync is watching your medicine box';
+  static const String boxWatchDue =
+      'A dose is due. Press the box button after taking it; it is saved '
+      'automatically.';
+  static String boxWatchNext(String time) =>
+      'Next box dose at $time. Keep this phone near the box.';
   static String boxTooManyDoseTimes(int leftOut) =>
       'The box holds 24 dose times; $leftOut more are reminded on this '
       'phone only.';

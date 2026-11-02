@@ -15,6 +15,7 @@ import 'screens/auth/email_verification_screen.dart';
 import 'screens/auth/pending_deletion_screen.dart';
 import 'screens/patient/patient_main_screen.dart';
 import 'screens/caregiver/caregiver_main_screen.dart';
+import 'services/box_watch_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/dose_reminder_scheduler.dart';
 import 'services/notification_service.dart';
@@ -34,6 +35,8 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
   }
+  // The background box watch's minute tick reaches this isolate (dev builds).
+  BoxWatchService.initCommunicationPort();
 
   runApp(const HealthSyncApp());
 }

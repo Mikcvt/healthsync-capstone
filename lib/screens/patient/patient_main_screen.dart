@@ -63,10 +63,13 @@ class _PatientMainScreenState extends State<PatientMainScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    final box = context.read<BoxProvider>();
     // Brought back from the background counts as opening the app.
-    if (state == AppLifecycleState.resumed && mounted) {
-      context.read<BoxProvider>().syncOnOpen();
-    }
+    if (state == AppLifecycleState.resumed) box.syncOnOpen();
+    // Coming on screen or leaving it are the only moments Android lets the
+    // background box watch start (dev builds).
+    if (state != AppLifecycleState.detached) box.appVisibilityChanged();
   }
 
   /// Opens the alarm screen for a tapped reminder — the only place Snooze is

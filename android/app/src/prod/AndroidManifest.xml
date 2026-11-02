@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- The background box watch is dev-only (src/dev/AndroidManifest.xml).
+         flutter_foreground_task still adds these to every build; the Play
+         build drops them, so it has no foreground service and needs no Play
+         Console foreground-service declaration (Nov 3, 2026). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove"/>
+
+    <application>
+        <receiver
+            android:name="com.pravera.flutter_foreground_task.service.RebootReceiver"
+            tools:node="remove"/>
+        <receiver
+            android:name="com.pravera.flutter_foreground_task.service.RestartReceiver"
+            tools:node="remove"/>
+    </application>
+</manifest>
