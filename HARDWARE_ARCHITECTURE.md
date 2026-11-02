@@ -14,6 +14,11 @@
 > The firmware is built in phases (Step 8.0): **Phase 1** LED + buzzer sync,
 > **Phase 2** button confirms the dose, then Wi-Fi setup, offline and device
 > key. `firmware/healthsync_box/FIRMWARE_ARCHITECTURE.md` has the detail.
+>
+> **Nov 3, 2026: voice added.** A DFPlayer Mini MP3 module and one 8 Ω
+> speaker (BOM 15–17, pins 27 / 34 / 35, Step 4.8, power in Step 5). Bench
+> results and behaviour: `firmware/healthsync_box/WORK_NOTES.md` §18 and
+> `firmware/healthsync_box/VOICE_CLIPS.md`.
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
 > [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md). The box now talks to
@@ -75,6 +80,9 @@ panelist will ask.
 | 12 | 134N3P charge / protection / 5 V boost module | 1 | Charges the cell from the side USB port and gives 5 V to the ESP32's `VIN`. |
 | 13 | USB cable + 5 V USB charger | 1 | Charging through the side port; firmware uploads through the ESP32's own port (open area in the box). |
 | 14 | Breadboard / perfboard, jumper wires, enclosure with 6 compartments | — | |
+| 15 | DFPlayer Mini MP3 module (MP3-TF-16P) + its own microSD card (FAT32) | 1 + 1 | Spoken prompts after each tone (Nov 2026). Separate from the dose-log card. Clips in `/01/` (`VOICE_CLIPS.md`). |
+| 16 | Speaker, **8 Ω**, about 40 mm | 1 | One only: two in parallel (4 Ω) were no louder and browned out sooner (Nov 2). |
+| 17 | 1 kΩ resistor + 470 µF capacitor (≥ 10 V) | 1 + 1 | Resistor on the DFPlayer RX line (cuts hiss); capacitor across the DFPlayer's VCC/GND for the speaker's current bursts. |
 
 ---
 
@@ -145,12 +153,16 @@ The box **never talks to Firestore directly.** It only talks to the Worker
 | microSD MISO | 23 | SPI | Swapped vs. the ESP32 default (see below). |
 | microSD CS | 15 | SPI | **Strapping pin.** The SD module's pull-up keeps it high at boot, which is the normal state. Harmless. |
 | (built-in LED) | 2 | Output | On while a phone is connected over Bluetooth (bench aid). Already on the board, not a new feature. |
+| DFPlayer RX (commands) | 27 | Output (UART2 TX) | Through 1 kΩ. Added Nov 2026. |
+| DFPlayer TX (replies) | 34 | Input (UART2 RX) | Input-only pin with no pull-up: fine, the DFPlayer drives it. |
+| DFPlayer BUSY | 35 | Input | LOW while a clip plays. Input-only pin, no pull-up. |
 
 Wiring confirmed against the bench box on October 19, 2026, and re-checked
 against the firmware (`config.h`, firmware 0.3.0) on October 25, 2026.
 
 Pins deliberately **not** used: 0, 5 (strapping), 6–11 (flash), 12 (strapping —
-pulled high at boot it bricks the boot), 34–39 (input-only).
+pulled high at boot it bricks the boot), 36–39 (input-only). 34 and 35 are
+input-only too, which is why they take only the DFPlayer's TX and BUSY.
 
 **Only 6 compartments.** The app lets the care partner pick compartments 1–8.
 A medicine set to 7 or 8 still gets phone reminders, but no LED lights; the
@@ -293,6 +305,27 @@ Side USB port (5 V) ──► 134N3P ──charges──► 18650 (3.7 V nominal
 | 18650 Li-ion (protected) | **3.7 V** nominal, **4.2 V** full, about **3.0 V** empty (protection cuts off near 2.5 V) | — | Holder → 134N3P | Never straight to the ESP32 |
 | 134N3P module | In: **5 V** USB; battery side **3.0–4.2 V**; out: **5 V** | — | Side USB port | Assumed values, to be measured (C7) |
 | Side USB charger | **5 V** | — | — | Charging only, no data to the ESP32 |
+| DFPlayer Mini | **5 V** (3.2–5 V allowed; on 3.3 V it was quiet and distorted, Nov 2) | UART at **3.3 V** per the DFPlayer datasheet (TX and BUSY into GPIO 34/35 worked on the bench; their voltage was not measured) | `VIN`/`5V` with 470 µF at the module | Never send it the reset command (browned the ESP32 out) |
+| Speaker (8 Ω) | Driven by the DFPlayer's bridged amplifier | — | SPK1 / SPK2 only | Never tie SPK1 or SPK2 to GND |
+
+### 4.8 DFPlayer Mini and speaker (voice, Nov 2026)
+
+| DFPlayer pin | Goes to |
+|---|---|
+| 1 VCC | 5 V (`VIN`/`5V`), with a 470 µF capacitor to pin 7 at the module (+ on VCC) |
+| 2 RX | 1 kΩ → ESP32 GPIO 27 |
+| 3 TX | ESP32 GPIO 34 |
+| 6 SPK1 | Speaker + |
+| 7 GND | ESP32 GND |
+| 8 SPK2 | Speaker − |
+| 16 BUSY | ESP32 GPIO 35 |
+| others (4, 5, 9–15) | not connected (pin 10 is a second GND; leave it free) |
+
+- **Finding pin 1:** two chips facing you, card sticking out at the bottom →
+  pin 1 is the **top of the right row**. On the card-slot side it is the
+  square pad. Beep test: pins 7 and 10 both beep to the card slot's metal
+  cover. Wired turned 180° (Nov 2) the player stays dead, but nothing breaks.
+- The bench sketch `firmware/healthsync_box/dfplayer_test/` checks it all.
 
 ---
 
@@ -307,9 +340,10 @@ Side USB port (5 V) ──► 134N3P ──charges──► 18650 (3.7 V nominal
 | ESP32 with Bluetooth (advertising or connected, no Wi-Fi) | about 40–60 mA | about 130 mA (radio burst) |
 | LEDs (usually 1–2 lit, max 6) | 6–12 mA | 36 mA |
 | Buzzer | 0 | 30 mA |
+| DFPlayer + 8 Ω speaker (volume 30) | about 15–20 mA idle | several hundred mA while speaking (estimate) |
 | DS3231 | < 1 mA | — |
 | microSD (write) | 1 mA idle | about 100 mA |
-| **Total** | **about 50–75 mA** | **about 300 mA** |
+| **Total** | **about 65–95 mA** | **about 0.8 A** with the speaker (estimate) |
 
 **Battery life (estimate):** one 18650 of 2,500–3,000 mAh at 3.7 V, through the
 134N3P's 5 V boost (about 85% efficient), gives about 1,600–1,900 mAh at 5 V.
@@ -318,6 +352,12 @@ saving in Phase 5 (light sleep, slower CPU, longer Bluetooth advertising
 interval; open question C2). With a flat battery the box stops until it is
 charged; the DS3231 keeps the time, and the schedule and dose log are kept in
 flash and on the SD card.
+
+**Speaker vs. supply (Nov 3, bench):** volume 30 with Bluetooth running browns
+the ESP32 out on a laptop USB port, but works on the 18650 + 134N3P. After a
+brownout reset the firmware keeps the voice off until the next power-on, so
+the box can never loop (`WORK_NOTES.md` §18.3). The voice plays only during
+alarms and events, so it barely changes battery life.
 
 There is **no battery-level reading** (no monitoring pin; CLAUDE.md "No
 phantom features").

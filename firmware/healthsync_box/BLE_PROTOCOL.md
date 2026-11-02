@@ -77,8 +77,11 @@ disconnect
 - **Times:** the box keeps UTC on its DS3231 clock and compares dose times in
   Manila time (UTC+8), like the Worker.
 - **Alarm:** from the dose time until +60 min the compartment LED is on. The
-  buzzer plays 5 s on, 2 s off, for the first 30 min, then stays silent while
-  the LED stays lit (firmware 0.4.2, Oct 31; was a 5 s tone every 5 min). A button press (held
+  box plays rounds of a 5 s tone, the spoken prompt ("Please take your
+  medicine. Compartment one.") and 5 s of silence, for the first 30 min, then
+  stays silent while the LED stays lit. The prompt plays every round for 5 min,
+  then every 3rd round; with no DFPlayer the rounds are tone and silence only
+  (firmware 0.4.3, Nov 3; was 5 s on, 2 s off). A button press (held
   0.3–10 s, then let go) takes every lit dose. A press with nothing lit takes
   nothing (a press before the alarm may be an accident). After +60 min the
   dose is `missed`.

@@ -1,5 +1,10 @@
 # HealthSync Firmware Architecture
 
+> **Current state (Nov 3, 2026):** firmware 0.4.3, Bluetooth design. For what
+> the box does today read `WORK_NOTES.md` ("Start here" and §18) and
+> `VOICE_CLIPS.md` (alarm rounds and voice prompts). This file is the earlier
+> design and is kept for the record.
+
 > **Oct 22, 2026, Phase 0 done:** the Wi-Fi code below (`net.cpp/h`,
 > WiFiManager, Worker polling, setup hotspot) was **removed from the firmware**
 > (kept in git history, commit 286c33b). The Worker `/state` route is switched

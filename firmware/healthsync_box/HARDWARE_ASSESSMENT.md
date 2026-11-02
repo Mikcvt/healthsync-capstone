@@ -111,6 +111,8 @@
 <!-- Paste your photo here -->
 ![Active Buzzer](photos/buzzer.jpg)
 
+> **Nov 3, 2026 (firmware 0.4.3):** while a dose is due the box plays rounds of a 5 s tone, a spoken prompt from the DFPlayer (1.8b) and 5 s of silence, for 30 minutes; then the LED alone until taken or missed (+60 min). Each event tone below is now followed by its voice clip. The text below is from Oct 25.
+>
 > Sounds while a dose is due to alert the patient: one straight 5 s tone, repeated every 5 minutes until the dose is taken or missed (+60 min). Every other event has its own straight tone: phone paired 3 s, pairing mode 2 s, dose taken 1.5 s, power on 1 s, nothing due 0.8 s (Oct 25). Active type (beeps on DC, no PWM needed). Controlled from GPIO 17. Driven through an NPN transistor since most buzzers draw 25–30mA, more than an ESP32 pin should supply directly. Silenced immediately when the button is pressed or when the app marks the dose as taken.
 
 ---
@@ -128,6 +130,13 @@
 ![1N4148 Diode](photos/diode.jpg)
 
 > Optional flyback/protection diode placed across the buzzer. Protects the NPN transistor from back-EMF voltage spikes when the buzzer turns off.
+
+---
+
+### 1.8b DFPlayer Mini (MP3-TF-16P) + 8 Ω speaker (added Nov 2026)
+<!-- Paste your photo here -->
+
+> Plays short recorded voice prompts from its own microSD card, always after the buzzer tone: "Please take your medicine. Compartment one.", "Dose confirmed.", the pairing prompts and a start-up greeting (`VOICE_CLIPS.md`). VCC on 5 V with a 470 µF capacitor at the module; GPIO 27 → 1 kΩ → RX, TX → GPIO 34, BUSY → GPIO 35; one 8 Ω speaker on SPK1/SPK2. Pin 1 is the top of the right row with the chips facing you and the card at the bottom. Without it, or if it fails, the box keeps its tones. Bench-tested Nov 2–3 (`WORK_NOTES.md` §18).
 
 ---
 
@@ -176,10 +185,13 @@
 | MicroSD CS | 15 | SPI | Strapping pin. The SD module's pull-up keeps it high at boot. Harmless. |
 | DS3231 SDA | 21 | I2C | Default I2C. Module has onboard pull-ups — do not add more. |
 | DS3231 SCL | 22 | I2C | Default I2C. |
-| Built-in LED (Wi-Fi status) | 2 | Output | Already on the board. On while Wi-Fi is connected. |
+| Built-in LED (Wi-Fi status) | 2 | Output | Already on the board. On while Wi-Fi is connected. (Since the Bluetooth design: on while a phone is connected.) |
+| DFPlayer RX (via 1 kΩ) | 27 | Output | UART2 TX. Added Nov 2026. |
+| DFPlayer TX | 34 | Input | UART2 RX. Input-only pin, no pull-up; the DFPlayer drives it. |
+| DFPlayer BUSY | 35 | Input | LOW while a clip plays. Input-only pin. |
 
 **Pins deliberately NOT used:**  
-`0` (strapping, boot button), `5` (strapping), `6–11` (flash memory), `12` (strapping — HIGH at boot bricks the boot), `34–39` (input-only).
+`0` (strapping, boot button), `5` (strapping), `6–11` (flash memory), `12` (strapping — HIGH at boot bricks the boot), `36–39` (input-only). `34` and `35` are input-only too and take only the DFPlayer's TX and BUSY (Nov 2026).
 
 **Compartments 7 and 8:** the app lets the care partner choose compartments 1–8, but this box has 6. A medicine set to 7 or 8 gets phone reminders only; no LED lights. Care partners should use 1–6.
 
@@ -212,7 +224,8 @@ firmware/healthsync_box/
 ├── secrets.h              — serial (git-ignored, flashed per box)
 ├── leds.cpp / leds.h      — leds_set(), leds_all_off(), leds_self_test()
 ├── button.cpp / button.h  — debounced press detection
-├── buzzer.cpp / buzzer.h  — non-blocking beep pattern
+├── buzzer.cpp / buzzer.h  — non-blocking beep pattern (since 0.4.3: alarm rounds tone → voice → pause)
+├── voice.cpp / voice.h    — DFPlayer voice prompts (added Nov 2026, firmware 0.4.3)
 ├── (net.cpp / net.h — Wi-Fi, removed Oct 22 in Phase 0; Bluetooth comes in Phase 3)
 ├── rtc_clock.cpp / rtc_clock.h — DS3231 read/write, NTP sync (Phase 4)
 ├── storage.cpp / storage.h    — SD: schedule.json, queue.jsonl (Phase 4)

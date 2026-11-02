@@ -90,7 +90,8 @@ magnet or one micro-switch per lid. Six free input pins exist: GPIO 4, 27,
 **Now:** a press counts only if held 0.3–10 s (`BUTTON_CONFIRM_MS`,
 `BUTTON_CONFIRM_MAX_MS`). A quick tap under 0.3 s, or a hold over 10 s, is
 ignored **with no sound**. An elderly patient tapping quickly gets no answer;
-if the tap lands in the alarm's 2 s pause, it can even seem to have worked.
+if the tap lands in the alarm's pause, it can even seem to have worked (the
+pause is 5 s since firmware 0.4.3, Nov 3).
 
 **Fix:** play a short distinct chirp ("hold a little longer") on a too-short
 or too-long press. Two lines in `onPress()` in `healthsync_box.ino`.
@@ -148,6 +149,13 @@ Done/Skip in the app, or on the Sync button. There is **no background sync**
 3. 09:00 the Worker marks the dose missed and alerts the care partner.
 4. Whenever the patient next opens the app: the press is saved as taken, and
    the care partner gets a "correction" alert.
+
+**Update Nov 3 (dev builds only):** while a box dose is due, the dev app syncs
+every minute through a foreground service, also with the phone in a pocket, so
+the press reaches Firestore within about a minute and steps 2–4 do not happen.
+Still not covered: the app was not opened that day, it was swiped away, or the
+phone restarted. The Play build still behaves as above (`CLAUDE.md`,
+"Background box watch").
 
 A patient who uses only the box and rarely opens the app will look like they
 miss **every** dose, in alerts and in the reports, until the next sync.
@@ -302,7 +310,8 @@ has no daylight saving. A patient abroad keeps Manila dose times. Out of scope.
 holds one medicine, shared by all its dose times.
 
 ### C8. A 2 AM dose wakes the household 🟢
-**Now:** the box beeps 5 s on / 2 s off for 30 min at any hour. No quiet
+**Now:** the box plays its alarm rounds (5 s tone, spoken prompt, 5 s pause;
+firmware 0.4.3) for 30 min at any hour. No quiet
 hours. Answer only: the alarm is the point; the care partner sets the times.
 
 ---

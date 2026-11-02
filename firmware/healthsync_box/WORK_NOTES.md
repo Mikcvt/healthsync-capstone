@@ -17,7 +17,20 @@
 
 ---
 
-## ★ Start here — status at the end of October 25, 2026
+## ★ Start here — status on November 3, 2026
+
+**Newest (Nov 1–3, firmware 0.4.3): the box speaks.** A DFPlayer Mini + one
+8 Ω speaker play recorded prompts, always after the buzzer tone. Alarm rounds
+are now 5 s tone → "Please take your medicine. Compartment one." → 5 s
+silence (voice every round for 5 min, then every 3rd round). Details, the
+bench results and the brownout safety net: **§18** and `VOICE_CLIPS.md`.
+Written by Claude at Miko's request; **Christian has not reviewed it yet**.
+Firmware 0.4.2 (Oct 31, `BOX_HARDWARE_FIXES.md`) changed the alarm to 5 s on /
+2 s off for 30 min and added the shared pill count; 0.4.3 builds on it.
+
+The status below is from Oct 25 and is kept as it was.
+
+## Status at the end of October 25, 2026
 
 **Design:** the box talks to the patient's phone over **Bluetooth,
 connect-on-demand** (`BLE_CONNECT_ON_DEMAND.md`). The box has no Wi-Fi and
@@ -1702,3 +1715,75 @@ early take left to Claude.
 5. Hold 5 s with nothing lit → 2 s tone + running light. To hear the 3 s
    "paired" tone: `unpair`, forget the box on the phone, then pair again.
 6. A dose left for 60 min (or a clock jump) → LED off, no sound.
+
+---
+
+## 18. Voice prompts (Nov 1–3, firmware 0.4.3)
+
+Asked for by Miko; built by Claude on `fixing-bugs-and-ble`. **Christian to
+review** `voice.cpp`, the alarm rounds in `buzzer.cpp` and the `setup()`
+changes before it goes into the final box.
+
+### 18.1 Hardware (bench-tested Nov 2–3)
+
+| Part | Wiring |
+|---|---|
+| DFPlayer Mini (MP3-TF-16P) + its own microSD card (FAT32, clips in `/01/`) | pin 1 VCC → 5 V, pin 7 GND → GND, 470 µF across them at the module |
+| | ESP32 GPIO 27 → 1 kΩ → pin 2 RX; pin 3 TX → GPIO 34; pin 16 BUSY → GPIO 35 |
+| One 8 Ω speaker | pin 6 SPK1 (+), pin 8 SPK2 (−); never to GND |
+
+- **Pin 1 is easy to get backwards.** With the two chips facing you and the
+  card sticking out at the bottom, pin 1 is the **top of the right row**; on
+  the card-slot side it is the square pad. On Nov 2 the module was first wired
+  turned 180°: no LED, no reply, BUSY stuck LOW, nothing damaged.
+- **3V3 is not enough:** quiet and distorted. 5 V it is.
+- **Two 8 Ω speakers in parallel** were no louder and browned out sooner: one.
+- Wiring page (artifact "HealthSync Box Wiring") updated Nov 2.
+
+### 18.2 Behaviour
+
+Tone first, then voice, always (`VOICE_CLIPS.md` has the full table):
+
+| Event | Sound |
+|---|---|
+| Dose due | rounds of 5 s tone → prompt → 5 s silence (`ALARM_PAUSE_MS` 2 s → 5 s); voice every round for 5 min, then every 3rd; silent after 30 min |
+| Box button takes the dose | 1.5 s tone → "Dose confirmed." |
+| Pairing | tone → "Pairing mode." / "Phone connected." / "Pairing cancelled." |
+| Power on | 1 s tone → "HealthSync med box is ready. Please pair or sync your phone." once per power-on, not after an automatic restart, not when a dose is already due |
+
+### 18.3 Power: brownout and the safety net
+
+- `dfplayer_test` (no Bluetooth) played everything at volume 30 on laptop USB.
+- The real firmware on laptop USB at volume 30 **browned out in a loop** the
+  moment the start-up prompt played: speaker + Bluetooth radio is more than a
+  laptop port gives. A box stuck in a reset loop sounds no alarm at all.
+- **Safety net:** after a brownout reset (`esp_reset_reason()`), `setup()`
+  skips `voice_begin()`: tones only until the next power-on.
+- **On the 18650 + 134N3P, volume 30 works** with Bluetooth on (Miko, Nov 3).
+- The DFPlayer must **never get its reset command**: it browned the ESP32 out
+  on 5 V. The firmware waits ~1.5 s after power-on and talks to the player with
+  acknowledgements off, so no command blocks the loop.
+
+### 18.4 Files
+
+`voice.cpp/h` (new), `buzzer.cpp/h` (alarm rounds; `buzzer_start(lit)`,
+`buzzer_set_lit`), `healthsync_box.ino`, `config.h` (DFPlayer pins, volume,
+clip numbers, `ALARM_PAUSE_MS` 5 s, `FIRMWARE_VERSION` 0.4.3),
+`BLE_PROTOCOL.md` (alarm rule), `VOICE_CLIPS.md`, `dfplayer_test/` (bench
+sketch). Library: DFRobotDFPlayerMini 1.0.6. Build:
+`esp32:esp32:esp32:PartitionScheme=huge_app`, 23% flash, no warnings.
+The Bluetooth protocol is unchanged, so the app needs nothing new.
+
+### 18.5 Uploading on this bench board
+
+The automatic reset into upload mode fails ("Wrong boot mode"). Hold BOOT,
+tap EN, let go of BOOT, then upload without the automatic reset
+(`esptool --before no-reset`), or hold BOOT while the IDE shows
+`Connecting…`.
+
+### 18.6 Open
+
+- Christian's review (above).
+- Filipino clips (`/02/`, `VOICE_FOLDER`), and wording for clip 071.
+- Measure the real current with the speaker on the battery (Phase 5).
+

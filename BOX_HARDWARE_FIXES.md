@@ -67,6 +67,11 @@ and the app keeps working without the box. The app should say so: see 5.4,
 
 ## 2. Alarm: 5 s tone, 2 s pause, for 30 minutes
 
+> **Superseded Nov 3, 2026 (firmware 0.4.3):** the box now speaks between
+> tones. Each round is 5 s tone → spoken prompt → **5 s** pause, still for 30
+> minutes; see `firmware/healthsync_box/VOICE_CLIPS.md`. The 30-minute rule
+> and "LED only after 30 min" are unchanged.
+
 ### Now (firmware 0.4.1)
 A 5 s tone, then silence until the next tone 5 minutes later, repeated until
 the dose is taken or missed at +60 min.
@@ -259,7 +264,7 @@ The box itself cannot tell. The only honest options:
 | # | Topic | Decision |
 |---|---|---|
 | D1 | Power | **No switch: the box is always on, like AirPods.** Keep the **134N3P**: after the battery goes in, plug USB-C once and the box runs from then on. Options A–D in section 1 are dropped, and so is the one-button soft-power latch discussed in chat. **Condition:** it must pass the overnight test (still on in the morning, on battery). If it switches itself off at low load, move to the TP4056 + MT3608 supply (option B without its switch) |
-| D2 | Alarm | 5 s tone / 2 s pause for 30 min, then **LED only, silent**, until confirmed, skipped or missed at +60 min |
+| D2 | Alarm | 5 s tone / 2 s pause for 30 min, then **LED only, silent**, until confirmed, skipped or missed at +60 min. **Nov 3 (fw 0.4.3):** rounds are now 5 s tone → voice prompt → 5 s pause (`VOICE_CLIPS.md`) |
 | D3 | Battery reading | **Not now.** No divider, no battery % in the app, no battery signals on the box (sections 5.1–5.3 and 6 wait). The "No phantom features" rule stays as it is |
 | D4 | Charging sense wire | Not now (follows D3) |
 | D5 | Care partner low-battery alert | Not now (follows D3) |

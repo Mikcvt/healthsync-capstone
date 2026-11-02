@@ -20,6 +20,7 @@
 HealthSync helps patients take their medications on time using two components:
 
 1. **Smart medicine box (hardware)** — ESP32 microcontroller with 6 LED indicators. Each LED corresponds to one medicine compartment (1–6). At the scheduled dose time, the correct LED lights up to guide the patient. A push button on the box lets the patient confirm intake. DS3231 RTC handles offline scheduling. MicroSD card logs doses locally when offline and syncs to Firebase on reconnect.
+   **Voice (Nov 3, 2026, firmware 0.4.3):** a DFPlayer Mini MP3 module and one 8 Ω speaker speak short recorded prompts, always after the buzzer tone ("Please take your medicine. Compartment one."). See "Box sounds" below and [firmware/healthsync_box/VOICE_CLIPS.md](firmware/healthsync_box/VOICE_CLIPS.md).
    **Box ↔ app link (Oct 22, 2026):** BLE between the box and the patient's phone, connect-on-demand. No Wi-Fi, no hotspot, no direct box-to-cloud link; box logs reach Firebase through the phone. Design pending confirmation by Miko and Christian: [BLE_CONNECT_ON_DEMAND.md](BLE_CONNECT_ON_DEMAND.md).
 
 2. **Flutter mobile app (software)** — Android app for patients and caregivers. Handles medication scheduling, dose reminders via FCM push notifications, adherence tracking, caregiver monitoring, and real-time sync with the medicine box via Firebase.
@@ -529,6 +530,51 @@ compartment read-only. Patients can pair a box but cannot assign
 compartments: the rules let them write only led_active and pills_remaining.
 ```
 
+## Box sounds (firmware 0.4.3, Nov 3, 2026)
+
+```
+Tone first, then voice, always. The beep is never replaced.
+Clips: /01/NNN.mp3 on the DFPlayer's own card (VOICE_CLIPS.md, 14 clips).
+
+  Dose due     rounds of: 5 s tone → "Please take your medicine.
+               Compartment one (, two and three)." → 5 s silence.
+               Voice every round for 5 min, then every 3rd round; silent
+               after 30 min (LED stays lit); missed at +60 min.
+  Box button   1.5 s tone → "Dose confirmed."
+  Pairing      2 s tone → "Pairing mode."; 3 s / 0.5 s tone → "Phone
+               connected."; 0.8 s tone → "Pairing cancelled."
+  Power on     1 s tone → "HealthSync med box is ready. Please pair or sync
+               your phone." Once per power-on, not after an automatic restart.
+  Tone only    nothing due (0.8 s), too-short press, clock problems.
+
+No DFPlayer, or no answer at start-up → tones only; the alarm never goes
+silent. After a brownout reset the voice stays off until the next power-on:
+on laptop USB, volume 30 + Bluetooth browns the ESP32 out; on the 18650 +
+134N3P it works (Nov 3). Never send the DFPlayer its reset command.
+Code: firmware/healthsync_box/voice.cpp, buzzer.cpp (alarm rounds), config.h.
+Bench test sketch: firmware/healthsync_box/dfplayer_test/.
+```
+
+## Background box watch (dev builds only, Nov 3, 2026)
+
+```
+While a box dose is due (dose time to +60 min, nothing recorded), a dev
+build syncs with the box every minute, in the background too, so a press of
+the box button is saved without the Sync button. A foreground service
+(flutter_foreground_task, type connectedDevice) keeps the app awake; it
+starts when the app comes on screen or leaves it (the only moments Android
+allows) and runs until today's last box dose is done. Swiping the app away
+stops it.
+
+  lib/utils/box_watch.dart              when to watch (test/box_watch_test.dart)
+  lib/services/box_watch_service.dart   the service; the sync stays in BoxProvider
+  android/app/src/dev/AndroidManifest.xml    the service + permissions
+  android/app/src/prod/AndroidManifest.xml   strips the plugin's parts
+
+The prod (Play) build has no foreground service. Shipping it to Play needs
+the Play Console foreground-service declaration first.
+```
+
 ## Medicine box integration
 
 > **SUPERSEDED by the Oct 22, 2026 BLE decision.** See
@@ -565,6 +611,9 @@ GPIO pin assignments:
   MicroSD SCK   → GPIO 18
   MicroSD CS    → GPIO 15
   Built-in LED  → GPIO 2   (on while a phone is connected; bench aid)
+  DFPlayer RX   ← GPIO 27  (through 1 kΩ)   ┐ voice, added Nov 2026;
+  DFPlayer TX   → GPIO 34  (input-only pin)  │ VCC on 5 V with 470 µF,
+  DFPlayer BUSY → GPIO 35  (input-only pin)  ┘ speaker on SPK1/SPK2
 ```
 
 ---
@@ -662,9 +711,12 @@ existed as files. Nothing to build here.
 
 ## No phantom features
 
-This build has **6 LEDs, a push button, a buzzer, a DS3231 RTC and a microSD
-card**. It has no heart-rate sensor, no pulse oximeter, no battery monitoring,
-no smartwatch and no SMS gateway.
+This build has **6 LEDs, a push button, a buzzer, a DS3231 RTC, a microSD
+card, and a DFPlayer Mini with one speaker for recorded voice prompts** (added
+Nov 2026). It has no heart-rate sensor, no pulse oximeter, no battery
+monitoring, no microphone or speech recognition, no smartwatch and no SMS
+gateway. The voice only plays fixed MP3 clips; it cannot say anything that is
+not on its card.
 
 Earlier screens displayed `HR 78 bpm`, `SpO2 98%`, `Battery 84%`,
 `WearOS · Connected` and an "SMS fallback" toggle. All of it was traced from
