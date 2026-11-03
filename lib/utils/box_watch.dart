@@ -3,7 +3,7 @@ import '../models/schedule_model.dart';
 import 'dose_timing.dart';
 
 /// When this phone keeps watching the medicine box in the background
-/// (BoxProvider, dev builds only, Nov 3, 2026).
+/// (BoxProvider, Nov 3, 2026).
 ///
 /// A box dose is watched from its time until it is recorded or missed
 /// (+60 min): the box lights it at its time and takes it with the button

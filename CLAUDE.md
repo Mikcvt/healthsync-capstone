@@ -555,11 +555,11 @@ Code: firmware/healthsync_box/voice.cpp, buzzer.cpp (alarm rounds), config.h.
 Bench test sketch: firmware/healthsync_box/dfplayer_test/.
 ```
 
-## Background box watch (dev builds only, Nov 3, 2026)
+## Background box watch (every build since Nov 3, 2026)
 
 ```
-While a box dose is due (dose time to +60 min, nothing recorded), a dev
-build syncs with the box every minute, in the background too, so a press of
+While a box dose is due (dose time to +60 min, nothing recorded), the app
+syncs with the box every minute, in the background too, so a press of
 the box button is saved without the Sync button. A foreground service
 (flutter_foreground_task, type connectedDevice) keeps the app awake; it
 starts when the app comes on screen or leaves it (the only moments Android
@@ -568,11 +568,12 @@ stops it.
 
   lib/utils/box_watch.dart              when to watch (test/box_watch_test.dart)
   lib/services/box_watch_service.dart   the service; the sync stays in BoxProvider
-  android/app/src/dev/AndroidManifest.xml    the service + permissions
-  android/app/src/prod/AndroidManifest.xml   strips the plugin's parts
+  android/app/src/main/AndroidManifest.xml   the service + permissions
 
-The prod (Play) build has no foreground service. Shipping it to Play needs
-the Play Console foreground-service declaration first.
+Dev-only at first; switched on for every build on Nov 3 because the app now
+ships as a hosted APK (Play refused production: health apps need an
+organisation developer account). A Google Play release would first need the
+Play Console foreground-service declaration (connectedDevice).
 ```
 
 ## Medicine box integration

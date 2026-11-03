@@ -35,7 +35,7 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
   }
-  // The background box watch's minute tick reaches this isolate (dev builds).
+  // The background box watch's minute tick reaches this isolate.
   BoxWatchService.initCommunicationPort();
 
   runApp(const HealthSyncApp());

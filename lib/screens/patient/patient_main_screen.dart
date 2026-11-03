@@ -68,7 +68,7 @@ class _PatientMainScreenState extends State<PatientMainScreen>
     // Brought back from the background counts as opening the app.
     if (state == AppLifecycleState.resumed) box.syncOnOpen();
     // Coming on screen or leaving it are the only moments Android lets the
-    // background box watch start (dev builds).
+    // background box watch start.
     if (state != AppLifecycleState.detached) box.appVisibilityChanged();
   }
 

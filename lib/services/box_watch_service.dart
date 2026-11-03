@@ -3,17 +3,16 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-import '../config/environment.dart';
 import '../constants/app_strings.dart';
 
 /// An Android foreground service that keeps the app running in the
 /// background while a box dose is due, so BoxProvider can sync every minute
 /// and a press of the box button reaches Firestore without the Sync button.
 ///
-/// Dev builds only (Nov 3, 2026). The service and its permissions are
-/// declared in android/app/src/dev/AndroidManifest.xml; the prod manifest
-/// strips the plugin's parts, so the Play build has no foreground service and
-/// needs no Play Console declaration.
+/// Every build since Nov 3, 2026 (dev-only at first). The app ships as a
+/// hosted APK, not on Google Play; a Play release would first need the Play
+/// Console foreground-service declaration. The service and its permissions
+/// are in android/app/src/main/AndroidManifest.xml.
 ///
 /// The service only keeps the process awake and ticks once a minute; the
 /// sync itself runs in the app's own isolate, with its Firestore and
@@ -25,7 +24,7 @@ class BoxWatchService {
   static const int _serviceId = 4801;
   static const int _tickMs = 60 * 1000;
 
-  bool get isSupported => AppEnvironment.isDev && Platform.isAndroid;
+  bool get isSupported => Platform.isAndroid;
 
   VoidCallback? _onTick;
   bool _initialised = false;

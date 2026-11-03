@@ -150,12 +150,11 @@ Done/Skip in the app, or on the Sync button. There is **no background sync**
 4. Whenever the patient next opens the app: the press is saved as taken, and
    the care partner gets a "correction" alert.
 
-**Update Nov 3 (dev builds only):** while a box dose is due, the dev app syncs
-every minute through a foreground service, also with the phone in a pocket, so
-the press reaches Firestore within about a minute and steps 2–4 do not happen.
-Still not covered: the app was not opened that day, it was swiped away, or the
-phone restarted. The Play build still behaves as above (`CLAUDE.md`,
-"Background box watch").
+**Update Nov 3 (hosted APK 1.0.0+3 and dev):** while a box dose is due, the
+app syncs every minute through a foreground service, also with the phone in a
+pocket, so the press reaches Firestore within about a minute and steps 2–4 do
+not happen. Still not covered: the app was not opened that day, it was swiped
+away, or the phone restarted (`CLAUDE.md`, "Background box watch").
 
 A patient who uses only the box and rarely opens the app will look like they
 miss **every** dose, in alerts and in the reports, until the next sync.

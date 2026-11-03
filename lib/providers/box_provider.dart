@@ -28,7 +28,7 @@ class BoxActionResult {
 ///
 /// Decided Oct 27, 2026: only the patient's phone talks to the box (M1). It
 /// connects when the app opens, after a Done or Skip in the app, and on the
-/// Sync button (M2), then disconnects. Dev builds also sync every minute
+/// Sync button (M2), then disconnects. It also syncs every minute
 /// while a box dose is due, in the background too (BoxWatchService). Each
 /// sync:
 ///
@@ -259,7 +259,7 @@ class BoxProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── background watch (dev builds) ───────────────────────────────────────
+  // ── background watch ────────────────────────────────────────────────────
 
   /// The app came on screen or is leaving it: the only moments Android lets
   /// a foreground service start. Starts the watch while a box dose is still
