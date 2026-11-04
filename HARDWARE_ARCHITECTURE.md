@@ -81,7 +81,7 @@ panelist will ask.
 | 13 | USB cable + 5 V USB charger | 1 | Charging through the side port; firmware uploads through the ESP32's own port (open area in the box). |
 | 14 | Breadboard / perfboard, jumper wires, enclosure with 6 compartments | — | |
 | 15 | DFPlayer Mini MP3 module (MP3-TF-16P) + its own microSD card (FAT32) | 1 + 1 | Spoken prompts after each tone (Nov 2026). Separate from the dose-log card. Clips in `/01/` (`VOICE_CLIPS.md`). |
-| 16 | Speaker, **8 Ω**, about 40 mm | 1 | One only: two in parallel (4 Ω) were no louder and browned out sooner (Nov 2). |
+| 16 | Speaker, **8 Ω, 0.5 W**, 36 mm, moving coil, non-paper diaphragm, metal body (sold as "Speaker 8 OHM Trumpet-Diameter 36mm-0.5 Watt") | 1 | One only: two in parallel (4 Ω) were no louder and browned out sooner (Nov 2). |
 | 17 | 1 kΩ resistor + 470 µF capacitor (≥ 10 V) | 1 + 1 | Resistor on the DFPlayer RX line (cuts hiss); capacitor across the DFPlayer's VCC/GND for the speaker's current bursts. |
 
 ---
