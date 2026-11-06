@@ -1,0 +1,390 @@
+00:00 +0: loading C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart
+00:00 +0: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/box_sync_test.dart: BoxSchedulePlan sends only dose times in a compartment, as 24-hour HH:MM
+00:00 +1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +2: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +3: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +4: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +5: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +6: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +7: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +8: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +9: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +10: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +11: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +12: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +13: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +14: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +15: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +16: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +17: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +18: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:00 +19: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +20: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +21: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +22: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +23: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +24: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +25: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +26: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +27: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +28: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +29: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +30: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +31: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +32: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +33: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +34: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +35: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +36: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +37: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +38: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +39: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +40: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +41: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +42: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +43: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +44: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+00:01 +45: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════
+The following FirebaseException was thrown building AuthGate(dirty, dependencies:
+[_InheritedProviderScope<AuthProvider?>]):
+[core/no-app] No Firebase App '[DEFAULT]' has been created - call Firebase.initializeApp()
+
+The relevant error-causing widget was:
+  AuthGate
+  AuthGate:file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/lib/main.dart:90:21
+
+When the exception was thrown, this was the stack:
+#0      MethodChannelFirebase.app (package:firebase_core_platform_interface/src/method_channel/method_channel_firebase.dart:229:5)
+#1      Firebase.app (package:firebase_core/src/firebase.dart:92:41)
+#2      FirebaseAuth.instance (package:firebase_auth/src/firebase_auth.dart:38:47)
+#3      new AuthService (package:healthsync/services/auth_service.dart:17:43)
+#4      new AuthProvider (package:healthsync/providers/auth_provider.dart:39:36)
+#5      HealthSyncApp.build.<anonymous closure> (package:healthsync/main.dart:51:47)
+#6      _CreateInheritedProviderState.value (package:provider/src/inherited_provider.dart:749:36)
+#7      _InheritedProviderScopeElement.value (package:provider/src/inherited_provider.dart:603:33)
+#8      Provider.of (package:provider/src/provider.dart:337:37)
+#9      WatchContext.watch (package:provider/src/provider.dart:727:21)
+#10     AuthGate.build (package:healthsync/main.dart:104:28)
+#11     StatelessElement.build (package:flutter/src/widgets/framework.dart:5902:49)
+#12     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5830:15)
+#13     Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#14     ComponentElement._firstBuild (package:flutter/src/widgets/framework.dart:5812:5)
+#15     ComponentElement.mount (package:flutter/src/widgets/framework.dart:5806:5)
+...     Normal element mounting (260 frames)
+#275    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4600:20)
+#276    MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7277:36)
+#277    MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7292:32)
+...     Normal element mounting (474 frames)
+#751    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#758    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#765    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#772    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#779    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#786    SingleChildWidgetElementMixin.mount (package:nested/nested.dart:222:11)
+...     Normal element mounting (7 frames)
+#793    _NestedHookElement.mount (package:nested/nested.dart:187:11)
+...     Normal element mounting (7 frames)
+#800    SingleChildWidgetElementMixin.mount (package:nested/nested.dart:222:11)
+...     Normal element mounting (7 frames)
+#807    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4600:20)
+#808    Element.updateChild (package:flutter/src/widgets/framework.dart:4066:20)
+#809    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#810    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#811    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#812    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#813    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#814    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#815    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#816    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#817    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#818    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#819    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#820    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#821    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#822    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#823    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#824    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#825    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#826    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#827    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#828    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#829    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#830    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#831    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#832    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#833    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#834    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#835    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#836    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#837    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#838    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#839    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#840    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#841    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#842    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#843    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#844    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#845    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#846    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#847    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#848    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#849    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#850    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#851    _RawViewElement._updateChild (package:flutter/src/widgets/view.dart:488:16)
+#852    _RawViewElement.update (package:flutter/src/widgets/view.dart:575:5)
+#853    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#854    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#855    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#856    StatelessElement.update (package:flutter/src/widgets/framework.dart:5908:5)
+#857    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#858    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#859    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#860    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#861    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#862    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#863    RootElement._rebuild (package:flutter/src/widgets/binding.dart:2091:16)
+#864    RootElement.update (package:flutter/src/widgets/binding.dart:2069:5)
+#865    RootElement.performRebuild (package:flutter/src/widgets/binding.dart:2083:7)
+#866    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#867    BuildScope._tryRebuild (package:flutter/src/widgets/framework.dart:2763:15)
+#868    BuildScope._flushDirtyElements (package:flutter/src/widgets/framework.dart:2820:11)
+#869    BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3124:18)
+#870    AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2432:19)
+#871    RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:558:5)
+#872    SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#873    SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#874    AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2261:9)
+#877    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#878    AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2250:27)
+#879    WidgetTester.pumpWidget.<anonymous closure> (package:flutter_test/src/widget_tester.dart:598:22)
+#882    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#883    WidgetTester.pumpWidget (package:flutter_test/src/widget_tester.dart:595:27)
+#884    main.<anonymous closure> (file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart:6:18)
+#885    testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:29)
+<asynchronous suspension>
+#886    TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 5 frames from dart:async and package:stack_trace)
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "Get Started": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart:8:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart line 8
+The test description was:
+  welcome screen shows onboarding actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following message was thrown:
+Multiple exceptions (2) were detected during the running of the current test, and at least one was
+unexpected.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +45 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions [E]
+  Test failed. See exception logs above.
+  The test description was: welcome screen shows onboarding actions
+  
+00:01 +45 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone reads every form people type or paste
+00:01 +46 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone refuses what is not a Philippine mobile number
+00:01 +47 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone stores +63 and the 10 digits, or nothing
+00:01 +48 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone a saved number fills the field, a bad one leaves it empty
+00:01 +49 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone display keeps an unreadable value as it is
+00:01 +50 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone the field stops at 10 digits and spaces them
+00:02 +51 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone pasting a full number drops its prefix
+00:02 +52 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: PhPhone validator: optional, but exact when filled
+00:02 +53 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: Validators.stock accepts 0–999 on hand and 0–99 for the alert
+00:02 +54 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: Validators.stock refuses too large or not a number
+00:02 +55 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: Validators.stock alert above the stock is refused only when adding
+00:02 +56 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: Box serial typed forms become HS-0001
+00:02 +57 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: Box serial validator refuses the test-round serials
+00:02 +58 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DeviceModel.isOnline needs a recent report, not just the stored status
+00:02 +59 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DosageStrength units follow the dosage form
+00:02 +60 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DosageStrength reads saved values with or without a space
+00:02 +61 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DosageStrength saves as one string
+00:02 +62 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DosageStrength amount: a positive number
+00:02 +63 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/input_rules_test.dart: DosageStrength the amount stops at 6 characters and 2 decimals
+00:02 +64 -1: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart: Counter increments smoke test
+══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════
+The following FirebaseException was thrown building AuthGate(dirty, dependencies:
+[_InheritedProviderScope<AuthProvider?>]):
+[core/no-app] No Firebase App '[DEFAULT]' has been created - call Firebase.initializeApp()
+
+The relevant error-causing widget was:
+  AuthGate
+  AuthGate:file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/lib/main.dart:90:21
+
+When the exception was thrown, this was the stack:
+#0      MethodChannelFirebase.app (package:firebase_core_platform_interface/src/method_channel/method_channel_firebase.dart:229:5)
+#1      Firebase.app (package:firebase_core/src/firebase.dart:92:41)
+#2      FirebaseAuth.instance (package:firebase_auth/src/firebase_auth.dart:38:47)
+#3      new AuthService (package:healthsync/services/auth_service.dart:17:43)
+#4      new AuthProvider (package:healthsync/providers/auth_provider.dart:39:36)
+#5      HealthSyncApp.build.<anonymous closure> (package:healthsync/main.dart:51:47)
+#6      _CreateInheritedProviderState.value (package:provider/src/inherited_provider.dart:749:36)
+#7      _InheritedProviderScopeElement.value (package:provider/src/inherited_provider.dart:603:33)
+#8      Provider.of (package:provider/src/provider.dart:337:37)
+#9      WatchContext.watch (package:provider/src/provider.dart:727:21)
+#10     AuthGate.build (package:healthsync/main.dart:104:28)
+#11     StatelessElement.build (package:flutter/src/widgets/framework.dart:5902:49)
+#12     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5830:15)
+#13     Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#14     ComponentElement._firstBuild (package:flutter/src/widgets/framework.dart:5812:5)
+#15     ComponentElement.mount (package:flutter/src/widgets/framework.dart:5806:5)
+...     Normal element mounting (260 frames)
+#275    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4600:20)
+#276    MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7277:36)
+#277    MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7292:32)
+...     Normal element mounting (474 frames)
+#751    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#758    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#765    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#772    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#779    _InheritedProviderScopeElement.mount (package:provider/src/inherited_provider.dart:424:11)
+...     Normal element mounting (7 frames)
+#786    SingleChildWidgetElementMixin.mount (package:nested/nested.dart:222:11)
+...     Normal element mounting (7 frames)
+#793    _NestedHookElement.mount (package:nested/nested.dart:187:11)
+...     Normal element mounting (7 frames)
+#800    SingleChildWidgetElementMixin.mount (package:nested/nested.dart:222:11)
+...     Normal element mounting (7 frames)
+#807    Element.inflateWidget (package:flutter/src/widgets/framework.dart:4600:20)
+#808    Element.updateChild (package:flutter/src/widgets/framework.dart:4066:20)
+#809    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#810    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#811    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#812    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#813    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#814    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#815    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#816    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#817    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#818    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#819    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#820    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#821    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#822    _InheritedNotifierElement.update (package:flutter/src/widgets/inherited_notifier.dart:108:11)
+#823    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#824    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#825    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#826    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#827    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#828    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#829    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#830    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#831    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#832    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#833    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#834    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#835    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#836    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#837    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#838    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#839    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#840    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#841    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#842    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#843    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#844    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#845    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#846    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#847    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#848    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#849    ProxyElement.update (package:flutter/src/widgets/framework.dart:6162:5)
+#850    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#851    _RawViewElement._updateChild (package:flutter/src/widgets/view.dart:488:16)
+#852    _RawViewElement.update (package:flutter/src/widgets/view.dart:575:5)
+#853    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#854    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#855    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#856    StatelessElement.update (package:flutter/src/widgets/framework.dart:5908:5)
+#857    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#858    ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5854:16)
+#859    StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5995:11)
+#860    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#861    StatefulElement.update (package:flutter/src/widgets/framework.dart:6020:5)
+#862    Element.updateChild (package:flutter/src/widgets/framework.dart:4050:15)
+#863    RootElement._rebuild (package:flutter/src/widgets/binding.dart:2091:16)
+#864    RootElement.update (package:flutter/src/widgets/binding.dart:2069:5)
+#865    RootElement.performRebuild (package:flutter/src/widgets/binding.dart:2083:7)
+#866    Element.rebuild (package:flutter/src/widgets/framework.dart:5542:7)
+#867    BuildScope._tryRebuild (package:flutter/src/widgets/framework.dart:2763:15)
+#868    BuildScope._flushDirtyElements (package:flutter/src/widgets/framework.dart:2820:11)
+#869    BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3124:18)
+#870    AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2432:19)
+#871    RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:558:5)
+#872    SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#873    SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#874    AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2261:9)
+#877    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#878    AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2250:27)
+#879    WidgetTester.pumpWidget.<anonymous closure> (package:flutter_test/src/widget_tester.dart:598:22)
+#882    TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#883    WidgetTester.pumpWidget (package:flutter_test/src/widget_tester.dart:595:27)
+#884    main.<anonymous closure> (file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart:16:18)
+#885    testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:29)
+<asynchronous suspension>
+#886    TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 5 frames from dart:async and package:stack_trace)
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "0": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart:19:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart line 19
+The test description was:
+  Counter increments smoke test
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following message was thrown:
+Multiple exceptions (2) were detected during the running of the current test, and at least one was
+unexpected.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +64 -2: C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart: Counter increments smoke test [E]
+  Test failed. See exception logs above.
+  The test description was: Counter increments smoke test
+  
+00:03 +64 -2: Some tests failed.
+
+Failing tests:
+  C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/auth_flow_test.dart: welcome screen shows onboarding actions
+  C:/Users/HP/Documents/DEV/healthsync/healthsync-capstone/test/widget_test.dart: Counter increments smoke test
