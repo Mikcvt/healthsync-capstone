@@ -34,7 +34,7 @@ Checked on Nov 6, 2026 against `release-without-google-terms` at `36995c8` (app 
 | R15 | `BLE_PROTOCOL.md`, firmware version | In repo | Christian | **Confirm which firmware is on the demo box**: release branch is 0.4.3, Christian's `feature/medbox-integration` has 0.5.0 (Oct 29) |
 | R16 | Test phones: models and Android versions | To record | Adi | At least one Android 12+ and one Android 11-or-older (C17, and the Bluetooth/location permission difference) |
 | R17 | QA regression results (QA-11), pilot bug log (PIL-02), known limitations (DOC-18) | Tracker items | Adi | Status not checked here |
-| R18 | Walkthrough (DEF-01 script) | Tracker item | Team | Experts should see the system before rating |
+| R18 | Recorded walkthrough (DEF-01 script) | **To record** (decided Nov 7: recorded, not live) | Team | Outline in section 10; experts watch it before rating |
 | R19 | Respondent codes E01, E02, E03 and personal links | After adviser approval (ADV-11) | Siemonne | Never share the code-to-name list |
 
 ## 2. The APK
@@ -173,8 +173,9 @@ Do **not** give the experts the paper-audit page or `docs/paper-crosscheck/`: it
 | F14 | Export QA-11 regression results, the PIL-02 pilot bug log and DOC-18 known limitations | Adi | Drive (PDF) |
 | F15 | Draw the data-flow diagram (DFD Level 1 from the paper plan) | Mona | Drive (image or PDF) |
 | F16 | User manual, at least the care partner and patient quick steps (MAN-01) | Documentation | Drive (PDF) |
-| F17 | Walkthrough script (DEF-01) and a time for the session | Team | Live call or in person; slides in Drive |
-| F18 | Adviser: may IT experts also answer Part A? Approve respondent codes (ADV-11) | Siemonne | — |
+| F17 | Record the walkthrough on the final APK (outline in section 10), with chapter timestamps | Team | Drive, or an unlisted YouTube link from "Start here" |
+| F18 | Adviser: may IT experts also answer Part A? Approve respondent codes (ADV-11). Also ask: is a **recorded** walkthrough with a Q&A channel acceptable for Part C, and may a "I watched the walkthrough video" tick box be added before Part C? | Siemonne | — |
+| F18b | Set up the Q&A channel for experts (group chat, email, or an optional 15-minute call) and record who watched the video and when | Siemonne | Private; the record supports section 4.5 |
 | F19 | Personal Google Form links with E01–E03 pre-filled | Siemonne | Private message, after F18 |
 | F20 | "Start here" document: the three links, what to install, how to sign in, which statements need which item (section 6), deadline | Siemonne | Top of the Drive folder |
 
@@ -191,6 +192,7 @@ HealthSync – IT expert evaluation/
   06 QA results and known limitations.pdf
   07 Test phones.pdf
   08 Box sync video.mp4            (or a link)
+  09 Walkthrough video.mp4         (or an unlisted YouTube link)
 ```
 
 ## 9. Channels (unchanged from the draft, adjusted for the public repo)
@@ -201,5 +203,43 @@ HealthSync – IT expert evaluation/
 | Source code | The public repo at the tag (no invite needed) |
 | APK | GitHub Release link with the SHA-256 next to it |
 | Logins and codes | Private message or a one-time secret link |
-| Walkthrough | Live call or in person, DEF-01 script |
+| Walkthrough | Recorded video (section 10) in Drive or unlisted YouTube; questions through the Q&A channel |
 | Respondent list | Not shared |
+
+## 10. Recorded walkthrough (DEF-01)
+
+Decided Nov 7: the IT experts watch a **recorded** walkthrough instead of a
+live session. Every expert sees the same content, and the video is reusable
+evidence. Before relying on it, get the adviser's OK (F18), give the experts a
+way to ask questions (F18b), and keep a record of who watched it and when.
+
+**Length:** about 20–25 minutes, with chapter timestamps.
+**Build:** the final APK from the GitHub Release, so the video matches what
+the experts install.
+
+| Chapter | Show | Part C statements |
+|---|---|---|
+| 1. Install | Open the Release link, check the SHA-256, install the APK | C17, C18 |
+| 2. Care partner | Register, add a patient, add a medicine with a compartment, get the sign-in code | C2, C3, C12, C13 |
+| 3. Patient | Enter the code; a reminder arriving with the app closed; Done, Skip with a reason, Snooze; Undo | C15, C22 |
+| 4. Alerts | "Running late" and "Missed dose" reaching the care partner; low stock | C13, C25 |
+| 5. Offline | Airplane mode, log a dose ("Waiting to sync"), reconnect, the care partner side updates | C23, C24 |
+| 6. Security | The patient app has no medicine edit controls; a used code fails on a second phone; no way to delete a dose | C1–C5 |
+| 7. Box | Pairing (hold 5 s, passkey), a dose lighting up with tone and voice, a button press, the dose showing as taken in the app | C14 (can reuse the box sync video, R14) |
+| 8. The code | Repo tour at the tag: `lib/` layers, `firestore.rules`, `healthsync-api/src/handlers`, `test/` and a clean `flutter test` run | C6–C10, C25 |
+
+**Recording checklist**
+- Use the UAT test accounts and made-up medicines only.
+- Turn on Do Not Disturb on the recording phones so personal notifications
+  do not appear; hide personal apps from the home screen.
+- Do not show the box label's passkey up close, any password, or a sign-in
+  code that is still valid.
+- Tools: Android's built-in screen recorder for the app; a second phone
+  filming the box; OBS or the Windows recorder for the repo tour.
+- Charge the box (the 18650) before recording.
+- Upload to the Drive folder (`09 Walkthrough video`) or as an **unlisted**
+  YouTube video, and link it from "Start here" with the chapter list.
+
+**For the paper (section 4.5):** "Before answering Part C, the IT experts
+watched a recorded walkthrough of the system (about 25 minutes) and could
+send questions to the proponents." Keep the record of who watched it and when.
