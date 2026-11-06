@@ -746,7 +746,7 @@ that is not on its card. The app is English only and has no report export.
 Box parts: ESP32; 6 LEDs with 220 Ω resistors; active buzzer (rated 12 V DC,
 works 3–24 V, switched by an NPN); DS3231 with CR2032; microSD module (5 V);
 DFPlayer Mini (MP3-TF-16P) with its own microSD; speaker 8 Ω, 0.5 W, 36 mm;
-6 mm NC push button; 3.7 V 2200 mAh 18650 cell with a 134N3P charge/boost
+6 mm NC push button; 3.7 V 3000 mAh 18650 cell with a 134N3P charge/boost
 board (5 V to VIN).
 
 Earlier screens displayed `HR 78 bpm`, `SpO2 98%`, `Battery 84%`,

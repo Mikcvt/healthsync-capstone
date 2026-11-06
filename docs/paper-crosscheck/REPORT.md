@@ -32,14 +32,14 @@
 | Severity | Count |
 |---|---|
 | Must fix before defense | 49 |
-| Should fix | 29 |
-| Nice to have | 11 |
+| Should fix | 28 |
+| Nice to have | 12 |
 | No action (recorded matches) | 11 |
 
 | Verdict | Count |
 |---|---|
-| Contradicts | 54 |
-| Matches | 20 |
+| Contradicts | 53 |
+| Matches | 21 |
 | Partly true | 16 |
 | Unfinished | 6 |
 | Cannot verify | 2 |
@@ -55,7 +55,7 @@ Counts updated on Nov 4 after the team's answers (see "Team answers" below).
 - **Hosted APK 1.0.0+3 is the UAT and defense build** (F-26).
 - **Deployment: the hosted APK is final; the Google Play closed test was only an attempt.** Facts for the attempt: Oct 14 (first install Oct 15) to the evening of Oct 29, 25 registered testers, closed test and production-access application approved, production release rejected because an organization account is needed. Objective 6, the p.16 scope bullet and Stage 4 change to the hosted APK; the attempt is mentioned only as history (F-27 to F-30).
 - **Title confirmed** as on page 1; **school year 2026-2027** (F-45, F-89).
-- **Hardware:** battery 2200 mAh (Table 3 says 3000); all LED resistors 220 Ω; buzzer rated 12 V DC (works 3–24 V); microSD on 5 V; no brownout on the battery, the earlier resets were low battery; Mona updates the schematic.
+- **Hardware:** battery 3000 mAh, as Table 3 says (Nov 7; the Nov 4 answer of 2200 was corrected); all LED resistors 220 Ω; buzzer rated 12 V DC (works 3–24 V); microSD on 5 V; no brownout on the battery, the earlier resets were low battery; Mona updates the schematic.
 - **Adviser:** adult respondents first, at least 3 IT experts, questionnaire approved, ISO/IEC 25010:2023.
 - **4.3.3 and 4.3.4:** Part 4 now has a proposed DFD Level 1 and 2, and how to present an ERD for Firestore (NoSQL).
 

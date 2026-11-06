@@ -19,7 +19,7 @@
 | Q-PL3 | Title confirmed: "A Mobile-Based Medication Reminder System with an IoT-Assisted LED-Guided Medicine Box for Care Partner-Supported Medication Adherence" | Month/year on the title page |
 | Q-PL4 | School year 2026-2027 | — |
 | Q-PL5 | — | Still open |
-| Q-HW1, Q-HW2 | Battery 2200 mAh; all LED resistors 220 Ω | — |
+| Q-HW1, Q-HW2 | Battery 3000 mAh (Nov 7; the Nov 4 answer said 2200); all LED resistors 220 Ω | Whether "PKCELL" is printed on the cell |
 | Q-HW3 | microSD on 5 V; buzzer rated 12 V DC (works 3–24 V) | Which rail the buzzer is wired to (5 V expected) |
 | Q-HW4 | — | Still open |
 | Q-HW5 | Mona will update the schematic | — |

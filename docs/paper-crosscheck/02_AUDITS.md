@@ -122,7 +122,7 @@ Page numbers are PDF pages. Code is `release-without-google-terms` at `36995c8`.
 | LED resistor (pp.49, 62) | 220-330 Ω / 220 Ω | 220 Ω, all six (Christian, Nov 4) | Partly (use 220) |
 | Buzzer base resistor (pp.50, 62) | 1 kΩ | 1 kΩ (`HARDWARE_ARCHITECTURE.md` §1.7) | Matches |
 | LED current (p.49) | about 2.0 V, about 6 mA | not in repo | Cannot verify |
-| Battery (p.50) | 3.7 V, 3000 mAh, 4.2 V full, about 3.0 V empty | 2200 mAh (Christian, Nov 4) | **Contradicts** |
+| Battery (p.50) | 3.7 V, 3000 mAh, 4.2 V full, about 3.0 V empty | 3000 mAh (team, Nov 7) | Matches (brand to confirm) |
 | Boost output (pp.50, 58, 62) | 5 V | 5 V to VIN (`WORK_NOTES.md`; CLAUDE.md) | Matches |
 | Pairing hold (p.60) | 5 s | 5 s, only with no LED lit (`config.h:77`) | Matches (add the condition) |
 | Alarm tone pattern | not given | 5 s tone, prompt, 5 s pause; tone stops after 30 min, LED stays until 60 min (`config.h:21-23`) | **Missing** |
