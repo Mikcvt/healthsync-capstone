@@ -10,7 +10,7 @@
 |---|---|---|
 | Q-LD1, Q-LD2 | The button is a **confirmation button** in the defended build (matches firmware 0.4.3) | — |
 | Q-LD3 | **Drop both limits from the paper** | — |
-| Q-LD4 | A reason for a missed dose is **required** | The app does not ask for it today (F-38): Miko to change the app, or the paper must say "optional" |
+| Q-LD4 | A reason for a missed dose is **optional** (Nov 7), as the code already does | — |
 | Q-LD5 | The hosted APK `1.0.0+3` is the UAT and defense build | — |
 | Q-LD6 | **Remove** `alert_pref_daily` and `max_patients` | Miko removes `alert_pref_daily` from the code |
 | Q-LD7 | — | Still open |

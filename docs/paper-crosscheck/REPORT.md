@@ -31,8 +31,8 @@
 
 | Severity | Count |
 |---|---|
-| Must fix before defense | 50 |
-| Should fix | 28 |
+| Must fix before defense | 49 |
+| Should fix | 29 |
 | Nice to have | 11 |
 | No action (recorded matches) | 11 |
 
@@ -40,11 +40,10 @@
 |---|---|
 | Contradicts | 54 |
 | Matches | 20 |
-| Partly true | 15 |
+| Partly true | 16 |
 | Unfinished | 6 |
 | Cannot verify | 2 |
 | Not implemented | 2 |
-| Code mismatch (the paper states a team decision the app does not do yet) | 1 |
 
 Counts updated on Nov 4 after the team's answers (see "Team answers" below).
 
@@ -52,7 +51,7 @@ Counts updated on Nov 4 after the team's answers (see "Team answers" below).
 
 - **Button: a confirmation button in the defended build.** This matches firmware 0.4.3. Part 1, section A now gives one wording to use everywhere (F-01 to F-13).
 - **Limits of 3 patients and 6 medicines: dropped from the paper** (F-32, F-33). Unused fields `max_patients` and `alert_pref_daily` are removed (F-36, F-48).
-- **Missed-dose reason: required.** The app does not ask for it yet, so this is now a code change for Miko (F-38).
+- **Missed-dose reason: optional** (Nov 7; changed from "required" on Nov 4). This matches the code, so only the paper changes (F-38).
 - **Hosted APK 1.0.0+3 is the UAT and defense build** (F-26).
 - **Deployment: the hosted APK is final; the Google Play closed test was only an attempt.** Facts for the attempt: Oct 14 (first install Oct 15) to the evening of Oct 29, 25 registered testers, closed test and production-access application approved, production release rejected because an organization account is needed. Objective 6, the p.16 scope bullet and Stage 4 change to the hosted APK; the attempt is mentioned only as history (F-27 to F-30).
 - **Title confirmed** as on page 1; **school year 2026-2027** (F-45, F-89).
@@ -64,7 +63,7 @@ Counts updated on Nov 4 after the team's answers (see "Team answers" below).
 
 1. **The button is described four ways**: no button (p.16), silence only (pp.47, 51, 62, 66), confirms (pp.57, 60, 64, 73, 84, 88-96). The team decided it confirms doses, so pp.16, 47, 51, 62 and 66 must change. F-01 to F-05.
 2. **Figure 8 and its text (pp.72-73) show the ESP32 using Wi-Fi, sending FCM and writing Firestore**, which the paper itself says the box cannot do. F-14, F-15.
-3. **The limits of 3 patients per care partner and 6 medicines per patient (p.16) do not exist in the app**; the team will remove them from the paper. **A missed-dose reason is "required" but the app does not ask for one yet.** F-32, F-33, F-38.
+3. **The limits of 3 patients per care partner and 6 medicines per patient (p.16) do not exist in the app**; the team will remove them from the paper. F-32, F-33.
 4. **The "no voice feedback" delimitation (p.17) is false**: the box speaks. Voice is also missing from Table 3, the schematic and the definitions. F-35, F-54.
 5. **The paper still presents Google Play as the release** (p.16 scope bullet, Objective 6, p.97 "will be published"). The final method is the hosted APK; the closed test was an attempt, and its build (1.0.0+2) has no Bluetooth or box features. F-27 to F-30.
 6. **Minimum age is 13+ in Chapter 1, but 18+ in the website Terms and Privacy Policy and for the respondents, and 13-17 is allowed in the UAT tool; the app checks nothing.** F-34.
